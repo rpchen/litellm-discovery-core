@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.tmp/
+*.tgz
+bun.lockb
+.DS_Store

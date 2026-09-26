@@ -1,0 +1,13 @@
+schema: spec-driven
+created: 2026-09-26
+context: |
+  项目：litellm-discovery-core —— LiteLLM 模型发现与元数据处理的宿主无关 TypeScript core。
+  core 不引用 Pi 或 OpenCode SDK；插件适配、构建时 SHA 固定和发行流程属于后续变更。
+  Language: zh-CN
+rules:
+  proposal:
+    - 说明 core 与插件宿主适配层的边界。
+  design:
+    - 记录来源 commit、抽取差异和不在本变更范围内的插件迁移。
+  tasks:
+    - 包含离线 fixtures、类型检查、单元测试、构建和隔离消费者导入验证。
