@@ -31,7 +31,3 @@ try {
 } finally {
   rmSync(temp, { recursive: true, force: true })
 }
-
-
-
-

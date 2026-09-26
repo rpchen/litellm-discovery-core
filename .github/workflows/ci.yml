@@ -39,5 +39,3 @@ jobs:
         run: npm run test:package
       - name: Validate OpenSpec
         run: npm run validate:spec
-
-

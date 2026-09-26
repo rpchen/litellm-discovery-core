@@ -71,7 +71,3 @@ function stableValue(value: unknown): unknown {
 export function modelFingerprint(models: readonly ModelSpec[]): string {
   return JSON.stringify(stableValue(models))
 }
-
-
-
-

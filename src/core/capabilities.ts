@@ -191,7 +191,3 @@ export function mapCapabilities(
     },
   }
 }
-
-
-
-

@@ -184,7 +184,3 @@ export function releaseTimestamp(selected: SelectedModelRecord | undefined): num
   const timestamp = Date.parse(value)
   return Number.isFinite(timestamp) ? timestamp : 0
 }
-
-
-
-

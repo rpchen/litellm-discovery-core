@@ -15,4 +15,3 @@
 - [x] 3.1 Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, and `npm run validate:spec` locally; record actual results in the PR.
 - [ ] 3.2 Push the feature branch and verify GitHub Actions CI before review.
 - [ ] 3.3 Open a PR against `main`; do not merge it.
-

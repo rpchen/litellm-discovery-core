@@ -64,7 +64,3 @@ export function resolveProtocol(
   const protocols = new Set(group.deployments.map(deploymentProtocol))
   return protocols.size === 1 ? (protocols.values().next().value ?? "chat") : "chat"
 }
-
-
-
-
