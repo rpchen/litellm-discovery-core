@@ -114,7 +114,7 @@ describe("discovery diagnostics", () => {
     globalThis.fetch = (async () => {
       fetches += 1
       throw new Error("unexpected network")
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       const result = diagnoseModelSpecs({
