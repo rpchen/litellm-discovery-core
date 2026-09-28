@@ -11,10 +11,18 @@ import {
 import {
   buildVariants,
   candidateModelIDs,
+  canonicalModelID,
+  resolveReasoningSupport,
   selectModelsDevRecord,
+  type ReasoningSupportResolution,
   type SelectedModelRecord,
 } from "./modelsdev.js"
-import { resolveProtocolResolution, type ProtocolReason } from "./protocol.js"
+import {
+  resolveProtocolResolution,
+  resolveProtocolSupport,
+  type ProtocolReason,
+  type ProtocolSupport,
+} from "./protocol.js"
 
 export const DISCOVERY_DIAGNOSTICS_SCHEMA_VERSION = 1 as const
 
@@ -35,6 +43,23 @@ export interface FieldProvenance {
   readonly detail?: string
 }
 
+export interface MetadataConflictDiagnostic {
+  readonly field: string
+  readonly resolution: string
+}
+
+export interface ModelQualityDiagnostic {
+  readonly identity: {
+    readonly canonicalCandidates: readonly string[]
+    readonly matchKind?: "exact" | "canonical" | "alias"
+    readonly matchedCandidate?: string
+  }
+  readonly reasoning: ReasoningSupportResolution
+  readonly protocolSupport: ProtocolSupport
+  readonly fallback: "enriched" | "litellm-only"
+  readonly conflicts: readonly MetadataConflictDiagnostic[]
+}
+
 export interface ModelDiagnostic {
   readonly id: string
   readonly deploymentCount: number
@@ -47,8 +72,10 @@ export interface ModelDiagnostic {
   readonly protocol: {
     readonly value: ModelSpec["protocol"]
     readonly reason: ProtocolReason
+    readonly support: ProtocolSupport
     readonly deploymentProtocols: readonly ModelSpec["protocol"][]
   }
+  readonly quality: ModelQualityDiagnostic
   readonly provenance: {
     readonly protocol: FieldProvenance
     readonly reasoning: FieldProvenance
@@ -142,13 +169,21 @@ function modelsDevBoolean(selected: SelectedModelRecord | undefined, key: string
   return optionalBoolean(selected?.record[key]) !== undefined
 }
 
+function modelsDevNumber(
+  selected: SelectedModelRecord | undefined,
+  objectKey: "limit" | "cost",
+  key: string,
+): number | undefined {
+  const object = selected?.record[objectKey]
+  return isRecord(object) ? optionalNumber(object[key]) : undefined
+}
+
 function modelsDevObjectNumber(
   selected: SelectedModelRecord | undefined,
   objectKey: "limit" | "cost",
   key: string,
 ): boolean {
-  const object = selected?.record[objectKey]
-  return isRecord(object) && optionalNumber(object[key]) !== undefined
+  return modelsDevNumber(selected, objectKey, key) !== undefined
 }
 
 function anyDeploymentBoolean(group: DeploymentGroup, key: string): boolean {
@@ -230,11 +265,8 @@ function contextProvenance(
   if (options.contextTierCap && firstTier !== undefined && spec.limit.context === firstTier) {
     return field("derived", `LiteLLM pricing tier cap at ${firstTier} tokens`)
   }
-  if (liteLLMDeclared && modelsDevDeclared) {
-    return field("derived", "minimum across LiteLLM declarations with models.dev fallback")
-  }
-  if (liteLLMDeclared) return field("litellm")
-  if (modelsDevDeclared) return field("models.dev")
+  if (modelsDevDeclared) return field("models.dev", "limit.context")
+  if (liteLLMDeclared) return field("litellm", "max_input_tokens used as conservative context fallback")
   return field("default", "no context limit metadata")
 }
 
@@ -256,6 +288,80 @@ function pricingProvenance(
   if (anyDeploymentNonNegativeNumber(group, deploymentFields)) return field("litellm")
   if (modelsDevObjectNumber(selected, "cost", modelsDevKey)) return field("models.dev")
   return field("default", "missing price metadata maps to zero")
+}
+
+function metadataConflicts(
+  group: DeploymentGroup,
+  selected: SelectedModelRecord | undefined,
+  reasoning: ReasoningSupportResolution,
+): MetadataConflictDiagnostic[] {
+  const conflicts: MetadataConflictDiagnostic[] = []
+  const mdTools = optionalBoolean(selected?.record.tool_call)
+  if (
+    mdTools !== undefined &&
+    group.deployments.some((deployment) => {
+      const value = optionalBoolean(deployment.modelInfo.supports_function_calling)
+      return value !== undefined && value !== mdTools
+    })
+  ) {
+    conflicts.push({
+      field: "capabilities.tools",
+      resolution: "explicit LiteLLM values win per deployment; the group uses the conservative intersection",
+    })
+  }
+
+  if (reasoning.conflict) {
+    conflicts.push({
+      field: "reasoning",
+      resolution: "explicit LiteLLM supports_reasoning wins per deployment before models.dev fallback",
+    })
+  }
+
+  const limitChecks: Array<[string, string[], string]> = [
+    ["limit.input", ["max_input_tokens"], "input"],
+    ["limit.output", ["max_output_tokens", "max_tokens"], "output"],
+  ]
+  for (const [fieldName, liteLLMFields, modelsDevKey] of limitChecks) {
+    const md = modelsDevNumber(selected, "limit", modelsDevKey)
+    if (md === undefined) continue
+    const differs = group.deployments.some((deployment) =>
+      liteLLMFields.some((key) => {
+        const value = positiveInteger(deployment.modelInfo[key])
+        return value !== undefined && value !== md
+      })
+    )
+    if (differs) {
+      conflicts.push({
+        field: fieldName,
+        resolution: "explicit LiteLLM deployment limit wins; models.dev is used only when LiteLLM omits the field",
+      })
+    }
+  }
+
+  const priceChecks: Array<[string, string[], string]> = [
+    ["pricing.input", ["input_cost_per_token"], "input"],
+    ["pricing.output", ["output_cost_per_token"], "output"],
+    ["pricing.cacheRead", ["cache_read_input_token_cost", "cache_read_cost_per_token"], "cache_read"],
+    ["pricing.cacheWrite", ["cache_creation_input_token_cost", "cache_write_input_token_cost"], "cache_write"],
+  ]
+  for (const [fieldName, liteLLMFields, modelsDevKey] of priceChecks) {
+    const md = modelsDevNumber(selected, "cost", modelsDevKey)
+    if (md === undefined) continue
+    const differs = group.deployments.some((deployment) =>
+      liteLLMFields.some((key) => {
+        const value = optionalNumber(deployment.modelInfo[key])
+        return value !== undefined && value >= 0 && value * 1_000_000 !== md
+      })
+    )
+    if (differs) {
+      conflicts.push({
+        field: fieldName,
+        resolution: "LiteLLM deployment pricing wins; multiple deployments use the highest declared price",
+      })
+    }
+  }
+
+  return conflicts
 }
 
 function releaseProvenance(selected: SelectedModelRecord | undefined): FieldProvenance {
@@ -292,6 +398,8 @@ function modelDiagnostic(
   const selected = selectModelsDevRecord(group, catalog)
   const protocol = resolveProtocolResolution(group, options.protocolOverrides)
   const variants = buildVariants(selected, spec.protocol)
+  const reasoning = resolveReasoningSupport(group, selected)
+  const conflicts = metadataConflicts(group, selected, reasoning)
   const issues: DiagnosticIssue[] = []
 
   if (!selected) {
@@ -303,6 +411,16 @@ function modelDiagnostic(
       message: "No models.dev record matched this LiteLLM model.",
     })
   }
+  for (const conflict of conflicts) {
+    issues.push({
+      severity: "info",
+      stage: "mapping",
+      code: "metadata-conflict",
+      modelId: group.modelName,
+      message: `${conflict.field}: ${conflict.resolution}`,
+    })
+  }
+
   if (protocol.reason === "mixed-fallback") {
     issues.push({
       severity: "warning",
@@ -332,13 +450,31 @@ function modelDiagnostic(
       protocol: {
         value: spec.protocol,
         reason: protocol.reason,
+        support: resolveProtocolSupport(group),
         deploymentProtocols: protocol.deployments.map((item) => item.protocol),
+      },
+      quality: {
+        identity: {
+          canonicalCandidates: [...new Set(candidateModelIDs(group).map(canonicalModelID))],
+          matchKind: selected?.matchKind,
+          matchedCandidate: selected?.matchedCandidate,
+        },
+        reasoning,
+        protocolSupport: resolveProtocolSupport(group),
+        fallback: selected ? "enriched" : "litellm-only",
+        conflicts,
       },
       provenance: {
         protocol: protocolProvenance(protocol.reason),
         reasoning: variants.length > 0
           ? field("models.dev", "reasoning_options")
-          : field("none", "no reasoning variants matched"),
+          : reasoning.source === "litellm"
+            ? field("litellm", "supports_reasoning")
+            : reasoning.source === "models.dev"
+              ? field("models.dev", "reasoning")
+              : reasoning.source === "derived"
+                ? field("derived", "LiteLLM and models.dev reasoning evidence")
+                : field("none", "no reasoning support metadata"),
         capabilities: {
           tools: capabilitySource(group, selected, "tools"),
           input: capabilitySource(group, selected, "input"),
