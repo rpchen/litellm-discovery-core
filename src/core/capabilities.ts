@@ -52,7 +52,10 @@ function modelsDevModalities(selected: SelectedModelRecord | undefined, directio
   return modalities[direction].filter((value): value is string => typeof value === "string")
 }
 
-function modelsDevLimit(selected: SelectedModelRecord | undefined, key: "context" | "output"): number | undefined {
+function modelsDevLimit(
+  selected: SelectedModelRecord | undefined,
+  key: "context" | "input" | "output",
+): number | undefined {
   const limit = selected?.record.limit
   return isRecord(limit) ? positiveInteger(limit[key]) : undefined
 }
@@ -141,25 +144,35 @@ export function mapCapabilities(
 
   const inputSets = group.deployments.map((deployment) => deploymentModalities(deployment, selected, "input"))
   let input = intersect(inputSets)
-  const mdInput = modelsDevModalities(selected, "input")
+  const mdInputModalities = modelsDevModalities(selected, "input")
   const liteLLMDeclaresExtraInput = group.deployments.some((deployment) =>
     INPUT_MODALITIES.some(([field]) => optionalBoolean(deployment.modelInfo[field]) === true),
   )
-  if (isModalitiesTrustFamily(group) && !liteLLMDeclaresExtraInput && mdInput.length > 1) {
-    input = [...new Set(["text", ...mdInput])]
+  if (isModalitiesTrustFamily(group) && !liteLLMDeclaresExtraInput && mdInputModalities.length > 1) {
+    input = [...new Set(["text", ...mdInputModalities])]
   }
   const output = intersect(
     group.deployments.map((deployment) => deploymentModalities(deployment, selected, "output")),
   )
 
+  // models.dev distinguishes total context from maximum input. Preserve that
+  // distinction when available; LiteLLM max_input_tokens is an input limit.
   const mdContext = modelsDevLimit(selected, "context")
-  const contextValues = group.deployments.map(
-    (deployment) => positiveInteger(deployment.modelInfo.max_input_tokens) ?? mdContext,
+  const mdInput = modelsDevLimit(selected, "input")
+  const inputLimit = minimum(
+    group.deployments.map(
+      (deployment) => positiveInteger(deployment.modelInfo.max_input_tokens) ?? mdInput ?? mdContext,
+    ),
   )
-  let context = minimum(contextValues)
+  let context = mdContext ?? inputLimit
+  let effectiveInput = inputLimit
+
   if (contextTierCap) {
     const firstTier = minimum(group.deployments.map(tierPoint), Number.POSITIVE_INFINITY)
-    if (Number.isFinite(firstTier)) context = context > 0 ? Math.min(context, firstTier) : firstTier
+    if (Number.isFinite(firstTier)) {
+      context = context > 0 ? Math.min(context, firstTier) : firstTier
+      effectiveInput = effectiveInput > 0 ? Math.min(effectiveInput, firstTier) : firstTier
+    }
   }
 
   const mdOutput = modelsDevLimit(selected, "output")
@@ -174,7 +187,7 @@ export function mapCapabilities(
 
   return {
     capabilities: { tools, input, output },
-    limit: { context, input: context, output: outputLimit },
+    limit: { context, input: effectiveInput, output: outputLimit },
     cost: {
       input: perTokenCost(group.deployments, ["input_cost_per_token"], modelsDevCost(selected, "input")),
       output: perTokenCost(group.deployments, ["output_cost_per_token"], modelsDevCost(selected, "output")),
