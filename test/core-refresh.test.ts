@@ -138,6 +138,36 @@ describe("createDiscoveryCoordinator", () => {
     expect(coordinator.retryDelayMs("deployment-a")).toBe(DEFAULT_DISCOVERY_BACKOFF_MS.at(-1))
   })
 
+  test("强制刷新失败后即使 TTL 仍有效，退避期也返回 stale", async () => {
+    let now = 5_000
+    let calls = 0
+    const coordinator = createDiscoveryCoordinator<string>({ ttlMs: 30_000, now: () => now })
+
+    await coordinator.refresh("deployment-a", async () => {
+      calls += 1
+      return "good"
+    })
+
+    const failed = await coordinator.refresh(
+      "deployment-a",
+      async () => {
+        calls += 1
+        throw new Error("forced failure")
+      },
+      { forceRefresh: true },
+    )
+    expect(failed.source).toBe("stale")
+    expect(coordinator.retryDelayMs("deployment-a")).toBe(1_000)
+
+    const duringBackoff = await coordinator.refresh("deployment-a", async () => {
+      calls += 1
+      return "must-not-run"
+    })
+    expect(duringBackoff.source).toBe("stale")
+    expect(duringBackoff.value).toBe("good")
+    expect(calls).toBe(2)
+  })
+
   test("无 last-known-good 时失败会拒绝，并在退避期抑制重复调用", async () => {
     let now = 0
     let calls = 0
