@@ -1,0 +1,9 @@
+- [x] Add endpoint fingerprint API without storing plaintext endpoint credentials.
+- [x] Add versioned discovery snapshot creation and compatibility inspection.
+- [x] Add drift comparison for endpoint, topology, protocol, capabilities, and metadata.
+- [x] Export the snapshot API from the public package entrypoint.
+- [x] Add Core unit coverage for compatibility, tamper rejection, and drift classification.
+- [ ] Verify Core typecheck, tests, package build, consumer test, and OpenSpec validation.
+- [ ] Integrate the merged Core API into Pi host-persisted catalog storage.
+- [ ] Integrate the merged Core API into OpenCode plugin-scoped durable storage.
+- [ ] Run cross-repository compatibility workflows against the merged PR6 Core SHA.
