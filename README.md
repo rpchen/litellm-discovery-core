@@ -10,14 +10,26 @@
 
 - LiteLLM 地址、部署归一化和 deployment 分组
 - `chat` / `responses` / `messages` 协议判定
-- models.dev 记录匹配、元数据补缺和推理变体
-- 能力、价格、上下文和输出限制映射
+- models.dev 记录匹配、保守 canonical/alias 归一化、元数据补缺和推理变体
+- reasoning 支持来源解析，以及 Chat Completions / Responses / both / unknown 协议能力判定
+- 能力、价格、context / input / output 限制的确定性合并与冲突说明
 - `ModelSpec` 构建与稳定模型指纹
 - refresh coordinator：singleflight、短时缓存、退避与 last-known-good
 - endpoint-bound discovery snapshot、兼容性检查与 drift comparison
 - structured diagnostics：models.dev 命中、协议判定原因、字段 provenance 与 cache source
 
 core 零运行时依赖，不导入 Pi、OpenCode 或其他宿主 SDK；`ModelSpec` 只携带中立的 `protocol`，不携带宿主 package 名称。
+
+## Discovery quality
+
+PR8 将模型元数据合并规则明确为可预测、可诊断的行为：
+
+- 模型 ID 只归一化路由前缀、大小写、空格/下划线等非语义差异；不会擅自移除 `-free`、日期、规格等后缀。显式 alias 可以匹配，多 provider 歧义时宁可不补 models.dev，也不随机选择。
+- LiteLLM 的显式 deployment 元数据优先；models.dev 用于补缺。多 deployment 的能力按保守交集合并，LiteLLM 价格冲突取最高声明值，并在 diagnostics 中记录冲突解决规则。
+- `limit.context`、`limit.input`、`limit.output` 分开处理；models.dev 的总 context 不会再因为 LiteLLM 提供了较小的 `max_input_tokens` 而被覆盖。
+- reasoning 支持与 reasoning variants 分开判断；`supports_reasoning`、models.dev `reasoning` / `reasoning_options` 的来源和冲突可通过 diagnostics 查看。
+- `resolveProtocolSupport()` / `deploymentProtocolSupport()` 用于查看上游协议能力（`chat`、`responses`、`both`、`messages`、`unknown`）；这与实际调用时选择的 `protocol` 是两个概念。
+- models.dev 未命中的私有/未知模型仍会保留为 LiteLLM-only 模型，并使用确定性的安全默认值，而不是从发现结果中消失。
 
 ## 开发
 

@@ -3,6 +3,7 @@
  */
 import {
   isRecord,
+  optionalBoolean,
   optionalNumber,
   optionalString,
   stripRoutePrefix,
@@ -13,6 +14,8 @@ import type { Protocol } from "./protocol.js"
 export interface ModelsDevRecord extends Record<string, unknown> {
   id?: unknown
   name?: unknown
+  aliases?: unknown
+  reasoning?: unknown
   release_date?: unknown
   modalities?: unknown
   limit?: unknown
@@ -21,15 +24,27 @@ export interface ModelsDevRecord extends Record<string, unknown> {
   reasoning_options?: unknown
 }
 
+export type ModelsDevMatchKind = "exact" | "canonical" | "alias"
+
 export interface SelectedModelRecord {
   providerID: string
   modelID: string
   record: ModelsDevRecord
+  matchedCandidate?: string
+  matchKind?: ModelsDevMatchKind
 }
 
 export interface ModelVariant {
   id: string
   settings: Record<string, unknown>
+}
+
+export type ReasoningSupportSource = "litellm" | "models.dev" | "derived" | "default"
+
+export interface ReasoningSupportResolution {
+  readonly supported: boolean
+  readonly source: ReasoningSupportSource
+  readonly conflict: boolean
 }
 
 interface FamilyProviders {
@@ -58,16 +73,52 @@ function providers(catalog: unknown): Array<[string, Record<string, unknown>]> {
   })
 }
 
-function findExact(
+/**
+ * Conservative canonicalization for identity matching only. It deliberately does
+ * not strip semantic suffixes such as "-free", dates, sizes, or provider tiers.
+ */
+export function canonicalModelID(value: string): string {
+  return stripRoutePrefix(value.trim())
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+}
+
+function recordAliases(key: string, value: ModelsDevRecord): string[] {
+  const aliases = Array.isArray(value.aliases)
+    ? value.aliases.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : []
+  return [key, optionalString(value.id), ...aliases].filter((item): item is string => item !== undefined)
+}
+
+function findMatch(
   models: Record<string, unknown>,
   candidate: string,
-): [string, ModelsDevRecord] | undefined {
-  const normalized = candidate.toLowerCase()
+): [string, ModelsDevRecord, ModelsDevMatchKind] | undefined {
+  const raw = stripRoutePrefix(candidate.trim()).toLowerCase()
+  const canonical = canonicalModelID(candidate)
+
   for (const [key, value] of Object.entries(models)) {
     if (!isRecord(value)) continue
     const id = optionalString(value.id) ?? key
-    if (key.toLowerCase() === normalized || id.toLowerCase() === normalized) {
-      return [id, value]
+    const aliases = recordAliases(key, value)
+
+    for (const alias of aliases) {
+      const normalizedAlias = stripRoutePrefix(alias.trim()).toLowerCase()
+      if (normalizedAlias === raw) {
+        const kind: ModelsDevMatchKind =
+          alias === key || alias === optionalString(value.id) ? "exact" : "alias"
+        return [id, value, kind]
+      }
+    }
+
+    for (const alias of aliases) {
+      if (canonicalModelID(alias) === canonical) {
+        const kind: ModelsDevMatchKind =
+          alias === key || alias === optionalString(value.id) ? "canonical" : "alias"
+        return [id, value, kind]
+      }
     }
   }
   return undefined
@@ -100,11 +151,25 @@ export function familyProviders(group: DeploymentGroup): FamilyProviders | undef
   }
 
   for (const candidate of candidateModelIDs(group)) {
-    const normalized = stripRoutePrefix(candidate).toLowerCase()
+    const normalized = canonicalModelID(candidate)
     const match = FAMILY_RULES.find(([pattern]) => pattern.test(normalized))
     if (match) return match[1]
   }
   return undefined
+}
+
+function selected(
+  providerID: string,
+  candidate: string,
+  match: [string, ModelsDevRecord, ModelsDevMatchKind],
+): SelectedModelRecord {
+  return {
+    providerID,
+    modelID: match[0],
+    record: match[1],
+    matchedCandidate: candidate,
+    matchKind: match[2],
+  }
 }
 
 export function selectModelsDevRecord(
@@ -119,22 +184,53 @@ export function selectModelsDevRecord(
     for (const providerID of preferred) {
       const provider = allProviders.find(([id]) => id.toLowerCase() === providerID.toLowerCase())
       if (!provider) continue
-      const match = findExact(provider[1], candidate)
-      if (match) return { providerID: provider[0], modelID: match[0], record: match[1] }
+      const match = findMatch(provider[1], candidate)
+      if (match) return selected(provider[0], candidate, match)
     }
 
     const zen = allProviders.find(([id]) => id.toLowerCase() === "opencode")
-    const zenMatch = zen && findExact(zen[1], candidate)
-    if (zen && zenMatch) return { providerID: zen[0], modelID: zenMatch[0], record: zenMatch[1] }
+    const zenMatch = zen && findMatch(zen[1], candidate)
+    if (zen && zenMatch) return selected(zen[0], candidate, zenMatch)
 
     const matches = allProviders.flatMap(([providerID, models]) => {
-      const match = findExact(models, candidate)
-      return match ? [{ providerID, modelID: match[0], record: match[1] }] : []
+      const match = findMatch(models, candidate)
+      return match ? [selected(providerID, candidate, match)] : []
     })
     if (matches.length === 1) return matches[0]
   }
 
   return undefined
+}
+
+function modelsDevReasoning(selected: SelectedModelRecord | undefined): boolean | undefined {
+  const declared = optionalBoolean(selected?.record.reasoning)
+  if (declared !== undefined) return declared
+  const options = selected?.record.reasoning_options
+  return Array.isArray(options) && options.length > 0 ? true : undefined
+}
+
+export function resolveReasoningSupport(
+  group: DeploymentGroup,
+  selected: SelectedModelRecord | undefined,
+): ReasoningSupportResolution {
+  const modelsDev = modelsDevReasoning(selected)
+  const explicit = group.deployments.map((deployment) =>
+    optionalBoolean(deployment.modelInfo.supports_reasoning)
+  )
+  const conflict = modelsDev !== undefined &&
+    explicit.some((value) => value !== undefined && value !== modelsDev)
+  const supported = explicit.every((value) => value ?? modelsDev ?? false)
+
+  if (explicit.every((value) => value !== undefined)) {
+    return { supported, source: "litellm", conflict }
+  }
+  if (explicit.every((value) => value === undefined) && modelsDev !== undefined) {
+    return { supported, source: "models.dev", conflict }
+  }
+  if (explicit.some((value) => value !== undefined) || modelsDev !== undefined) {
+    return { supported, source: "derived", conflict }
+  }
+  return { supported: false, source: "default", conflict: false }
 }
 
 function effortVariants(options: unknown, protocol: Protocol): ModelVariant[] {

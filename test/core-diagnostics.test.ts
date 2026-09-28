@@ -91,7 +91,7 @@ describe("discovery diagnostics", () => {
         input: { source: "models.dev" },
         output: { source: "models.dev" },
       },
-      context: { source: "derived", detail: "minimum across LiteLLM declarations with models.dev fallback" },
+      context: { source: "models.dev", detail: "limit.context" },
       outputLimit: { source: "litellm" },
       pricing: {
         input: { source: "litellm" },

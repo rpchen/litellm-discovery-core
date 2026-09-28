@@ -11,6 +11,9 @@ import {
 /** LiteLLM call protocol chosen for a model. */
 export type Protocol = "chat" | "responses" | "messages"
 
+/** Protocol capability independent from the protocol currently selected by Core. */
+export type ProtocolSupport = "chat" | "responses" | "both" | "messages" | "unknown"
+
 export type ProtocolReason =
   | "override"
   | "anthropic"
@@ -54,25 +57,75 @@ function normalizeEndpoint(value: string): string {
   return value.toLowerCase().replace(/^\//, "").replace(/^v1\//, "")
 }
 
+function supportedEndpointFlags(deployment: LiteLLMDeployment): { chat: boolean; responses: boolean } | undefined {
+  const endpoints = deployment.modelInfo.supported_endpoints
+  if (!Array.isArray(endpoints)) return undefined
+  const normalized = new Set(
+    endpoints
+      .filter((endpoint): endpoint is string => typeof endpoint === "string")
+      .map(normalizeEndpoint),
+  )
+  return {
+    chat: normalized.has("chat/completions"),
+    responses: normalized.has("responses"),
+  }
+}
+
+export function deploymentProtocolSupport(deployment: LiteLLMDeployment): ProtocolSupport {
+  if (isAnthropic(deployment)) return "messages"
+
+  const endpoints = supportedEndpointFlags(deployment)
+  if (endpoints?.chat && endpoints.responses) return "both"
+  if (endpoints?.responses) return "responses"
+  if (endpoints?.chat) return "chat"
+
+  const mode = optionalString(deployment.modelInfo.mode)?.toLowerCase()
+  if (mode === "responses") return "responses"
+  if (mode === "chat") return "chat"
+  return "unknown"
+}
+
+function protocolSet(support: ProtocolSupport): Set<Protocol> {
+  switch (support) {
+    case "chat":
+      return new Set(["chat"])
+    case "responses":
+      return new Set(["responses"])
+    case "both":
+      return new Set(["chat", "responses"])
+    case "messages":
+      return new Set(["messages"])
+    case "unknown":
+      return new Set()
+  }
+}
+
+export function resolveProtocolSupport(group: DeploymentGroup): ProtocolSupport {
+  if (group.deployments.length === 0) return "unknown"
+  const sets = group.deployments.map((deployment) => protocolSet(deploymentProtocolSupport(deployment)))
+  const common = [...sets[0]!].filter((protocol) => sets.every((set) => set.has(protocol)))
+  if (common.length === 0) return "unknown"
+  if (common.includes("messages")) return common.length === 1 ? "messages" : "unknown"
+  const chat = common.includes("chat")
+  const responses = common.includes("responses")
+  if (chat && responses) return "both"
+  if (responses) return "responses"
+  if (chat) return "chat"
+  return "unknown"
+}
+
 export function deploymentProtocolResolution(
   deployment: LiteLLMDeployment,
 ): DeploymentProtocolResolution {
   if (isAnthropic(deployment)) return { protocol: "messages", reason: "anthropic" }
 
-  const endpoints = deployment.modelInfo.supported_endpoints
-  if (Array.isArray(endpoints)) {
-    const normalized = new Set(
-      endpoints
-        .filter((endpoint): endpoint is string => typeof endpoint === "string")
-        .map(normalizeEndpoint),
-    )
-    if (normalized.has("responses")) return { protocol: "responses", reason: "supported-endpoints" }
-    if (normalized.has("chat/completions")) return { protocol: "chat", reason: "supported-endpoints" }
-  }
+  const endpoints = supportedEndpointFlags(deployment)
+  if (endpoints?.responses) return { protocol: "responses", reason: "supported-endpoints" }
+  if (endpoints?.chat) return { protocol: "chat", reason: "supported-endpoints" }
 
-  if (optionalString(deployment.modelInfo.mode)?.toLowerCase() === "responses") {
-    return { protocol: "responses", reason: "mode" }
-  }
+  const mode = optionalString(deployment.modelInfo.mode)?.toLowerCase()
+  if (mode === "responses") return { protocol: "responses", reason: "mode" }
+  if (mode === "chat") return { protocol: "chat", reason: "mode" }
   return { protocol: "chat", reason: "fallback" }
 }
 
