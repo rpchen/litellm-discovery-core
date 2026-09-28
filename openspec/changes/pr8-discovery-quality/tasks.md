@@ -7,7 +7,7 @@
 - [x] Extend diagnostics with PR8 quality, provenance and conflict-resolution evidence.
 - [x] Add Scenario-level Core automated tests and retain regression coverage.
 - [x] Update README for the new public discovery-quality behavior and APIs.
-- [ ] Run Core typecheck, tests, build, isolated consumer and strict OpenSpec validation.
-- [ ] Validate Pi against the merged PR8 Core SHA and update its committed distribution if required.
-- [ ] Validate OpenCode against the merged PR8 Core SHA and update its committed distribution if required.
-- [ ] Run final cross-repository compatibility checks.
+- [x] Run Core typecheck, tests, build, isolated consumer and strict OpenSpec validation.
+- [x] Validate Pi against the merged PR8 Core SHA and update its committed distribution if required.
+- [x] Validate OpenCode against the merged PR8 Core SHA and update its committed distribution if required.
+- [x] Run final cross-repository compatibility checks.
