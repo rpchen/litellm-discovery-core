@@ -377,8 +377,11 @@ export function diagnoseModelSpecs(
   const models = buildModelSpecs(litellmResponse, modelsDevCatalog, options)
   const groups = groupLiteLLMDeployments(litellmResponse)
   const byID = new Map(models.map((model) => [model.id, model]))
-  const modelInfoValid = isRecord(litellmResponse) && Array.isArray(litellmResponse.data)
-  const responseEntries = modelInfoValid ? litellmResponse.data.length : 0
+  const modelInfoData = isRecord(litellmResponse) && Array.isArray(litellmResponse.data)
+    ? litellmResponse.data
+    : undefined
+  const modelInfoValid = modelInfoData !== undefined
+  const responseEntries = modelInfoData?.length ?? 0
   const deployments = groups.reduce((count, group) => count + group.deployments.length, 0)
   const issues: DiagnosticIssue[] = []
 
