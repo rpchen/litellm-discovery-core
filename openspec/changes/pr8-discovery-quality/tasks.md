@@ -1,0 +1,13 @@
+- [x] Add conservative model ID canonicalization and explicit alias matching.
+- [x] Preserve provider disambiguation and reject ambiguous global matches.
+- [x] Add reasoning support resolution with explicit source precedence and conflict reporting.
+- [x] Preserve distinct context, input and output token-limit semantics.
+- [x] Expose protocol capability independently from selected protocol.
+- [x] Keep deterministic unknown-model LiteLLM-only fallback.
+- [x] Extend diagnostics with PR8 quality, provenance and conflict-resolution evidence.
+- [x] Add Scenario-level Core automated tests and retain regression coverage.
+- [x] Update README for the new public discovery-quality behavior and APIs.
+- [ ] Run Core typecheck, tests, build, isolated consumer and strict OpenSpec validation.
+- [ ] Validate Pi against the merged PR8 Core SHA and update its committed distribution if required.
+- [ ] Validate OpenCode against the merged PR8 Core SHA and update its committed distribution if required.
+- [ ] Run final cross-repository compatibility checks.
