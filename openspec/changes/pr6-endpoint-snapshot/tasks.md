@@ -6,4 +6,4 @@
 - [x] Verify Core typecheck, tests, package build, consumer test, and OpenSpec validation.
 - [x] Integrate the merged Core API into Pi host-persisted catalog storage.
 - [x] Integrate the merged Core API into OpenCode plugin-scoped durable storage.
-- [ ] Run cross-repository compatibility workflows against the merged PR6 Core SHA.
+- [x] Run cross-repository compatibility workflows against the merged PR6 Core SHA.
