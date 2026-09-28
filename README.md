@@ -32,3 +32,8 @@ npm run validate:spec
 ## 范围
 
 本次 PR 保留来源项目已验证的协议选择、能力映射、价格阶梯截断、models.dev 家族匹配、推理变体和指纹语义；没有新增网络请求、轮询、凭据管理、持久化、provider 注册或宿主配置逻辑。插件侧删除重复 core、构建时固定 SHA、发行流程调整属于后续 PR。
+
+
+## Testing and contribution standard
+
+Behavior changes are complete only when every OpenSpec Scenario has traceable automated evidence. Security/failure boundaries require negative tests, and each new user-visible capability requires at least one vertical automated path. See [docs/testing-standard.md](docs/testing-standard.md) for the shared Core/Pi/OpenCode standard.
