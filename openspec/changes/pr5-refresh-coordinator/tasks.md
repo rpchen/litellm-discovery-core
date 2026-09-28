@@ -1,6 +1,6 @@
 - [x] Add generic Core refresh coordinator.
 - [x] Add singleflight, TTL, force-refresh, backoff, stale, clear-policy, and key-isolation tests.
 - [x] Export the coordinator from the public package entrypoint.
-- [ ] Run Core typecheck, tests, build/package checks, and OpenSpec validation.
+- [x] Run Core typecheck, tests, build/package checks, and OpenSpec validation.
 - [ ] Verify Pi and OpenCode compatibility against the PR5 Core SHA.
 - [ ] Land thin Pi/OpenCode adapters after the Core API is merged to main.
