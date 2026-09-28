@@ -1,5 +1,6 @@
 import { buildModelSpecs, type BuildOptions, type ModelSpec } from "./build.js"
 import {
+  groupLiteLLMDeployments,
   isRecord,
   optionalBoolean,
   optionalNumber,
@@ -154,7 +155,13 @@ function anyDeploymentBoolean(group: DeploymentGroup, key: string): boolean {
   return group.deployments.some((deployment) => optionalBoolean(deployment.modelInfo[key]) !== undefined)
 }
 
-function anyDeploymentNumber(group: DeploymentGroup, keys: readonly string[]): boolean {
+function anyDeploymentPositiveInteger(group: DeploymentGroup, keys: readonly string[]): boolean {
+  return group.deployments.some((deployment) =>
+    keys.some((key) => positiveInteger(deployment.modelInfo[key]) !== undefined)
+  )
+}
+
+function anyDeploymentNonNegativeNumber(group: DeploymentGroup, keys: readonly string[]): boolean {
   return group.deployments.some((deployment) =>
     keys.some((key) => {
       const value = optionalNumber(deployment.modelInfo[key])
@@ -214,9 +221,7 @@ function contextProvenance(
   options: BuildOptions,
   spec: ModelSpec,
 ): FieldProvenance {
-  const liteLLMDeclared = group.deployments.some(
-    (deployment) => positiveInteger(deployment.modelInfo.max_input_tokens) !== undefined,
-  )
+  const liteLLMDeclared = anyDeploymentPositiveInteger(group, ["max_input_tokens"])
   const modelsDevDeclared = modelsDevObjectNumber(selected, "limit", "context")
   const tierPoints = group.deployments
     .map(firstTierPoint)
@@ -237,7 +242,7 @@ function outputLimitProvenance(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
 ): FieldProvenance {
-  if (anyDeploymentNumber(group, ["max_output_tokens", "max_tokens"])) return field("litellm")
+  if (anyDeploymentPositiveInteger(group, ["max_output_tokens", "max_tokens"])) return field("litellm")
   if (modelsDevObjectNumber(selected, "limit", "output")) return field("models.dev")
   return field("default", "no output limit metadata")
 }
@@ -248,7 +253,7 @@ function pricingProvenance(
   deploymentFields: readonly string[],
   modelsDevKey: string,
 ): FieldProvenance {
-  if (anyDeploymentNumber(group, deploymentFields)) return field("litellm")
+  if (anyDeploymentNonNegativeNumber(group, deploymentFields)) return field("litellm")
   if (modelsDevObjectNumber(selected, "cost", modelsDevKey)) return field("models.dev")
   return field("default", "missing price metadata maps to zero")
 }
@@ -370,27 +375,6 @@ export function diagnoseModelSpecs(
   options: BuildOptions,
 ): DiagnoseModelSpecsResult {
   const models = buildModelSpecs(litellmResponse, modelsDevCatalog, options)
-  const groups = (awaitGroups => awaitGroups)([] as DeploymentGroup[])
-  // Keep discovery behavior owned by buildModelSpecs; diagnostics only observes the same
-  // normalized groups and selected records.
-  const normalizedGroups = (() => {
-    const moduleGroups: DeploymentGroup[] = []
-    if (!isRecord(litellmResponse) || !Array.isArray(litellmResponse.data)) return moduleGroups
-    return moduleGroups
-  })()
-  void groups
-  void normalizedGroups
-  return diagnoseBuiltModels(litellmResponse, modelsDevCatalog, options, models)
-}
-
-import { groupLiteLLMDeployments } from "./litellm.js"
-
-function diagnoseBuiltModels(
-  litellmResponse: unknown,
-  modelsDevCatalog: unknown,
-  options: BuildOptions,
-  models: ModelSpec[],
-): DiagnoseModelSpecsResult {
   const groups = groupLiteLLMDeployments(litellmResponse)
   const byID = new Map(models.map((model) => [model.id, model]))
   const modelInfoValid = isRecord(litellmResponse) && Array.isArray(litellmResponse.data)
@@ -476,7 +460,7 @@ export function createDiscoveryCacheDiagnostics(
   const refreshedAt = input.refreshedAt
   return {
     source: input.source,
-    stale: input.stale ?? input.source === "stale" || input.source === "snapshot",
+    stale: input.stale ?? (input.source === "stale" || input.source === "snapshot"),
     refreshedAt,
     ageMs: refreshedAt === undefined ? undefined : Math.max(0, now - refreshedAt),
     failureCount: Math.max(0, Math.floor(input.failureCount ?? 0)),
