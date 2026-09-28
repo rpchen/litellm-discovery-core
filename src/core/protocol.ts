@@ -11,6 +11,25 @@ import {
 /** LiteLLM call protocol chosen for a model. */
 export type Protocol = "chat" | "responses" | "messages"
 
+export type ProtocolReason =
+  | "override"
+  | "anthropic"
+  | "supported-endpoints"
+  | "mode"
+  | "fallback"
+  | "mixed-fallback"
+
+export interface DeploymentProtocolResolution {
+  readonly protocol: Protocol
+  readonly reason: Exclude<ProtocolReason, "override" | "mixed-fallback">
+}
+
+export interface ProtocolResolution {
+  readonly protocol: Protocol
+  readonly reason: ProtocolReason
+  readonly deployments: readonly DeploymentProtocolResolution[]
+}
+
 function isClaudeName(value: unknown): boolean {
   const model = optionalString(value)
   return model !== undefined && stripRoutePrefix(model).toLowerCase().startsWith("claude-")
@@ -35,8 +54,10 @@ function normalizeEndpoint(value: string): string {
   return value.toLowerCase().replace(/^\//, "").replace(/^v1\//, "")
 }
 
-export function deploymentProtocol(deployment: LiteLLMDeployment): Protocol {
-  if (isAnthropic(deployment)) return "messages"
+export function deploymentProtocolResolution(
+  deployment: LiteLLMDeployment,
+): DeploymentProtocolResolution {
+  if (isAnthropic(deployment)) return { protocol: "messages", reason: "anthropic" }
 
   const endpoints = deployment.modelInfo.supported_endpoints
   if (Array.isArray(endpoints)) {
@@ -45,22 +66,44 @@ export function deploymentProtocol(deployment: LiteLLMDeployment): Protocol {
         .filter((endpoint): endpoint is string => typeof endpoint === "string")
         .map(normalizeEndpoint),
     )
-    if (normalized.has("responses")) return "responses"
-    if (normalized.has("chat/completions")) return "chat"
+    if (normalized.has("responses")) return { protocol: "responses", reason: "supported-endpoints" }
+    if (normalized.has("chat/completions")) return { protocol: "chat", reason: "supported-endpoints" }
   }
 
-  return optionalString(deployment.modelInfo.mode)?.toLowerCase() === "responses"
-    ? "responses"
-    : "chat"
+  if (optionalString(deployment.modelInfo.mode)?.toLowerCase() === "responses") {
+    return { protocol: "responses", reason: "mode" }
+  }
+  return { protocol: "chat", reason: "fallback" }
+}
+
+export function deploymentProtocol(deployment: LiteLLMDeployment): Protocol {
+  return deploymentProtocolResolution(deployment).protocol
+}
+
+export function resolveProtocolResolution(
+  group: DeploymentGroup,
+  overrides: Readonly<Record<string, Protocol>> = {},
+): ProtocolResolution {
+  const deployments = group.deployments.map(deploymentProtocolResolution)
+  const override = overrides[group.modelName]
+  if (override) return { protocol: override, reason: "override", deployments }
+
+  const protocols = new Set(deployments.map((item) => item.protocol))
+  if (protocols.size !== 1) return { protocol: "chat", reason: "mixed-fallback", deployments }
+
+  const protocol = deployments[0]?.protocol ?? "chat"
+  const reasons = new Set(deployments.map((item) => item.reason))
+  const reason = reasons.size === 1
+    ? (deployments[0]?.reason ?? "fallback")
+    : deployments.some((item) => item.reason === "fallback")
+      ? "fallback"
+      : "supported-endpoints"
+  return { protocol, reason, deployments }
 }
 
 export function resolveProtocol(
   group: DeploymentGroup,
   overrides: Readonly<Record<string, Protocol>> = {},
 ): Protocol {
-  const override = overrides[group.modelName]
-  if (override) return override
-
-  const protocols = new Set(group.deployments.map(deploymentProtocol))
-  return protocols.size === 1 ? (protocols.values().next().value ?? "chat") : "chat"
+  return resolveProtocolResolution(group, overrides).protocol
 }
