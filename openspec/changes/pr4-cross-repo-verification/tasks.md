@@ -1,0 +1,4 @@
+- [ ] Add consumer dispatch workflows and SHA validation.
+- [ ] Add Core post-merge dispatch job.
+- [ ] Add contract tests and provenance summary output.
+- [ ] Validate OpenSpec and run all repository checks.

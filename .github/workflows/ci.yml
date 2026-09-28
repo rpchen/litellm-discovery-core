@@ -39,3 +39,24 @@ jobs:
         run: npm run test:package
       - name: Validate OpenSpec
         run: npm run validate:spec
+
+  dispatch-consumers:
+    name: Dispatch consumer compatibility checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      DISPATCH_TOKEN: ${{ secrets.CROSS_REPO_DISPATCH_TOKEN }}
+    steps:
+      - name: Dispatch Pi and OpenCode checks
+        if: env.DISPATCH_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ env.DISPATCH_TOKEN }}
+          CORE_SHA: ${{ github.sha }}
+        run: |
+          payload=$(printf '{"event_type":"litellm-discovery-core-updated","client_payload":{"core_repository":"https://github.com/rpchen/litellm-discovery-core.git","core_branch":"main","core_sha":"%s"}}' "$CORE_SHA")
+          gh api repos/rpchen/pi-litellm-provider/dispatches --method POST --input - <<< "$payload"
+          gh api repos/rpchen/opencode-litellm-provider/dispatches --method POST --input - <<< "$payload"
+      - name: Report skipped dispatch
+        if: env.DISPATCH_TOKEN == ''
+        run: echo 'CROSS_REPO_DISPATCH_TOKEN is not configured; consumer dispatch skipped.' >> "$GITHUB_STEP_SUMMARY"
