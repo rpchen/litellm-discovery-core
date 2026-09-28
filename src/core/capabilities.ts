@@ -166,6 +166,7 @@ export function mapCapabilities(
   )
   let context = mdContext ?? inputLimit
   let effectiveInput = inputLimit
+  if (context > 0 && effectiveInput > 0) effectiveInput = Math.min(effectiveInput, context)
 
   if (contextTierCap) {
     const firstTier = minimum(group.deployments.map(tierPoint), Number.POSITIVE_INFINITY)
