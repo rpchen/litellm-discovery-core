@@ -38,7 +38,7 @@ describe("discovery diagnostics", () => {
             release_date: "2026-05-01",
             tool_call: true,
             modalities: { input: ["text", "image"], output: ["text"] },
-            reasoning_options: { type: "effort", values: ["low", "high"] },
+            reasoning_options: [{ type: "effort", values: ["low", "high"] }],
             limit: { context: 300000, output: 16000 },
             cost: { input: 3, output: 6 },
           },
