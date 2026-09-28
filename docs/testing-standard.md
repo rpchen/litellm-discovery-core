@@ -80,3 +80,22 @@ Pi/OpenCode 不重复测试 Core 算法；它们必须直接测试：
 5. PR 中有可审查的 Requirement / Scenario → Test Evidence。
 
 代码覆盖率可以作为辅助信号，但不得作为“测试完成”的主要判据。
+
+## 6. 用户文档门禁
+
+凡变更会影响用户、集成方或维护者的实际使用方式，README 必须在**同一个 PR**同步更新。包括但不限于：
+
+- 新增、删除或重命名命令、配置项、安装/升级方式；
+- 修改默认值、优先级、缓存/刷新/失败降级行为；
+- 修改兼容性、迁移步骤、认证方式或用户可见错误语义；
+- Core 公共 API、返回结构或消费方式发生变化；
+- 任何需要用户“改怎么做”或“需要知道新行为”的变化。
+
+README 更新必须说明“用户怎么用”和“行为与以前有什么不同”，不能只在 OpenSpec、设计文档、release note 或代码注释中记录。
+
+PR 描述必须二选一明确声明：
+
+- `README updated: <section>`；或
+- `No README change: no user-visible behavior`。
+
+若 OpenSpec change 包含用户可见 Scenario，tasks 中必须包含 README 更新任务。缺少 README 同步时，即使代码、测试和 CI 全部通过，也不得将该变更视为完成。
