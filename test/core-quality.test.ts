@@ -134,6 +134,15 @@ describe("PR8 discovery quality", () => {
       }],
     }, catalog, options)[0]!
     expect(fallback.limit).toEqual({ context: 1000000, input: 900000, output: 128000 })
+
+    const clamped = buildModelSpecs({
+      data: [{
+        model_name: "limit-model",
+        litellm_params: { model: "openai/limit-model" },
+        model_info: { mode: "chat", max_input_tokens: 1200000 },
+      }],
+    }, catalog, options)[0]!
+    expect(clamped.limit).toEqual({ context: 1000000, input: 1000000, output: 128000 })
   })
 
   test("multi-deployment capabilities use conservative intersection and pricing uses highest LiteLLM declaration", () => {
