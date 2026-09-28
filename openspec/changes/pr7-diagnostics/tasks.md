@@ -4,7 +4,7 @@
 - [x] Add pure cache freshness/source diagnostics.
 - [x] Export the diagnostics API from the public package entrypoint.
 - [x] Add Core unit coverage for matching, fallback, provenance and cache age.
-- [ ] Run Core typecheck, tests, package build, consumer test and OpenSpec validation.
+- [x] Run Core typecheck, tests, package build, consumer test and OpenSpec validation.
 - [ ] Integrate the merged Core diagnostics into Pi.
 - [ ] Integrate the merged Core diagnostics into OpenCode.
 - [ ] Run cross-repository compatibility checks against the merged PR7 Core SHA.
