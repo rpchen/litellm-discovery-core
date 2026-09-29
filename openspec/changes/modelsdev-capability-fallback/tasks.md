@@ -1,0 +1,7 @@
+- [x] Infer original provider identity from models.dev canonical metadata before legacy family heuristics.
+- [x] Add OpenRouter then OpenCode fallback before unresolved multi-provider ambiguity.
+- [x] Cover a previously unknown future model family without adding a hard-coded family rule.
+- [x] Cover the real hy4-preview failure mode with non-zero context/output limits and LiteLLM price precedence.
+- [x] Update README with capability-first fallback and pricing precedence.
+- [ ] Run Core typecheck, tests, build, isolated consumer and strict OpenSpec validation.
+- [ ] Archive this change and re-run strict OpenSpec validation.
