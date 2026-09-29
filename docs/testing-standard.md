@@ -99,3 +99,18 @@ PR 描述必须二选一明确声明：
 - `No README change: no user-visible behavior`。
 
 若 OpenSpec change 包含用户可见 Scenario，tasks 中必须包含 README 更新任务。缺少 README 同步时，即使代码、测试和 CI 全部通过，也不得将该变更视为完成。
+
+## 7. OpenSpec 闭环门禁
+
+实现完成不等于 change 已关闭。一个 OpenSpec change 只有同时满足以下条件后才算真正 Closed：
+
+1. 所有 tasks 与 Requirement / Scenario 自动化证据已经完成；
+2. 适用的 README 用户文档门禁已经满足；
+3. 仓库完整交付门禁与必要的跨仓库兼容验证已经通过；
+4. tasks 状态与实际实施状态一致，不得保留已经完成却仍为 `[ ]` 的事项；
+5. 使用 OpenSpec CLI 的 archive 流程将 change 合并到 canonical `openspec/specs/` 并移动到 `openspec/changes/archive/`；
+6. archive 后再次执行 strict OpenSpec validation。
+
+不得用手工移动目录替代 archive，也不得因为“功能已经合并”而长期把已完成 change 留在 active `openspec/changes/`。active changes 应只代表尚在实施或尚未完成验收的工作。
+
+跨仓库规划必须分别关闭各仓库对应 change：Core 的完成状态不能替代 Pi/OpenCode 的 task 更新与 archive，反之亦然。
