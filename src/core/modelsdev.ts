@@ -59,6 +59,7 @@ const FAMILY_RULES: Array<[RegExp, FamilyProviders]> = [
   [/^grok-/, { primary: "xai", alternatives: [] }],
   [/^glm-/, { primary: "zai", alternatives: ["zhipuai"] }],
   [/^deepseek-/, { primary: "deepseek", alternatives: [] }],
+  [/^hy\d(?:-|$)/, { primary: "tencent", alternatives: [] }],
   [/^kimi-/, { primary: "moonshotai", alternatives: ["moonshotai-cn"] }],
   [/^mimo-/, { primary: "xiaomi", alternatives: [] }],
   [/^minimax-/, { primary: "minimax", alternatives: ["minimax-cn"] }],
