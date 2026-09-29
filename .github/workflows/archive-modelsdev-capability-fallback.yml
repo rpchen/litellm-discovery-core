@@ -1,0 +1,45 @@
+name: Archive models.dev capability fallback
+
+on:
+  push:
+    branches: [fix/tencent-hy-modelsdev-match]
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    if: "!startsWith(github.event.head_commit.message, 'chore: archive models.dev capability fallback')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/tencent-hy-modelsdev-match
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.14.0
+          cache: npm
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.10
+      - run: npm ci
+      - name: Verify before archive
+        run: |
+          npm run typecheck
+          bun test
+          npm run build:dist
+          npm run test:package
+          npm run validate:spec
+      - name: Mark archive task complete
+        run: |
+          node -e "const fs=require('node:fs'); const p='openspec/changes/modelsdev-capability-fallback/tasks.md'; let s=fs.readFileSync(p,'utf8'); s=s.replace('- [ ] Archive this change and re-run strict OpenSpec validation.','- [x] Archive this change and re-run strict OpenSpec validation.'); fs.writeFileSync(p,s)"
+      - run: npx openspec archive modelsdev-capability-fallback --yes
+      - run: npm run validate:spec
+      - name: Commit archive
+        run: |
+          git add openspec
+          git diff --cached --exit-code && exit 0 || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: archive models.dev capability fallback"
+          git push origin HEAD:fix/tencent-hy-modelsdev-match
