@@ -4,7 +4,16 @@ import { isRecord, normalizeLiteLLMURL } from "./litellm.js"
 
 export const DISCOVERY_SNAPSHOT_SCHEMA_VERSION = 1 as const
 
+export const ENDPOINT_ID_PATTERN = /^[a-z0-9][a-z0-9-_]*$/u
+
+/** Stable user-facing endpoint identifiers shared by host adapters. */
+export function isEndpointID(value: unknown): value is string {
+  return typeof value === "string" && ENDPOINT_ID_PATTERN.test(value)
+}
+
 export interface EndpointFingerprintInput {
+  /** Optional explicit endpoint identity. Omit for legacy single-endpoint compatibility. */
+  readonly endpointID?: string
   readonly baseUrl: string
   readonly credentialKey: string
   readonly buildOptions?: Pick<BuildOptions, "contextTierCap" | "protocolOverrides">
@@ -102,8 +111,11 @@ export function endpointFingerprint(input: EndpointFingerprintInput): string {
   if (!nonEmptyString(input.credentialKey)) {
     throw new Error("credentialKey must be a non-empty string")
   }
+  if (input.endpointID !== undefined && !isEndpointID(input.endpointID)) {
+    throw new Error("endpointID must match [a-z0-9][a-z0-9-_]*")
+  }
   const rootURL = normalizeLiteLLMURL(input.baseUrl).rootURL
-  const material = stableJSON({
+  const legacyMaterial = {
     rootURL,
     credentialKey: input.credentialKey,
     buildOptions: input.buildOptions
@@ -112,7 +124,14 @@ export function endpointFingerprint(input: EndpointFingerprintInput): string {
           protocolOverrides: input.buildOptions.protocolOverrides,
         }
       : null,
-  })
+  }
+  // Preserve the exact legacy fingerprint material when endpointID is omitted so
+  // existing single-endpoint snapshots remain restorable without migration.
+  const material = stableJSON(
+    input.endpointID === undefined
+      ? legacyMaterial
+      : { ...legacyMaterial, endpointID: input.endpointID },
+  )
   return `sha256:${createHash("sha256").update(material).digest("hex")}`
 }
 
