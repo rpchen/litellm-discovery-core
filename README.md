@@ -25,11 +25,11 @@ core 零运行时依赖，不导入 Pi、OpenCode 或其他宿主 SDK；`ModelSp
 PR8 将模型元数据合并规则明确为可预测、可诊断的行为：
 
 - 模型 ID 只归一化路由前缀、大小写、空格/下划线等非语义差异；不会擅自移除 `-free`、日期、规格等后缀。models.dev 记录按“原厂（优先由 `canonical_model_id` 自动识别）→ OpenRouter → OpenCode → 全局唯一匹配”的顺序补充能力；只有剩余记录仍真正歧义时才放弃 enrichment。旧家族规则仅用于缺少 canonical identity 的兼容 catalog。
-- LiteLLM 的显式 deployment 元数据优先；models.dev 的主要职责是补充模型能力、限制、模态和 reasoning 信息。多 deployment 的能力按保守交集合并；LiteLLM 明确提供的价格始终优先，不会因为能力 fallback 选择了 OpenRouter/OpenCode 就覆盖真实 LiteLLM 价格。
+- LiteLLM 的显式 deployment 元数据优先；models.dev 的主要职责是补充模型能力、限制、模态和 reasoning 信息。多 deployment 的能力按保守交集合并；LiteLLM 明确提供的价格始终优先。若记录仅因为 OpenRouter/OpenCode 等能力 fallback 被选中，其 provider 价格不会被当成当前 LiteLLM deployment 的真实价格。
 - `limit.context`、`limit.input`、`limit.output` 分开处理；models.dev 的总 context 不会再因为 LiteLLM 提供了较小的 `max_input_tokens` 而被覆盖。
 - reasoning 支持与 reasoning variants 分开判断；`supports_reasoning`、models.dev `reasoning` / `reasoning_options` 的来源和冲突可通过 diagnostics 查看。
 - `resolveProtocolSupport()` / `deploymentProtocolSupport()` 用于查看上游协议能力（`chat`、`responses`、`both`、`messages`、`unknown`）；这与实际调用时选择的 `protocol` 是两个概念。
-- models.dev 未命中的私有/未知模型仍会保留为 LiteLLM-only 模型，并使用确定性的安全默认值，而不是从发现结果中消失。
+- models.dev 未命中的私有/未知模型仍会保留在 Core 的 neutral discovery/diagnostics 中；若无法得到正数 context/output，Core 会标记为缺少 operational limits，Pi/OpenCode 适配器不得把 `0` 上限直接发布成可用宿主模型。
 
 ## 开发
 
