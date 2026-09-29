@@ -28,6 +28,26 @@ jobs:
           npx openspec archive pr6-endpoint-snapshot --yes
           npx openspec archive pr7-diagnostics --yes
           npx openspec archive pr8-discovery-quality --yes
+      - name: Fill canonical spec purposes
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs")
+          const purposes = {
+            "discovery-core": "Defines the host-independent LiteLLM discovery contract, including response normalization, model grouping, protocol selection, models.dev enrichment, capability and price mapping, and neutral ModelSpec construction shared by consumer adapters.",
+            "cross-repository-verification": "Defines how Core changes are verified against Pi and OpenCode consumers using immutable Core commit SHAs, compatibility workflows, provenance evidence, and post-merge checks before a shared change is considered closed.",
+            "refresh-coordinator": "Defines the shared refresh coordination semantics for discovery, including singleflight, freshness caching, force refresh, retry backoff, last-known-good fallback, failure policy, reset behavior, and observable state.",
+            "discovery-snapshot": "Defines endpoint-bound discovery snapshots, compatibility checks, schema and integrity validation, credential-safe endpoint fingerprints, restoration rules, and drift classification across discovery revisions.",
+            "discovery-diagnostics": "Defines observational discovery diagnostics that explain model-info validity, models.dev matching, protocol decisions, field provenance, source boundaries, degraded enrichment, and cache state without changing discovery results.",
+            "discovery-quality": "Defines conservative model identity matching and enrichment quality rules, reasoning and protocol capability resolution, distinct token-limit semantics, deterministic metadata precedence, unknown-model fallback, and conflict provenance."
+          }
+          for (const [name, purpose] of Object.entries(purposes)) {
+            const path = `openspec/specs/${name}/spec.md`
+            let content = fs.readFileSync(path, "utf8")
+            content = content.replace(/## Purpose\n[\s\S]*?\n## Requirements/, `## Purpose\n${purpose}\n\n## Requirements`)
+            fs.writeFileSync(path, content)
+          }
+          NODE
       - run: npm run validate:spec
       - name: Commit archive results
         run: |
