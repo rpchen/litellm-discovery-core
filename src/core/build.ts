@@ -29,6 +29,17 @@ export interface ModelSpec {
   limit: ModelLimits
 }
 
+/**
+ * Whether a neutral model has the minimum positive token limits required by
+ * Pi/OpenCode to expose it as an operational conversational model.
+ *
+ * Core may retain zero as "unknown" for diagnostics/fingerprints, but adapters
+ * must not publish zero context/output limits to their hosts.
+ */
+export function hasOperationalLimits(spec: Pick<ModelSpec, "limit">): boolean {
+  return spec.limit.context > 0 && spec.limit.output > 0
+}
+
 export function buildModelSpecs(
   litellmResponse: unknown,
   modelsDevCatalog: unknown,
