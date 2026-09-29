@@ -4,4 +4,4 @@
 - [x] Cover the real hy4-preview failure mode with non-zero context/output limits and LiteLLM price precedence.
 - [x] Update README with capability-first fallback and pricing precedence.
 - [x] Run Core typecheck, tests, build, isolated consumer and strict OpenSpec validation.
-- [ ] Archive this change and re-run strict OpenSpec validation.
+- [x] Archive this change and re-run strict OpenSpec validation.
