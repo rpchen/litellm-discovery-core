@@ -46,7 +46,7 @@ npm run validate:spec
 
 ## 范围
 
-Core 只负责宿主无关的发现语义和纯数据结构：协议选择、能力/价格/限制映射、models.dev 匹配、推理变体、refresh coordination、snapshot/drift 和 diagnostics。多 endpoint 场景下，Core 只定义稳定的 endpoint ID 语法（\`[a-z0-9][a-z0-9-_]*\`）以及把可选 \`endpointID\` 纳入 snapshot fingerprint 的隔离语义；HTTP 请求、endpoint 配置来源、activation、轮询定时器、凭据、宿主持久化、provider 注册、命令和 UI 仍由 Pi / OpenCode 适配层负责。省略 \`endpointID\` 时 fingerprint 材料保持旧版单 endpoint 语义，因此已有 snapshot 不需要迁移。
+Core 只负责宿主无关的发现语义和纯数据结构：协议选择、能力/价格/限制映射、models.dev 匹配、推理变体、refresh coordination、snapshot/drift 和 diagnostics。多 endpoint 场景下，Core 只定义稳定的 endpoint ID 语法（`[a-z0-9][a-z0-9-_]*`）以及把可选 `endpointID` 纳入 snapshot fingerprint 的隔离语义；HTTP 请求、endpoint 配置来源、activation、轮询定时器、凭据、宿主持久化、provider 注册、命令和 UI 仍由 Pi / OpenCode 适配层负责。省略 `endpointID` 时 fingerprint 材料保持旧版单 endpoint 语义，因此已有 snapshot 不需要迁移。
 
 
 ## Testing and contribution standard
