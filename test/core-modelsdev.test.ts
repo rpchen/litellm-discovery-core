@@ -56,12 +56,40 @@ describe("models.dev 记录选择", () => {
     expect(selected?.modelID).toBe("kimi-cn-only")
   })
 
+  test("canonical_model_id 可自动识别未硬编码的新原厂", () => {
+    const catalog = {
+      "future-lab": {
+        models: {
+          "nova-1": {
+            id: "nova-1",
+            canonical_model_id: "future-lab/nova-1",
+            limit: { context: 500_000, output: 50_000 },
+          },
+        },
+      },
+      openrouter: {
+        models: {
+          "nova-1": {
+            id: "nova-1",
+            canonical_model_id: "future-lab/nova-1",
+            limit: { context: 400_000, output: 40_000 },
+          },
+        },
+      },
+    }
+    expect(selectModelsDevRecord(one("nova-1", "custom/nova-1"), catalog)).toMatchObject({
+      providerID: "future-lab",
+      modelID: "nova-1",
+    })
+  })
+
   test("原厂未知且多 provider 同名时优先 OpenRouter，再退到 OpenCode", () => {
     const withOpenRouter = {
       openrouter: {
         models: {
           "hy4-preview": {
             id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
             limit: { context: 1_024_000, output: 64_000 },
             tool_call: true,
             reasoning: true,
@@ -72,6 +100,7 @@ describe("models.dev 记录选择", () => {
         models: {
           "hy4-preview": {
             id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
             limit: { context: 1_000_000, output: 32_000 },
           },
         },
