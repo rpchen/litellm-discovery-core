@@ -1,0 +1,39 @@
+name: OpenSpec archive maintenance
+
+on:
+  push:
+    branches: [chore/openspec-closure-gate]
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    if: "!startsWith(github.event.head_commit.message, 'chore: archive completed OpenSpec changes')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: chore/openspec-closure-gate
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.14.0
+          cache: npm
+      - run: npm ci
+      - name: Archive completed changes in implementation order
+        run: |
+          npx openspec archive add-discovery-core --yes
+          npx openspec archive pr4-cross-repo-verification --yes
+          npx openspec archive pr5-refresh-coordinator --yes
+          npx openspec archive pr6-endpoint-snapshot --yes
+          npx openspec archive pr7-diagnostics --yes
+          npx openspec archive pr8-discovery-quality --yes
+      - run: npm run validate:spec
+      - name: Commit archive results
+        run: |
+          git add openspec
+          git diff --cached --exit-code && exit 0 || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: archive completed OpenSpec changes"
+          git push origin HEAD:chore/openspec-closure-gate
