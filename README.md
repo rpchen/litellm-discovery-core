@@ -15,7 +15,7 @@
 - 能力、价格、context / input / output 限制的确定性合并与冲突说明
 - `ModelSpec` 构建与稳定模型指纹
 - refresh coordinator：singleflight、短时缓存、退避与 last-known-good
-- endpoint-bound discovery snapshot、兼容性检查与 drift comparison
+- endpoint-bound discovery snapshot、兼容性检查与 drift comparison；显式多 endpoint 可用稳定 endpoint ID 隔离同 URL/同凭据实例
 - structured diagnostics：models.dev 命中、协议判定原因、字段 provenance 与 cache source
 
 core 零运行时依赖，不导入 Pi、OpenCode 或其他宿主 SDK；`ModelSpec` 只携带中立的 `protocol`，不携带宿主 package 名称。
@@ -46,7 +46,7 @@ npm run validate:spec
 
 ## 范围
 
-Core 只负责宿主无关的发现语义和纯数据结构：协议选择、能力/价格/限制映射、models.dev 匹配、推理变体、refresh coordination、snapshot/drift 和 diagnostics。HTTP 请求、轮询定时器、凭据、宿主持久化、provider 注册、命令和 UI 仍由 Pi / OpenCode 适配层负责。
+Core 只负责宿主无关的发现语义和纯数据结构：协议选择、能力/价格/限制映射、models.dev 匹配、推理变体、refresh coordination、snapshot/drift 和 diagnostics。多 endpoint 场景下，Core 只定义稳定的 endpoint ID 语法（\`[a-z0-9][a-z0-9-_]*\`）以及把可选 \`endpointID\` 纳入 snapshot fingerprint 的隔离语义；HTTP 请求、endpoint 配置来源、activation、轮询定时器、凭据、宿主持久化、provider 注册、命令和 UI 仍由 Pi / OpenCode 适配层负责。省略 \`endpointID\` 时 fingerprint 材料保持旧版单 endpoint 语义，因此已有 snapshot 不需要迁移。
 
 
 ## Testing and contribution standard
