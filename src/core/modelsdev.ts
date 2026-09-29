@@ -59,7 +59,6 @@ const FAMILY_RULES: Array<[RegExp, FamilyProviders]> = [
   [/^grok-/, { primary: "xai", alternatives: [] }],
   [/^glm-/, { primary: "zai", alternatives: ["zhipuai"] }],
   [/^deepseek-/, { primary: "deepseek", alternatives: [] }],
-  [/^hy\d(?:-|$)/, { primary: "tencent", alternatives: [] }],
   [/^kimi-/, { primary: "moonshotai", alternatives: ["moonshotai-cn"] }],
   [/^mimo-/, { primary: "xiaomi", alternatives: [] }],
   [/^minimax-/, { primary: "minimax", alternatives: ["minimax-cn"] }],
@@ -182,16 +181,21 @@ export function selectModelsDevRecord(
   const preferred = family ? [family.primary, ...family.alternatives] : []
 
   for (const candidate of candidateModelIDs(group)) {
-    for (const providerID of preferred) {
-      const provider = allProviders.find(([id]) => id.toLowerCase() === providerID.toLowerCase())
+    // Prefer the original provider when Core can identify it from explicit
+    // metadata or a well-known family. When that is unavailable, prefer
+    // broadly useful capability catalogs in a stable order instead of
+    // declaring same-name multi-provider records ambiguous immediately.
+    const fallbackProviders = [...preferred, "openrouter", "opencode"]
+    const seenProviders = new Set<string>()
+    for (const providerID of fallbackProviders) {
+      const normalized = providerID.toLowerCase()
+      if (seenProviders.has(normalized)) continue
+      seenProviders.add(normalized)
+      const provider = allProviders.find(([id]) => id.toLowerCase() === normalized)
       if (!provider) continue
       const match = findMatch(provider[1], candidate)
       if (match) return selected(provider[0], candidate, match)
     }
-
-    const zen = allProviders.find(([id]) => id.toLowerCase() === "opencode")
-    const zenMatch = zen && findMatch(zen[1], candidate)
-    if (zen && zenMatch) return selected(zen[0], candidate, zenMatch)
 
     const matches = allProviders.flatMap(([providerID, models]) => {
       const match = findMatch(models, candidate)
