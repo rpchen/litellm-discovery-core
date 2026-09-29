@@ -196,3 +196,14 @@ Operational limits 是宿主发布硬边界：
 正确做法是：更新步骤解析一次 SHA并写入 provenance；之后所有复验从该 provenance 使用同一 SHA。若临时 CI 需要显式 SHA，则构建本身也必须显式使用同一个 SHA，不能混用 follow-main 与 pin-SHA。
 
 临时维护 workflow 应尽量幂等：例如 change 已被并发/前序运行 archive 时，后续重试不得仅因 active change 已不存在而失败。
+
+## 12. 多 endpoint 隔离不变量
+
+PR9 及后续多 endpoint 能力必须把 endpoint ID 视为稳定的隔离边界，而不是展示标签：
+
+- 显式 endpoint ID 必须匹配 `[a-z0-9][a-z0-9-_]*`，由用户定义、稳定、唯一；宿主不得静默改写 ID。
+- 两个 endpoint 即使 URL、credential 或模型清单相同，也必须拥有独立的 snapshot、refresh/cache/singleflight/backoff、diagnostics 与 destructive-failure 状态；共享 Core 允许复用纯算法，但不得共享 endpoint runtime state。
+- 401/403、logout、URL 变化、停用或单 endpoint 网络失败只能影响目标 endpoint。任何跨 endpoint 清空模型、污染 snapshot 或共用 backoff 都是回归。
+- activation 是宿主插件状态，不属于 Core，也不应写回用户 endpoint 配置；停用 endpoint 不发现、不轮询、不注册 provider，但可保留其可信 snapshot、credential 与历史 diagnostics。
+- legacy 单 endpoint 与显式 multi-endpoint 模式不得在一次配置解析中混合。兼容路径必须保持旧 provider/credential/snapshot identity，禁止为了新模式强制迁移旧用户。
+- 多 endpoint 新能力的 Scenario evidence 至少包含：同 URL 双 endpoint 隔离、单 endpoint auth destructive failure 不波及其他 endpoint、0 active、activation 立即生效，以及 diagnostics 不泄漏 URL/Key/raw error。

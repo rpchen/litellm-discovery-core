@@ -5,6 +5,7 @@ import {
   DISCOVERY_SNAPSHOT_SCHEMA_VERSION,
   endpointFingerprint,
   inspectDiscoverySnapshot,
+  isEndpointID,
 } from "../src/core/snapshot.ts"
 import type { ModelSpec } from "../src/core/build.ts"
 
@@ -58,6 +59,31 @@ describe("endpointFingerprint", () => {
       ...base,
       buildOptions: { contextTierCap: false, protocolOverrides: {} },
     }))
+  })
+
+  test("explicit endpoint identity isolates otherwise identical endpoints without breaking legacy snapshots", () => {
+    const legacy = {
+      baseUrl: "https://litellm.example/v1",
+      credentialKey: "sk-shared",
+      buildOptions: { contextTierCap: true, protocolOverrides: {} },
+    } as const
+    const legacyFingerprint = endpointFingerprint(legacy)
+    expect(endpointFingerprint({ ...legacy })).toBe(legacyFingerprint)
+    expect(endpointFingerprint({ ...legacy, endpointID: "company" })).not.toBe(legacyFingerprint)
+    expect(endpointFingerprint({ ...legacy, endpointID: "company" })).not.toBe(
+      endpointFingerprint({ ...legacy, endpointID: "personal" }),
+    )
+  })
+
+  test("endpoint ids use the stable lowercase ASCII slug contract", () => {
+    for (const id of ["default", "company", "team-1", "team_2", "a0"]) expect(isEndpointID(id)).toBeTrue()
+    for (const id of ["", "-team", "_team", "Team", "team.one", "团队", " team"]) expect(isEndpointID(id)).toBeFalse()
+
+    expect(() => endpointFingerprint({
+      endpointID: "Team",
+      baseUrl: "https://litellm.example",
+      credentialKey: "sk-secret",
+    })).toThrow("endpointID")
   })
 })
 
