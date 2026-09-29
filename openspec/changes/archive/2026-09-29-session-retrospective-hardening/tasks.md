@@ -5,4 +5,4 @@
 - [x] Add CI detection for completed but unarchived OpenSpec changes.
 - [x] Update Core README for the changed discovery semantics.
 - [x] Run Core typecheck, tests, build, package, strict OpenSpec and closure gates.
-- [ ] Archive this change and re-run strict OpenSpec plus closure validation.
+- [x] Archive this change and re-run strict OpenSpec plus closure validation.
