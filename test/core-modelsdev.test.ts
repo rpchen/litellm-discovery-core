@@ -56,6 +56,87 @@ describe("models.dev 记录选择", () => {
     expect(selected?.modelID).toBe("kimi-cn-only")
   })
 
+  test("canonical_model_id 可自动识别未硬编码的新原厂", () => {
+    const catalog = {
+      "future-lab": {
+        models: {
+          "nova-1": {
+            id: "nova-1",
+            canonical_model_id: "future-lab/nova-1",
+            limit: { context: 500_000, output: 50_000 },
+          },
+        },
+      },
+      openrouter: {
+        models: {
+          "nova-1": {
+            id: "nova-1",
+            canonical_model_id: "future-lab/nova-1",
+            limit: { context: 400_000, output: 40_000 },
+          },
+        },
+      },
+    }
+    expect(selectModelsDevRecord(one("nova-1", "custom/nova-1"), catalog)).toMatchObject({
+      providerID: "future-lab",
+      modelID: "nova-1",
+    })
+  })
+
+  test("原厂未知且多 provider 同名时优先 OpenRouter，再退到 OpenCode", () => {
+    const withOpenRouter = {
+      openrouter: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            limit: { context: 1_024_000, output: 64_000 },
+            tool_call: true,
+            reasoning: true,
+          },
+        },
+      },
+      opencode: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            limit: { context: 1_000_000, output: 32_000 },
+          },
+        },
+      },
+      reseller: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            limit: { context: 128_000, output: 8_000 },
+          },
+        },
+      },
+    }
+    expect(selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), withOpenRouter)).toMatchObject({
+      providerID: "openrouter",
+      modelID: "hy4-preview",
+    })
+
+    const withoutOpenRouter = {
+      opencode: withOpenRouter.opencode,
+      reseller: withOpenRouter.reseller,
+    }
+    expect(selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), withoutOpenRouter)).toMatchObject({
+      providerID: "opencode",
+      modelID: "hy4-preview",
+    })
+  })
+
+  test("没有原厂/OpenRouter/OpenCode 且仍有多个同名 provider 时保持歧义", () => {
+    const ambiguous = {
+      "reseller-a": { models: { "hy4-preview": { id: "hy4-preview" } } },
+      "reseller-b": { models: { "hy4-preview": { id: "hy4-preview" } } },
+    }
+    expect(selectModelsDevRecord(one("hy4-preview", "custom/hy4-preview"), ambiguous)).toBeUndefined()
+  })
+
   test("同名多部署时取候选并集，按部署顺序", () => {
     const group = groupLiteLLMDeployments({
       data: [
