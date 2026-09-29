@@ -113,6 +113,8 @@ PR 描述必须二选一明确声明：
 
 不得用手工移动目录替代 archive，也不得因为“功能已经合并”而长期把已完成 change 留在 active `openspec/changes/`。active changes 应只代表尚在实施或尚未完成验收的工作。
 
+新建 proposal 必须使用 OpenSpec 当前要求的标准章节（至少 `## Why` 与 `## What Changes`）；archive 出现结构 warning 不得忽略。新 capability 第一次 archive 后若 canonical spec 的 `## Purpose` 仍为自动 placeholder，必须补写真实 Purpose 并重新 strict validation。
+
 跨仓库规划必须分别关闭各仓库对应 change：Core 的完成状态不能替代 Pi/OpenCode 的 task 更新与 archive，反之亦然。
 
 ## 8. Discovery 元数据优先级与可用性不变量
