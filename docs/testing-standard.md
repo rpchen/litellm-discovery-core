@@ -167,3 +167,32 @@ Operational limits 是宿主发布硬边界：
 
 “Release 已创建”本身不是完成证据；最终应记录 tag SHA、main SHA、Release 状态、附件和 Release workflow 结果。
 
+## 11. 跨会话事实基线与 retrospective
+
+跨会话继续工作时不得只依赖上一会话记忆。开始任何新规划、修复或发版前，必须重新读取当前事实：
+
+1. 三仓库相关 `main` HEAD、未合并 PR 和最新 tag/Release；
+2. Core `AGENTS.md`、本标准以及相关 canonical OpenSpec specs；
+3. `openspec/changes/` 是否只保留真正 active change；
+4. Pi/OpenCode `dist/core-provenance.json` 是否与预期 Core SHA 一致；
+5. README 中“当前固定版本”、安装/升级示例、release notes 链接是否与最新 Release 一致；
+6. 若问题来自真实宿主反馈，必须先把症状转成可失败的回归测试，再修改实现。
+
+会话结束前必须做一次 retrospective review，至少回答：
+
+- 这次问题是具体模型/具体 UI 个例，还是应该抽象成通用不变量；
+- 是否存在“规范已经写了，但代码只对一个特例成立”的情况；
+- 是否存在“代码/Release 已更新，但 README、OpenSpec、dist provenance 或 tag 仍是旧状态”的漂移；
+- 临时 workflow、一次性 release branch、生成目录是否已经清理；
+- 下一会话需要记住的长期经验是否已经写入权威文档，而不是仅停留在聊天记录。
+
+### 单一 Core 选择原则
+
+一次插件“更新 Core”的构建必须从头到尾使用**同一个解析后的 Core SHA**。禁止出现：
+
+- `build:dist` 跟随当前 Core main；
+- 后续 typecheck/test/verify 又通过环境变量固定到另一个旧 SHA。
+
+正确做法是：更新步骤解析一次 SHA并写入 provenance；之后所有复验从该 provenance 使用同一 SHA。若临时 CI 需要显式 SHA，则构建本身也必须显式使用同一个 SHA，不能混用 follow-main 与 pin-SHA。
+
+临时维护 workflow 应尽量幂等：例如 change 已被并发/前序运行 archive 时，后续重试不得仅因 active change 已不存在而失败。
