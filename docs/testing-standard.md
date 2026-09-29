@@ -59,15 +59,41 @@ Pi/OpenCode 不重复测试 Core 算法；它们必须直接测试：
 
 负向测试必须让敏感值真实出现在输入或异常中，再断言最终持久化/日志/用户输出中不存在；对一个从未进入输入的字符串做 `not.toContain` 不算有效安全测试。
 
-## 4. 交付与回归
+## 4. 交付、回归与真实宿主契约
 
 除 Scenario 级测试外，各仓库继续执行自身完整门禁：
 
 - Core：typecheck、Bun tests、build、isolated consumer、OpenSpec；
-- Pi：`verify:dist`、typecheck、tests、OpenSpec、package install；
-- OpenCode：`verify:dist`、delivery integrity、typecheck、tests、TUI render、clean distribution、OpenSpec、tarball install、fixed Git commit install、delivery immutability。
+- Pi：`verify:dist`、typecheck、tests、OpenSpec、package install，以及 **Real Pi host E2E**；
+- OpenCode：`verify:dist`、delivery integrity、typecheck、tests、TUI render、clean distribution、OpenSpec、tarball install、fixed Git commit install、delivery immutability，以及 **Real OpenCode host E2E**。
 
-旧测试必须继续通过。真实宿主环境验证只用于自动化难以可靠模拟的 Host API 假设，不得替代自动化 Scenario 验收。
+旧测试必须继续通过。真实宿主 E2E 不是 Scenario 级自动化的替代品，而是 Host Adapter 的独立契约门禁；两者同时满足才算完成。
+
+凡变更触及以下任一边界，宿主仓库 MUST 使用受支持的真实宿主版本执行永久 CI E2E，不能只依赖 mock、host-shape fake、直接调用插件 factory、类型检查或“包能安装/入口文件存在”：
+
+- extension/plugin API、context shape、schema 或生命周期；
+- provider/model 注册、刷新、卸载与宿主可见模型字段；
+- credential/login/integration/auth storage；
+- command/RPC/TUI/UI 注册与用户可见宿主行为；
+- 宿主自己的 package/plugin installer、Git 固定版本安装与加载；
+- 其他一旦宿主 API 改变就可能让插件在真实运行时失效的契约。
+
+真实宿主 E2E SHALL：
+
+1. 固定一个明确支持的宿主版本，并使用该宿主声明支持的运行时版本；
+2. 通过宿主自己的 installer 安装当前不可变 Git commit/tag，而不是从工作区直接 import 插件源码；
+3. 使用隔离的 HOME/XDG/宿主配置目录，不读取或修改开发者真实配置、credential 或 endpoint；
+4. 使用本地 fake LiteLLM 和脱敏 credential 验证宿主契约，避免依赖真实服务与密钥；
+5. 至少证明插件被真实 loader 加载、关键 command/integration 存在、provider/model 真正进入宿主、credential 边界成立，以及适用的 activation/lifecycle 行为；
+6. 对宿主发布边界继续检查 operational model limits，禁止 `context/output <= 0` 的模型进入真实宿主；
+7. 在 release/tag workflow 中对最终不可变交付物重复适用的真实宿主验证，防止 PR/main 通过后 tag 交付路径发生漂移。
+
+当前固定基线：
+
+- Pi：`@earendil-works/pi-coding-agent@0.87.1`，其 Node engine 为 `>=22.19.0`；CI 使用 **Real Pi 0.87.1 E2E**。
+- OpenCode：`@opencode/cli@2.0.16`；CI 使用 **Real OpenCode 2.0.16 E2E**。
+
+升级宿主基线版本时，必须先让真实宿主 E2E 在新版本通过，再把新版本写入门禁；不得仅提升 peer/range 声明。
 
 ## 5. 覆盖率指标
 
