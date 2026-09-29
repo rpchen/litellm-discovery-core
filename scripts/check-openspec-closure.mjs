@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 
-const root = path.resolve("openspec/changes")
+const root = path.resolve(process.env.OPENSPEC_CHANGES_DIR ?? "openspec/changes")
 if (!existsSync(root)) process.exit(0)
 
 const completed = []
