@@ -6,6 +6,7 @@ import {
   deploymentProtocolSupport,
   diagnoseModelSpecs,
   groupLiteLLMDeployments,
+  hasOperationalLimits,
   mapCapabilities,
   resolveProtocolSupport,
   resolveReasoningSupport,
@@ -252,6 +253,63 @@ describe("PR8 discovery quality", () => {
     expect(diagnosed.diagnostics.issues.some((issue) => issue.code === "models-dev-unmatched")).toBeFalse()
   })
 
+  test("capability fallback prices are not presented as LiteLLM route prices", () => {
+    const spec = buildModelSpecs({
+      data: [{
+        model_name: "hy4-preview",
+        litellm_params: { model: "openai/hy4-preview" },
+        model_info: { mode: "chat" },
+      }],
+    }, {
+      openrouter: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            limit: { context: 1024000, output: 64000 },
+            cost: { input: 0.834, output: 2.501, cache_read: 0.042 },
+          },
+        },
+      },
+      opencode: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            limit: { context: 1000000, output: 32000 },
+            cost: { input: 999, output: 999 },
+          },
+        },
+      },
+    }, options)[0]!
+
+    expect(spec.limit).toEqual({ context: 1024000, input: 1024000, output: 64000 })
+    expect(spec.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+    const diagnosed = diagnoseModelSpecs({
+      data: [{
+        model_name: "hy4-preview",
+        litellm_params: { model: "openai/hy4-preview" },
+        model_info: { mode: "chat" },
+      }],
+    }, {
+      openrouter: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            limit: { context: 1024000, output: 64000 },
+            cost: { input: 0.834, output: 2.501 },
+          },
+        },
+      },
+    }, options)
+    expect(diagnosed.diagnostics.models[0]!.provenance.pricing.input).toMatchObject({
+      source: "default",
+    })
+    expect(diagnosed.diagnostics.models[0]!.provenance.pricing.input.detail).toContain("price ignored")
+  })
+
   test("unknown models stay discoverable with deterministic LiteLLM-only fallback", () => {
     const specs = buildModelSpecs({
       data: [{
@@ -271,6 +329,18 @@ describe("PR8 discovery quality", () => {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       limit: { context: 0, input: 0, output: 0 },
     }])
+    expect(hasOperationalLimits(specs[0]!)).toBeFalse()
+
+    const diagnosed = diagnoseModelSpecs({
+      data: [{
+        model_name: "private-model",
+        litellm_params: { model: "custom/private-model" },
+        model_info: { mode: "chat" },
+      }],
+    }, {}, options)
+    expect(diagnosed.diagnostics.issues.map((issue) => issue.code)).toContain(
+      "model-operational-limits-missing",
+    )
   })
 
   test("diagnostics expose identity, reasoning, protocol support, fallback, and conflict resolution", () => {
