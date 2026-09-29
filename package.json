@@ -14,14 +14,19 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build:dist": "npm run clean && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:package": "node scripts/test-package.mjs",
-    "validate:spec": "openspec validate --all --strict --no-interactive"
+    "validate:spec": "openspec validate --all --strict --no-interactive",
+    "test:openspec-closure": "node scripts/check-openspec-closure.mjs"
   },
   "devDependencies": {
     "@fission-ai/openspec": "1.13.2",
