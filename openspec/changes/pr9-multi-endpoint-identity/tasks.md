@@ -3,5 +3,5 @@
 - [x] Preserve legacy fingerprint material when endpoint ID is omitted.
 - [x] Add automated tests for same-URL isolation, legacy compatibility, and invalid IDs.
 - [x] Update README with the public endpoint identity contract and Core boundary.
-- [x] Run Core typecheck, tests, build, isolated package consumer, strict OpenSpec and closure gates.
-- [x] Archive this change through OpenSpec CLI and re-run strict validation.
+- [ ] Run Core typecheck, tests, build, isolated package consumer, strict OpenSpec and closure gates.
+- [ ] Archive this change through OpenSpec CLI and re-run strict validation.
