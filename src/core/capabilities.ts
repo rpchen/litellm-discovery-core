@@ -10,7 +10,11 @@ import {
   type DeploymentGroup,
   type LiteLLMDeployment,
 } from "./litellm.js"
-import { candidateModelIDs, type SelectedModelRecord } from "./modelsdev.js"
+import {
+  canUseSelectedModelsDevPrice,
+  candidateModelIDs,
+  type SelectedModelRecord,
+} from "./modelsdev.js"
 
 export interface ModelCapabilities {
   tools: boolean
@@ -61,6 +65,7 @@ function modelsDevLimit(
 }
 
 function modelsDevCost(selected: SelectedModelRecord | undefined, key: string): number | undefined {
+  if (!canUseSelectedModelsDevPrice(selected)) return undefined
   const cost = selected?.record.cost
   if (!isRecord(cost)) return undefined
   const value = optionalNumber(cost[key])

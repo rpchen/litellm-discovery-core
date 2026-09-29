@@ -27,12 +27,35 @@ export interface ModelsDevRecord extends Record<string, unknown> {
 
 export type ModelsDevMatchKind = "exact" | "canonical" | "alias"
 
+export type ModelsDevSelectionSource =
+  | "explicit-provider"
+  | "canonical-original"
+  | "family-original"
+  | "openrouter-fallback"
+  | "opencode-fallback"
+  | "unique-match"
+
 export interface SelectedModelRecord {
   providerID: string
   modelID: string
   record: ModelsDevRecord
   matchedCandidate?: string
   matchKind?: ModelsDevMatchKind
+  selectionSource?: ModelsDevSelectionSource
+}
+
+/**
+ * Whether provider-scoped models.dev pricing can be treated as a plausible
+ * fallback for the deployed model. Gateway/reseller records selected only for
+ * capability enrichment must never masquerade as the LiteLLM route price.
+ */
+export function canUseSelectedModelsDevPrice(selected: SelectedModelRecord | undefined): boolean {
+  // Undefined is kept for backwards-compatible direct callers/tests that
+  // construct SelectedModelRecord manually without going through the selector.
+  return selected?.selectionSource === undefined ||
+    selected.selectionSource === "explicit-provider" ||
+    selected.selectionSource === "canonical-original" ||
+    selected.selectionSource === "family-original"
 }
 
 export interface ModelVariant {
@@ -163,6 +186,7 @@ function selected(
   providerID: string,
   candidate: string,
   match: [string, ModelsDevRecord, ModelsDevMatchKind],
+  selectionSource?: ModelsDevSelectionSource,
 ): SelectedModelRecord {
   return {
     providerID,
@@ -170,6 +194,7 @@ function selected(
     record: match[1],
     matchedCandidate: candidate,
     matchKind: match[2],
+    selectionSource,
   }
 }
 
@@ -206,7 +231,7 @@ export function selectModelsDevRecord(
       .find((value): value is string => value !== undefined)
     if (explicitProvider) {
       const explicit = matches.find((match) => match.providerID.toLowerCase() === explicitProvider)
-      if (explicit) return explicit
+      if (explicit) return { ...explicit, selectionSource: "explicit-provider" }
     }
 
     // 2. Prefer an original provider inferred from models.dev's own
@@ -217,7 +242,7 @@ export function selectModelsDevRecord(
       const original = matches.find(
         (match) => match.providerID.toLowerCase() === canonicalProviders[0],
       )
-      if (original) return original
+      if (original) return { ...original, selectionSource: "canonical-original" }
     }
 
     // 3. Legacy family heuristics remain only as a compatibility fallback for
@@ -226,19 +251,19 @@ export function selectModelsDevRecord(
       const preferred = matches.find(
         (match) => match.providerID.toLowerCase() === providerID.toLowerCase(),
       )
-      if (preferred) return preferred
+      if (preferred) return { ...preferred, selectionSource: "family-original" }
     }
 
     // 4. When the original provider is not present, prefer capability-rich,
     // broadly maintained gateway records in the agreed stable order.
     const openRouter = matches.find((match) => match.providerID.toLowerCase() === "openrouter")
-    if (openRouter) return openRouter
+    if (openRouter) return { ...openRouter, selectionSource: "openrouter-fallback" }
     const openCode = matches.find((match) => match.providerID.toLowerCase() === "opencode")
-    if (openCode) return openCode
+    if (openCode) return { ...openCode, selectionSource: "opencode-fallback" }
 
     // 5. A genuinely unique remaining match is safe; otherwise keep the
     // ambiguity observable instead of choosing an arbitrary reseller.
-    if (matches.length === 1) return matches[0]
+    if (matches.length === 1) return { ...matches[0]!, selectionSource: "unique-match" }
   }
 
   return undefined

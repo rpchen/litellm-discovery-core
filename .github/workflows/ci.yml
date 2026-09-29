@@ -39,6 +39,8 @@ jobs:
         run: npm run test:package
       - name: Validate OpenSpec
         run: npm run validate:spec
+      - name: Reject completed active OpenSpec changes
+        run: npm run test:openspec-closure
 
   dispatch-consumers:
     name: Dispatch consumer compatibility checks

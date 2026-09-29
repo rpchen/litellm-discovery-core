@@ -17,4 +17,5 @@
 3. 临时文件放 `.tmp/`；需要保留的脚本放 `scripts/`，正式文档放 `docs/`。
 4. 使用 `npm run typecheck`、`bun test`、`npm run build:dist` 和 `npm run test:package` 验证变更。
 5. **测试、文档与 OpenSpec 完成标准**：必须遵守 `docs/testing-standard.md`。OpenSpec 每个 Scenario 必须有可追踪自动化证据；安全/失败边界必须有负向测试；新增用户可见能力至少有一条纵向链路。凡公共 API、消费方式或其他用户可见行为发生变化，必须在同一 PR 更新 README；无用户影响时 PR 必须明确声明。禁止仅因 CI 全绿就宣称变更已闭环；已完成 change 必须在 task 状态与证据一致后通过 OpenSpec CLI archive，同步 canonical specs 后再次 strict validation。
-6. 使用 conventional commits。不要在本仓库修改两个插件仓库。
+6. **Discovery 质量原则**：模型能力与可用性优先于价格完整性；models.dev provider fallback、价格安全和 operational-limit 发布边界遵守 `docs/testing-standard.md` 第 8 节，不得靠新增硬编码家族修复新模型，也不得把 0 context/output 直接交给宿主。
+7. **会话/发版收尾**：每次完成用户可见改动后按 `docs/testing-standard.md` 第 10 节检查版本、README、tag/Release、附件与临时自动化清理。使用 conventional commits。不要在本仓库修改两个插件仓库。

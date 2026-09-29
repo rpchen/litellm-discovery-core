@@ -1,4 +1,4 @@
-import { buildModelSpecs, type BuildOptions, type ModelSpec } from "./build.js"
+import { buildModelSpecs, hasOperationalLimits, type BuildOptions, type ModelSpec } from "./build.js"
 import {
   groupLiteLLMDeployments,
   isRecord,
@@ -10,6 +10,7 @@ import {
 } from "./litellm.js"
 import {
   buildVariants,
+  canUseSelectedModelsDevPrice,
   candidateModelIDs,
   canonicalModelID,
   resolveReasoningSupport,
@@ -286,7 +287,13 @@ function pricingProvenance(
   modelsDevKey: string,
 ): FieldProvenance {
   if (anyDeploymentNonNegativeNumber(group, deploymentFields)) return field("litellm")
-  if (modelsDevObjectNumber(selected, "cost", modelsDevKey)) return field("models.dev")
+  if (modelsDevObjectNumber(selected, "cost", modelsDevKey)) {
+    if (canUseSelectedModelsDevPrice(selected)) return field("models.dev")
+    return field(
+      "default",
+      `models.dev ${selected?.selectionSource ?? "fallback"} price ignored; capability fallback is not deployment pricing`,
+    )
+  }
   return field("default", "missing price metadata maps to zero")
 }
 
@@ -409,6 +416,15 @@ function modelDiagnostic(
       code: "models-dev-unmatched",
       modelId: group.modelName,
       message: "No models.dev record matched this LiteLLM model.",
+    })
+  }
+  if (!hasOperationalLimits(spec)) {
+    issues.push({
+      severity: "warning",
+      stage: "mapping",
+      code: "model-operational-limits-missing",
+      modelId: group.modelName,
+      message: "Model context/output limits are not positive; host adapters must not publish this model as operational.",
     })
   }
   for (const conflict of conflicts) {

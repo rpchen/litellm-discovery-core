@@ -113,4 +113,57 @@ PR 描述必须二选一明确声明：
 
 不得用手工移动目录替代 archive，也不得因为“功能已经合并”而长期把已完成 change 留在 active `openspec/changes/`。active changes 应只代表尚在实施或尚未完成验收的工作。
 
+新建 proposal 必须使用 OpenSpec 当前要求的标准章节（至少 `## Why` 与 `## What Changes`）；archive 出现结构 warning 不得忽略。新 capability 第一次 archive 后若 canonical spec 的 `## Purpose` 仍为自动 placeholder，必须补写真实 Purpose 并重新 strict validation。
+
 跨仓库规划必须分别关闭各仓库对应 change：Core 的完成状态不能替代 Pi/OpenCode 的 task 更新与 archive，反之亦然。
+
+## 8. Discovery 元数据优先级与可用性不变量
+
+两个插件的核心价值是让宿主**正确使用模型能力**，不是承担计费职责。实现和评审时必须优先保证 protocol、context/input/output、modalities、tools、reasoning/variants 等使用能力正确。
+
+models.dev enrichment 的记录选择顺序固定为：
+
+1. LiteLLM 显式 `models_dev_provider`；
+2. models.dev `canonical_model_id` 可识别且原厂 provider 记录存在时的原厂记录；
+3. 仅对缺少 canonical identity 的旧/测试 catalog 使用 legacy family heuristic；
+4. OpenRouter；
+5. OpenCode；
+6. 全局唯一剩余记录；
+7. 仍有多个无法消歧的 reseller 时才 unmatched。
+
+不得因为 models.dev 新增了一个模型家族就首先扩充硬编码厂商正则；必须优先利用上游 canonical identity。
+
+价格与能力必须分开判断：
+
+- LiteLLM 显式价格始终优先；
+- OpenRouter/OpenCode/其他 reseller 仅因**能力 fallback**被选中时，其价格不得冒充当前 LiteLLM deployment 的真实价格；
+- 缺少可靠价格允许为未知/零，不得为了补价格牺牲正确的能力匹配。
+
+Operational limits 是宿主发布硬边界：
+
+- Core 可以用 `0` 表示“未知 limit”，用于 diagnostics/fingerprint；
+- Pi/OpenCode **不得把 context/output 非正数的 ModelSpec 发布成可用宿主模型**；
+- diagnostics 必须保留该模型并明确报告缺少 operational limits；
+- 必须有通用 adapter 测试证明 0/0 模型被阻止，而不是只为某个具体模型写特例。
+
+## 9. 展示层时间与持久 UI
+
+内部 discovery/snapshot/cache 时间保持 UTC ISO 或 epoch；用户可见绝对时间在宿主展示层转换为当前宿主机器时区，并显示明确 UTC offset。测试不得依赖 CI 机器时区，应允许确定性注入。
+
+长期占据会话/TUI 的插件结果必须提供可撤销的展示行为。若存在 polling/latest 恢复机制，dismiss 测试必须证明同一 result/sequence 不会被轮询重新弹回，同时更新的结果仍可重新显示。
+
+## 10. Release 闭环门禁
+
+用户可见 `feat:` / `fix:` 合入后，会话结束前必须检查 tag/Release 是否落后于 main。发布前必须同时验证：
+
+1. `package.json`、lockfile 根版本及包根版本一致；
+2. README 中“当前发行版/锁定安装/升级示例”已经更新到目标版本；不能只更新 package version；
+3. 需要仓库级 release notes 的仓库已存在对应 `docs/releases/vX.Y.Z.md`；
+4. release PR 完整 CI 通过，合并后的 main 同一提交再次完整 CI 通过；
+5. tag 只能指向上述已验证 main commit，禁止移动旧 tag；
+6. Release workflow 必须从 tag 固定 provenance 复验，不重新追踪更新的 Core main；
+7. 发布附件创建后要验证 tarball/checksum；支持的仓库还应回读并比较解包后的 dist；
+8. 任何为缺失工具能力临时创建的一次性 workflow/branch 都必须在发布完成后清理，且不能污染 main。
+
+“Release 已创建”本身不是完成证据；最终应记录 tag SHA、main SHA、Release 状态、附件和 Release workflow 结果。
+
