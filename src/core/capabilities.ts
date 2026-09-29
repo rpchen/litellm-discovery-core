@@ -60,7 +60,20 @@ function modelsDevLimit(
   return isRecord(limit) ? positiveInteger(limit[key]) : undefined
 }
 
+function canUseModelsDevPrice(selected: SelectedModelRecord | undefined): boolean {
+  // Price is route/provider-specific. Capability fallbacks (OpenRouter/OpenCode
+  // or an otherwise unique reseller record) are useful for limits and
+  // capabilities, but their prices must not be presented as the LiteLLM
+  // deployment's price. Undefined is retained for direct/legacy callers that
+  // construct SelectedModelRecord manually.
+  return selected?.selectionSource === undefined ||
+    selected.selectionSource === "explicit-provider" ||
+    selected.selectionSource === "canonical-original" ||
+    selected.selectionSource === "family-original"
+}
+
 function modelsDevCost(selected: SelectedModelRecord | undefined, key: string): number | undefined {
+  if (!canUseModelsDevPrice(selected)) return undefined
   const cost = selected?.record.cost
   if (!isRecord(cost)) return undefined
   const value = optionalNumber(cost[key])
