@@ -56,48 +56,56 @@ describe("models.dev 记录选择", () => {
     expect(selected?.modelID).toBe("kimi-cn-only")
   })
 
-  test("Tencent Hy 系列在多个 provider 同名时优先原厂记录", () => {
-    const catalog = {
-      tencent: {
-        models: {
-          "hy4-preview": {
-            id: "hy4-preview",
-            limit: { context: 1_000_000, output: 65_536 },
-          },
-        },
-      },
+  test("原厂未知且多 provider 同名时优先 OpenRouter，再退到 OpenCode", () => {
+    const withOpenRouter = {
       openrouter: {
         models: {
           "hy4-preview": {
             id: "hy4-preview",
-            base_model: "tencent/hy4-preview",
+            limit: { context: 1_024_000, output: 64_000 },
+            tool_call: true,
+            reasoning: true,
           },
         },
       },
-      "opencode-go": {
+      opencode: {
         models: {
           "hy4-preview": {
             id: "hy4-preview",
-            base_model: "tencent/hy4-preview",
+            limit: { context: 1_000_000, output: 32_000 },
+          },
+        },
+      },
+      reseller: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            limit: { context: 128_000, output: 8_000 },
           },
         },
       },
     }
-    const selected = selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), catalog)
-    expect(selected).toMatchObject({
-      providerID: "tencent",
+    expect(selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), withOpenRouter)).toMatchObject({
+      providerID: "openrouter",
       modelID: "hy4-preview",
-      matchedCandidate: "hy4-preview",
-      matchKind: "exact",
+    })
+
+    const withoutOpenRouter = {
+      opencode: withOpenRouter.opencode,
+      reseller: withOpenRouter.reseller,
+    }
+    expect(selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), withoutOpenRouter)).toMatchObject({
+      providerID: "opencode",
+      modelID: "hy4-preview",
     })
   })
 
-  test("Tencent family 规则只匹配 hy+数字模型，不误伤普通 hy 前缀", () => {
-    const catalog = {
-      tencent: { models: { "hybrid-model": { id: "hybrid-model" } } },
-      reseller: { models: { "hybrid-model": { id: "hybrid-model" } } },
+  test("没有原厂/OpenRouter/OpenCode 且仍有多个同名 provider 时保持歧义", () => {
+    const ambiguous = {
+      "reseller-a": { models: { "hy4-preview": { id: "hy4-preview" } } },
+      "reseller-b": { models: { "hy4-preview": { id: "hy4-preview" } } },
     }
-    expect(selectModelsDevRecord(one("hybrid-model", "custom/hybrid-model"), catalog)).toBeUndefined()
+    expect(selectModelsDevRecord(one("hy4-preview", "custom/hy4-preview"), ambiguous)).toBeUndefined()
   })
 
   test("同名多部署时取候选并集，按部署顺序", () => {
