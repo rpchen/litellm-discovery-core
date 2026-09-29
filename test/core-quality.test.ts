@@ -197,6 +197,58 @@ describe("PR8 discovery quality", () => {
     expect(deploymentProtocol(unknown.deployments[0]!)).toBe("chat")
   })
 
+  test("hy4-preview uses OpenRouter capabilities when original provider is absent, without losing LiteLLM price", () => {
+    const litellm = {
+      data: [{
+        model_name: "hy4-preview",
+        litellm_params: { model: "openai/hy4-preview" },
+        model_info: {
+          mode: "chat",
+          input_cost_per_token: 0.000000834,
+          output_cost_per_token: 0.000002501,
+          cache_read_input_token_cost: 0.000000042,
+        },
+      }],
+    }
+    const catalog = {
+      openrouter: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            reasoning: true,
+            tool_call: true,
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 1024000, output: 64000 },
+            cost: { input: 99, output: 99 },
+          },
+        },
+      },
+      opencode: {
+        models: {
+          "hy4-preview": {
+            id: "hy4-preview",
+            canonical_model_id: "tencent/hy4-preview",
+            limit: { context: 1000000, output: 32000 },
+          },
+        },
+      },
+    }
+
+    const spec = buildModelSpecs(litellm, catalog, options)[0]!
+    expect(spec.limit).toEqual({ context: 1024000, input: 1024000, output: 64000 })
+    expect(spec.cost).toEqual({ input: 0.834, output: 2.501, cacheRead: 0.042, cacheWrite: 0 })
+
+    const diagnosed = diagnoseModelSpecs(litellm, catalog, options)
+    expect(diagnosed.diagnostics.stats.modelsDevMatched).toBe(1)
+    expect(diagnosed.diagnostics.models[0]!.modelsDev).toMatchObject({
+      matched: true,
+      providerID: "openrouter",
+      modelID: "hy4-preview",
+    })
+    expect(diagnosed.diagnostics.issues.some((issue) => issue.code === "models-dev-unmatched")).toBeFalse()
+  })
+
   test("unknown models stay discoverable with deterministic LiteLLM-only fallback", () => {
     const specs = buildModelSpecs({
       data: [{
