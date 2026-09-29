@@ -15,6 +15,7 @@ export interface ModelsDevRecord extends Record<string, unknown> {
   id?: unknown
   name?: unknown
   aliases?: unknown
+  canonical_model_id?: unknown
   reasoning?: unknown
   release_date?: unknown
   modalities?: unknown
@@ -172,35 +173,71 @@ function selected(
   }
 }
 
+function canonicalProviderCandidates(matches: SelectedModelRecord[]): string[] {
+  const providers = new Set<string>()
+  for (const match of matches) {
+    const canonical = optionalString(match.record.canonical_model_id)
+    if (!canonical) continue
+    const slash = canonical.indexOf("/")
+    if (slash <= 0) continue
+    providers.add(canonical.slice(0, slash).toLowerCase())
+  }
+  return [...providers]
+}
+
 export function selectModelsDevRecord(
   group: DeploymentGroup,
   catalog: unknown,
 ): SelectedModelRecord | undefined {
   const allProviders = providers(catalog)
   const family = familyProviders(group)
-  const preferred = family ? [family.primary, ...family.alternatives] : []
+  const heuristicPreferred = family ? [family.primary, ...family.alternatives] : []
 
   for (const candidate of candidateModelIDs(group)) {
-    // Prefer the original provider when Core can identify it from explicit
-    // metadata or a well-known family. When that is unavailable, prefer
-    // broadly useful capability catalogs in a stable order instead of
-    // declaring same-name multi-provider records ambiguous immediately.
-    const fallbackProviders = [...preferred, "openrouter", "opencode"]
-    const seenProviders = new Set<string>()
-    for (const providerID of fallbackProviders) {
-      const normalized = providerID.toLowerCase()
-      if (seenProviders.has(normalized)) continue
-      seenProviders.add(normalized)
-      const provider = allProviders.find(([id]) => id.toLowerCase() === normalized)
-      if (!provider) continue
-      const match = findMatch(provider[1], candidate)
-      if (match) return selected(provider[0], candidate, match)
-    }
-
     const matches = allProviders.flatMap(([providerID, models]) => {
       const match = findMatch(models, candidate)
       return match ? [selected(providerID, candidate, match)] : []
     })
+    if (matches.length === 0) continue
+
+    // 1. Explicit provider metadata from LiteLLM always wins.
+    const explicitProvider = group.deployments
+      .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase())
+      .find((value): value is string => value !== undefined)
+    if (explicitProvider) {
+      const explicit = matches.find((match) => match.providerID.toLowerCase() === explicitProvider)
+      if (explicit) return explicit
+    }
+
+    // 2. Prefer an original provider inferred from models.dev's own
+    // canonical_model_id metadata. This avoids requiring a hard-coded family
+    // rule every time models.dev adds a new model family.
+    const canonicalProviders = canonicalProviderCandidates(matches)
+    if (canonicalProviders.length === 1) {
+      const original = matches.find(
+        (match) => match.providerID.toLowerCase() === canonicalProviders[0],
+      )
+      if (original) return original
+    }
+
+    // 3. Legacy family heuristics remain only as a compatibility fallback for
+    // older/synthetic catalogs that do not carry canonical_model_id.
+    for (const providerID of heuristicPreferred) {
+      const preferred = matches.find(
+        (match) => match.providerID.toLowerCase() === providerID.toLowerCase(),
+      )
+      if (preferred) return preferred
+    }
+
+    // 4. When the original provider is not present, prefer capability-rich,
+    // broadly maintained gateway records in the agreed stable order.
+    const openRouter = matches.find((match) => match.providerID.toLowerCase() === "openrouter")
+    if (openRouter) return openRouter
+    const openCode = matches.find((match) => match.providerID.toLowerCase() === "opencode")
+    if (openCode) return openCode
+
+    // 5. A genuinely unique remaining match is safe; otherwise keep the
+    // ambiguity observable instead of choosing an arbitrary reseller.
     if (matches.length === 1) return matches[0]
   }
 
