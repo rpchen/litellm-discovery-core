@@ -237,7 +237,10 @@ describe("PR8 discovery quality", () => {
 
     const spec = buildModelSpecs(litellm, catalog, options)[0]!
     expect(spec.limit).toEqual({ context: 1024000, input: 1024000, output: 64000 })
-    expect(spec.cost).toEqual({ input: 0.834, output: 2.501, cacheRead: 0.042, cacheWrite: 0 })
+    expect(spec.cost.input).toBeCloseTo(0.834)
+    expect(spec.cost.output).toBeCloseTo(2.501)
+    expect(spec.cost.cacheRead).toBeCloseTo(0.042)
+    expect(spec.cost.cacheWrite).toBe(0)
 
     const diagnosed = diagnoseModelSpecs(litellm, catalog, options)
     expect(diagnosed.diagnostics.stats.modelsDevMatched).toBe(1)
