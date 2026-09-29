@@ -80,6 +80,7 @@ describe("models.dev 记录选择", () => {
     expect(selectModelsDevRecord(one("nova-1", "custom/nova-1"), catalog)).toMatchObject({
       providerID: "future-lab",
       modelID: "nova-1",
+      selectionSource: "canonical-original",
     })
   })
 
@@ -117,6 +118,7 @@ describe("models.dev 记录选择", () => {
     expect(selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), withOpenRouter)).toMatchObject({
       providerID: "openrouter",
       modelID: "hy4-preview",
+      selectionSource: "openrouter-fallback",
     })
 
     const withoutOpenRouter = {
@@ -126,6 +128,7 @@ describe("models.dev 记录选择", () => {
     expect(selectModelsDevRecord(one("hy4-preview", "openai/hy4-preview"), withoutOpenRouter)).toMatchObject({
       providerID: "opencode",
       modelID: "hy4-preview",
+      selectionSource: "opencode-fallback",
     })
   })
 
