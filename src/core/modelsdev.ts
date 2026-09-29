@@ -44,6 +44,20 @@ export interface SelectedModelRecord {
   selectionSource?: ModelsDevSelectionSource
 }
 
+/**
+ * Whether provider-scoped models.dev pricing can be treated as a plausible
+ * fallback for the deployed model. Gateway/reseller records selected only for
+ * capability enrichment must never masquerade as the LiteLLM route price.
+ */
+export function canUseSelectedModelsDevPrice(selected: SelectedModelRecord | undefined): boolean {
+  // Undefined is kept for backwards-compatible direct callers/tests that
+  // construct SelectedModelRecord manually without going through the selector.
+  return selected?.selectionSource === undefined ||
+    selected.selectionSource === "explicit-provider" ||
+    selected.selectionSource === "canonical-original" ||
+    selected.selectionSource === "family-original"
+}
+
 export interface ModelVariant {
   id: string
   settings: Record<string, unknown>
