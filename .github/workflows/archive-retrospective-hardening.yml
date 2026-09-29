@@ -27,6 +27,18 @@ jobs:
         run: |
           node -e "const fs=require('node:fs'); const p='openspec/changes/session-retrospective-hardening/tasks.md'; let s=fs.readFileSync(p,'utf8'); s=s.replace('- [ ] Archive this change and re-run strict OpenSpec plus closure validation.','- [x] Archive this change and re-run strict OpenSpec plus closure validation.'); fs.writeFileSync(p,s)"
       - run: npx openspec archive session-retrospective-hardening --yes
+      - name: Fill canonical governance purpose
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs")
+          const path = "openspec/specs/project-governance/spec.md"
+          let content = fs.readFileSync(path, "utf8")
+          content = content.replace(
+            /## Purpose\n[\s\S]*?\n## Requirements/,
+            "## Purpose\nDefines repository-level completion gates that keep OpenSpec active changes, canonical specifications, automated evidence, documentation, and release state consistent with what has actually been delivered.\n\n## Requirements",
+          )
+          fs.writeFileSync(path, content)
+          NODE
       - run: npm run validate:spec
       - run: npm run test:openspec-closure
       - name: Commit archive
