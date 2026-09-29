@@ -167,3 +167,24 @@ Operational limits 是宿主发布硬边界：
 
 “Release 已创建”本身不是完成证据；最终应记录 tag SHA、main SHA、Release 状态、附件和 Release workflow 结果。
 
+## 11. 会话重建事实基线与收尾复盘
+
+跨会话继续工作时不得只依赖上一会话记忆。开始任何新规划/修复前，必须重新读取并核对当前仓库事实：
+
+1. 当前 `main` HEAD、未合并 PR/分支和最近 Release/tag；
+2. `AGENTS.md`、本标准及相关 canonical OpenSpec specs；
+3. `openspec/changes/` 是否只包含真正 active change，已完成 change 是否已经 archive；
+4. Pi/OpenCode 的 `dist/core-provenance.json` 是否指向预期 Core SHA；
+5. README 中“当前固定版本”、安装/升级示例、命令行为是否与最新 Release 一致；
+6. 若本次工作由真实宿主问题触发，先把实际症状转成可失败的回归测试，再修改实现。
+
+会话结束前必须进行一次 retrospective review，逐项确认：
+
+- 这次暴露的是个例还是通用不变量；能写成通用规则时禁止只留模型名/单场景特例；
+- 规范、实现、测试、README、dist、OpenSpec archive、Release/tag 的状态是否一致；
+- 是否存在“文档声称已保证，但代码尚未实现”的规则；
+- 是否存在“代码已修好，但 README 当前版本/固定安装示例仍指向旧 Release”的发布漂移；
+- 临时 workflow、release branch、生成目录和一次性验证设施是否已清理；
+- 下一会话需要知道的长期规则是否已经落到权威文档，而不是仅存在聊天记录。
+
+如果 retrospective 发现规范已经声明某个硬边界、但实现仍无法通用保证（例如只针对某个模型做回归而没有通用 operational-limit guard），该会话不得以“已完成”结束，应补实现或明确留下 active OpenSpec task。
