@@ -7,4 +7,6 @@
 - [x] Run typecheck, Bun tests, strict OpenSpec validation, closure tests, package/build checks and applicable CI.
 - [x] Run the new gate over every historical archive and record verifiable/legacy counts.
 - [x] Mark this change complete, archive it with the OpenSpec CLI, rerun strict validation and rerun the new closure gate.
+- [x] Remove fuzzy requirement-title reconciliation from the closure gate and replace it with exact title, formal RENAMED, and explicit version-controlled legacy compatibility aliases.
+- [x] Add regression coverage proving similar titles remain independent, RENAMED and legacy aliases reconcile, and invalid compatibility mappings fail closed.
 - [x] README impact: No README change: no user-visible behavior.
