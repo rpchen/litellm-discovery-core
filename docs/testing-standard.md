@@ -143,6 +143,10 @@ PR 描述必须二选一明确声明：
 
 跨仓库规划必须分别关闭各仓库对应 change：Core 的完成状态不能替代 Pi/OpenCode 的 task 更新与 archive，反之亦然。
 
+### 7.1 Archived delta canonical-sync invariant
+
+Archive closure SHALL also verify the archived delta against the canonical specification. For every archived change that contains specification deltas, automation MUST prove that ADDED capabilities/requirements and MODIFIED requirement/scenario semantics are represented in `openspec/specs/`, and that REMOVED requirements or capabilities are absent. A change directory being moved to `openspec/changes/archive/`, an empty active-change list, or passing `openspec validate --strict` alone is not closure evidence. Malformed or historically unverifiable archive content MUST fail closed or be explicitly reported with an auditable compatibility classification; it MUST NOT be silently skipped.
+
 ## 8. Discovery 元数据优先级与可用性不变量
 
 两个插件的核心价值是让宿主**正确使用模型能力**，不是承担计费职责。实现和评审时必须优先保证 protocol、context/input/output、modalities、tools、reasoning/variants 等使用能力正确。
