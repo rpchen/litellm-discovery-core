@@ -9,8 +9,12 @@
 
 ## ADR-002：中立协议和模型类型
 
+- **状态**：已接受（PR1，仍然有效）
+
 `Protocol` 只允许 `chat`、`responses`、`messages`。`ModelSpec` 不包含 `package` 等宿主字段；每个插件在自己的适配层把协议映射到宿主 API。`ModelVariant.settings` 保留中立键值，避免 core 反向依赖插件配置。
 
 ## ADR-003：保持既有行为
+
+- **状态**：已接受（PR1，仍然有效）
 
 基线来自 Pi `a3d7487`，并与 OpenCode `96b00f5` 对照。PR1 保留既有模型过滤、保守合并、models.dev 选择优先级、协议冲突回退、价格换算和阶梯上下文截断规则。发现与抽取无关的问题留在来源仓库的后续变更中。
