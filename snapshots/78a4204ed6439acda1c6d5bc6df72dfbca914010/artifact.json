@@ -1,0 +1,12 @@
+{
+    "schema_version": 2,
+    "commit": "78a4204ed6439acda1c6d5bc6df72dfbca914010",
+    "indexed_at": "2026-10-02T12:37:00Z",
+    "project": "rpchen-litellm-discovery-core-main-78a4204ed6439acda1c6d5bc6df72dfbca914010",
+    "nodes": 1194,
+    "edges": 1964,
+    "original_size": 5308416,
+    "compressed_size": 551874,
+    "compression_level": 9,
+    "reconcile_basis": "git-clean-head"
+}
