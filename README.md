@@ -52,3 +52,7 @@ Core 只负责宿主无关的发现语义和纯数据结构：协议选择、能
 ## Testing and contribution standard
 
 Behavior changes are complete only when every OpenSpec Scenario has traceable automated evidence. Security/failure boundaries require negative tests, and each new user-visible capability requires at least one vertical automated path. See [docs/testing-standard.md](docs/testing-standard.md) for the shared Core/Pi/OpenCode standard.
+
+## 开发代码索引
+
+已入库的代码图谱使用与跨客户端配置、Release 附件及本地同步方式见 [docs/codebase-memory.md](docs/codebase-memory.md)。索引工具不属于插件运行时依赖。
