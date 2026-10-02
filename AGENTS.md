@@ -23,3 +23,7 @@
 ## codebase-memory
 
 仅在本 Git 根目录存在 `.codebase-memory/artifact.json` 时使用索引；结构查询先发现图谱工具并确认 project/root/status。新仓库不得自动建索引。Release 必须生成对应不可变 tag SHA 的图谱附件并回读校验；日常客户端启动按当前检出代码刷新工作索引。流程见 `docs/codebase-memory.md`。
+
+## Claude Code OpenSpec
+
+Claude Code 使用已入库的 `.claude/skills/` 发现 OpenSpec skills；这些入口由官方 `openspec init --tools claude` 生成，不手工独立维护流程。升级时用 `openspec update --force` 刷新已配置目标并审阅差异。`CLAUDE.md` 仅导入本文件，项目规则以本文件为真源。
