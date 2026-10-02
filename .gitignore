@@ -4,3 +4,7 @@ dist/
 *.tgz
 bun.lockb
 .DS_Store
+
+# Generated working indexes; immutable shared snapshots live on codebase-memory-index.
+/.codebase-memory/*
+!/.codebase-memory/selection.json
