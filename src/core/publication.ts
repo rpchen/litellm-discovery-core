@@ -23,6 +23,7 @@ import {
   resolveReasoningLevels,
   resolveReasoningState,
   selectModelsDevRecordDetailed,
+  modelsDevReasoning,
   type CapabilityState,
   type DetailedSelection,
   type SelectedModelRecord,
@@ -350,8 +351,10 @@ export function agreedLimitValue(
 /**
  * Group limit evidence with unknown/conflict semantics, then legality.
  *
- * Illegality is a declared fact: a non-positive declared value is illegal
- * metadata regardless of the group decision.
+ * Illegality is a declared fact: any explicitly declared non-positive
+ * value — deployment or trusted model-level, context or output — is
+ * illegal metadata regardless of the group decision. A declared `0` is
+ * never treated as missing or unknown.
  */
 function assessGroupLimit(
   group: DeploymentGroup,
@@ -373,7 +376,7 @@ function assessGroupLimit(
   const knownSource = modelLevel !== undefined && modelLevel > 0 && field === "context" ? "models.dev" : "litellm"
 
   const illegal = deploymentValues.some((value) => value !== undefined && !(value > 0)) ||
-    (modelLevel !== undefined && !(modelLevel > 0) && field === "context")
+    (modelLevel !== undefined && !(modelLevel > 0))
   if (illegal) {
     return {
       value: 0, valid: false, missing: false, unknown: false, conflict: false, illegal: true,
@@ -647,11 +650,13 @@ export function isPublishableWithDegradedAcceptance(status: ModelConfigurationSt
 // ---------------------------------------------------------------------------
 
 /**
- * Bumped when publication completeness grows. An older number cannot
- * satisfy a newer policy; restoration also re-checks the captured verdict
- * so a same-number entry with unknown capabilities still fails closed.
+ * Bumped when publication completeness grows or captured facts change
+ * meaning. An older number cannot satisfy a newer policy; restoration
+ * also re-checks the captured verdict against the stored spec so a
+ * same-number entry with unknown capabilities or inconsistent facts
+ * still fails closed.
  */
-export const PUBLICATION_SCHEMA_VERSION = 2 as const
+export const PUBLICATION_SCHEMA_VERSION = 3 as const
 
 export interface LastKnownGoodCapabilityVerdict {
   readonly tools: CapabilityState
@@ -661,8 +666,15 @@ export interface LastKnownGoodCapabilityVerdict {
   /** Actual modality sets when known, so live evidence can conflict-check them. */
   readonly inputModalities: readonly string[]
   readonly outputModalities: readonly string[]
-  /** Captured context/output limits used for live conflict detection. */
+  /**
+   * Captured limit facts used for live conflict detection. Each value is
+   * compared only against the same dimension: `context` is total context
+   * (models.dev `limit.context`), `input` is input capacity (LiteLLM
+   * `max_input_tokens` / models.dev `limit.input`), `output` is the
+   * output limit. Never compared across dimensions.
+   */
   readonly context: number
+  readonly input: number
   readonly output: number
 }
 
@@ -691,7 +703,18 @@ export function lastKnownGoodKey(modelName: string): string {
   return modelName.trim().toLowerCase().replace(/[\s_]+/g, "-").replace(/-+/g, "-")
 }
 
-export function capturedPublicationVerdict(assessment: CompletenessAssessment): LastKnownGoodCapabilityVerdict {
+/**
+ * Capture the publication facts proven by an assessment.
+ *
+ * `spec` supplies the input limit (the assessment has no input gate);
+ * when omitted, `input` is `0` and `createLastKnownGoodEntry` backfills it
+ * from the spec it stores, so adapters seeding through the legacy
+ * single-argument call keep producing valid entries.
+ */
+export function capturedPublicationVerdict(
+  assessment: CompletenessAssessment,
+  spec?: ModelSpec,
+): LastKnownGoodCapabilityVerdict {
   return {
     tools: assessment.tools.state,
     reasoning: assessment.reasoning.state,
@@ -700,6 +723,7 @@ export function capturedPublicationVerdict(assessment: CompletenessAssessment): 
     inputModalities: [...assessment.inputModalities.values],
     outputModalities: [...assessment.outputModalities.values],
     context: assessment.context.value,
+    input: spec !== undefined ? Math.floor(spec.limit.input) : 0,
     output: assessment.output.value,
   }
 }
@@ -713,10 +737,19 @@ export function createLastKnownGoodEntry(
   catalog?: unknown,
   options?: BuildOptions,
 ): LastKnownGoodEntry {
-  const proof = captured ?? (catalog !== undefined && options !== undefined
-    ? capturedPublicationVerdict(assessModelConfiguration(group, catalog, options))
+  const raw = captured ?? (catalog !== undefined && options !== undefined
+    ? capturedPublicationVerdict(assessModelConfiguration(group, catalog, options), spec)
     : undefined)
-  if (!proof || !validateCapturedPublication({ spec, captured: proof }).valid) {
+  if (!raw) {
+    throw new Error("LKG can only be captured from a snapshot that passes current publication policy")
+  }
+  // The stored input fact is the spec's input limit; a caller that could
+  // not know it yet contributes no input fact of its own.
+  const proof: LastKnownGoodCapabilityVerdict = {
+    ...raw,
+    input: raw.input > 0 ? Math.floor(raw.input) : Math.floor(spec.limit.input),
+  }
+  if (!validateCapturedPublication({ spec, captured: proof }).valid) {
     throw new Error("LKG can only be captured from a snapshot that passes current publication policy")
   }
   const canonicals = [...new Set(candidateModelIDs(group).map(canonicalModelID))]
@@ -749,13 +782,28 @@ function isCapturedVerdict(value: unknown): value is LastKnownGoodCapabilityVerd
     Array.isArray(value.inputModalities) &&
     Array.isArray(value.outputModalities) &&
     typeof value.context === "number" &&
+    typeof value.input === "number" &&
     typeof value.output === "number"
+}
+
+/** Set equality over canonical modality names; array order never matters. */
+function sameModalitySet(left: readonly string[], right: readonly string[]): boolean {
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+  if (leftSet.size !== rightSet.size) return false
+  for (const value of leftSet) {
+    if (!rightSet.has(value)) return false
+  }
+  return true
 }
 
 /**
  * Re-prove that a stored snapshot still satisfies the current publication
- * completeness policy. Positive limits alone are not enough: unknown tools,
- * reasoning, or modalities, and any illegal captured field, fail closed.
+ * completeness policy AND describes the very spec it would restore.
+ * Positive limits alone are not enough: unknown tools, reasoning, or
+ * modalities, any illegal captured field, and any mismatch between the
+ * captured facts and `entry.spec` (limits, tools, reasoning, modality
+ * sets) fail closed. A forged fact that merely parses is still rejected.
  */
 export function validateCapturedPublication(
   entry: Pick<LastKnownGoodEntry, "spec" | "captured">,
@@ -778,6 +826,28 @@ export function validateCapturedPublication(
   if (entry.spec.reasoningSupported === "unknown") {
     return { valid: false, reason: "LKG spec reasoning is unknown" }
   }
+  // Captured facts must be the facts of the stored spec that restoration
+  // actually publishes; a consistent-looking entry with shifted numbers
+  // (or shifted sets/verdicts) is forged and never restores.
+  if (
+    entry.captured.context !== entry.spec.limit.context ||
+    entry.captured.input !== entry.spec.limit.input ||
+    entry.captured.output !== entry.spec.limit.output
+  ) {
+    return { valid: false, reason: "LKG captured limits do not match the stored spec" }
+  }
+  if ((entry.captured.tools === "supported") !== entry.spec.capabilities.tools) {
+    return { valid: false, reason: "LKG captured tools verdict does not match the stored spec" }
+  }
+  if (entry.captured.reasoning !== entry.spec.reasoningSupported) {
+    return { valid: false, reason: "LKG captured reasoning verdict does not match the stored spec" }
+  }
+  if (!sameModalitySet(entry.captured.inputModalities, entry.spec.capabilities.input)) {
+    return { valid: false, reason: "LKG captured input modalities do not match the stored spec" }
+  }
+  if (!sameModalitySet(entry.captured.outputModalities, entry.spec.capabilities.output)) {
+    return { valid: false, reason: "LKG captured output modalities do not match the stored spec" }
+  }
   return { valid: true, reason: "captured publication verdict still satisfies current completeness policy" }
 }
 
@@ -790,6 +860,7 @@ export function validateLastKnownGood(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
   now = Date.now(),
+  options?: Pick<BuildOptions, "contextTierCap">,
 ): LKGValidation {
   const ageMs = Math.max(0, now - entry.fetchedAtEpochMs)
   if (entry.schemaVersion !== PUBLICATION_SCHEMA_VERSION) {
@@ -816,7 +887,7 @@ export function validateLastKnownGood(
   if (!Number.isFinite(Date.parse(entry.fetchedAt))) {
     return { valid: false, reason: "LKG fetch timestamp is not provable", ageMs }
   }
-  const liveConflict = liveCapabilityConflict(group, entry)
+  const liveConflict = liveCapabilityConflict(group, selected, entry, options)
   if (liveConflict) return { valid: false, reason: liveConflict, ageMs }
   return { valid: true, reason: "identity, provider, schema, and live facts agree", ageMs }
 }
@@ -831,9 +902,14 @@ function explicitBooleanConflict(
 }
 
 /**
- * Modality conflict: any explicitly declared live flag contradicting the
- * captured set. `LKG contains image` + `live supports_vision=false` and
- * `LKG text-only` + `live supports_vision=true` both reject.
+ * Modality conflict over EVERY live explicit declaration, per dimension.
+ * Any deployment's explicit flag contradicting the captured set fails the
+ * whole entry; `undefined` is not a contradiction but can never mask a
+ * sibling deployment's conflicting value. The verdict is a predicate over
+ * the full value set, so deployment array order cannot change it.
+ *
+ * `LKG contains image` + any `live supports_vision=false` and
+ * `LKG text-only` + any `live supports_vision=true` both reject.
  */
 function explicitModalityConflict(
   group: DeploymentGroup,
@@ -842,57 +918,147 @@ function explicitModalityConflict(
 ): boolean {
   const fields = direction === "input" ? INPUT_MODALITY_FIELDS : OUTPUT_MODALITY_FIELDS
   return fields.some(([key, modality]) => {
-    const live = group.deployments
-      .map((deployment) => optionalBoolean(deployment.modelInfo[key]))
-      .find((value) => value !== undefined)
-    if (live === undefined) return false
-    return live !== capturedSet.has(modality)
+    const expected = capturedSet.has(modality)
+    return group.deployments.some((deployment) => {
+      const live = optionalBoolean(deployment.modelInfo[key])
+      return live !== undefined && live !== expected
+    })
   })
 }
 
-/** Illegal live limit values are never hidden behind an LKG restore. */
-function illegalLiveLimit(group: DeploymentGroup, field: "context" | "output"): boolean {
-  const keys = field === "context" ? ["max_input_tokens", "max_tokens"] : ["max_output_tokens", "max_tokens"]
+/** Illegal live deployment limit values are never hidden behind an LKG restore. */
+function illegalLiveLimit(group: DeploymentGroup): boolean {
   return group.deployments.some((deployment) =>
-    keys.some((key) => {
+    ["max_input_tokens", "max_output_tokens", "max_tokens"].some((key) => {
       const value = optionalNumber(deployment.modelInfo[key])
       return value !== undefined && !(value > 0)
     })
   )
 }
 
+/** Raw trusted model-level limit from the effective (possibly inherited) record. */
+function modelLevelLimit(
+  selected: SelectedModelRecord | undefined,
+  field: "context" | "input" | "output",
+): number | undefined {
+  if (!isRecord(selected?.record.limit)) return undefined
+  return optionalNumber((selected!.record.limit as Record<string, unknown>)[field])
+}
+
+/**
+ * Trusted model-level modality set reduced exactly the way the published
+ * spec derives it (text baseline + the direction's mapped dimensions), so
+ * a live models.dev set compares like-for-like with the captured set.
+ */
+function modelsDevDerivedModalitySet(
+  selected: SelectedModelRecord | undefined,
+  direction: "input" | "output",
+): ReadonlySet<string> | undefined {
+  const set = modelsDevModalitySet(selected, direction)
+  if (set === undefined) return undefined
+  const fields = direction === "input" ? INPUT_MODALITY_FIELDS : OUTPUT_MODALITY_FIELDS
+  const derived = new Set<string>(["text"])
+  for (const [, modality] of fields) {
+    if (set.has(modality)) derived.add(modality)
+  }
+  return derived
+}
+
 /**
  * Positive live declarations that contradict the captured capability
- * verdict, including actual modality sets and limit values. Any single
- * conflict invalidates the whole entry (no field-level merge).
+ * verdict. Deployment-level facts (tool/reasoning/modality flags, limit
+ * values) and trusted current model-level facts (record modalities,
+ * context/input/output, tool_call, reasoning) are both checked. Every
+ * comparison is like-for-like inside one capability dimension:
+ *
+ * - `context` (total context) compares only against the trusted
+ *   model-level `limit.context`; a LiteLLM `max_input_tokens` is input
+ *   capacity and never proves or contradicts total context.
+ * - `output` compares every explicit output fact (deployment
+ *   `max_output_tokens`/`max_tokens` and model-level `limit.output`).
+ * - `input` compares the recomputed current input limit (same derivation
+ *   as the published spec) against the captured input; absent live input
+ *   evidence is unknown, not a contradiction.
+ *
+ * Any single conflict invalidates the whole entry (no field-level merge).
  */
-function liveCapabilityConflict(group: DeploymentGroup, entry: LastKnownGoodEntry): string | undefined {
+function liveCapabilityConflict(
+  group: DeploymentGroup,
+  selected: SelectedModelRecord | undefined,
+  entry: LastKnownGoodEntry,
+  options?: Pick<BuildOptions, "contextTierCap">,
+): string | undefined {
   if (!isCapturedVerdict(entry.captured)) return "LKG completeness verdict is missing"
+  const captured = entry.captured
   if (explicitBooleanConflict(
     group.deployments.map((deployment) => optionalBoolean(deployment.modelInfo.supports_function_calling)),
-    entry.captured.tools,
+    captured.tools,
   )) return "live tool declaration conflicts with captured LKG"
   if (explicitBooleanConflict(
     group.deployments.map((deployment) => optionalBoolean(deployment.modelInfo.supports_reasoning)),
-    entry.captured.reasoning,
+    captured.reasoning,
   )) return "live reasoning declaration conflicts with captured LKG"
-  if (explicitModalityConflict(group, new Set(entry.captured.inputModalities), "input")) {
+  if (explicitModalityConflict(group, new Set(captured.inputModalities), "input")) {
     return "live input modality declaration conflicts with captured LKG"
   }
-  if (explicitModalityConflict(group, new Set(entry.captured.outputModalities), "output")) {
+  if (explicitModalityConflict(group, new Set(captured.outputModalities), "output")) {
     return "live output modality declaration conflicts with captured LKG"
   }
-  if (illegalLiveLimit(group, "context")) return "live context limit is illegal; LKG cannot mask invalid metadata"
-  if (illegalLiveLimit(group, "output")) return "live output limit is illegal; LKG cannot mask invalid metadata"
-  const contextValues = deploymentLimitEvidence(group, undefined, "context").deploymentValues
-    .filter((value): value is number => value !== undefined)
-  if (contextValues.some((value) => Math.floor(value) !== entry.captured.context)) {
-    return `live context limit conflicts with captured LKG ${entry.captured.context}`
+  if (illegalLiveLimit(group)) return "live limit metadata is illegal; LKG cannot mask invalid metadata"
+
+  // Trusted current model-level facts. These records (after canonical
+  // inheritance) participated in the captured verdict, so a changed
+  // model-level value is a contradiction even when deployments are silent.
+  const mdContext = modelLevelLimit(selected, "context")
+  const mdOutput = modelLevelLimit(selected, "output")
+  if (mdContext !== undefined && !(mdContext > 0)) {
+    return "live model-level context limit is illegal; LKG cannot mask invalid metadata"
   }
-  const outputValues = deploymentLimitEvidence(group, undefined, "output").deploymentValues
-    .filter((value): value is number => value !== undefined)
-  if (outputValues.some((value) => Math.floor(value) !== entry.captured.output)) {
-    return `live output limit conflicts with captured LKG ${entry.captured.output}`
+  if (mdOutput !== undefined && !(mdOutput > 0)) {
+    return "live model-level output limit is illegal; LKG cannot mask invalid metadata"
+  }
+  const mdTools = optionalBoolean(selected?.record.tool_call)
+  if (mdTools !== undefined && (captured.tools === "supported") !== mdTools) {
+    return "live model-level tool declaration conflicts with captured LKG"
+  }
+  const mdReasoning = modelsDevReasoning(selected)
+  if (mdReasoning !== undefined && (captured.reasoning === "supported") !== mdReasoning) {
+    return "live model-level reasoning declaration conflicts with captured LKG"
+  }
+  const mdInputSet = modelsDevDerivedModalitySet(selected, "input")
+  if (mdInputSet !== undefined && !sameModalitySet([...mdInputSet], captured.inputModalities)) {
+    return "live model-level input modalities conflict with captured LKG"
+  }
+  const mdOutputSet = modelsDevDerivedModalitySet(selected, "output")
+  if (mdOutputSet !== undefined && !sameModalitySet([...mdOutputSet], captured.outputModalities)) {
+    return "live model-level output modalities conflict with captured LKG"
+  }
+
+  // Total context: only a trusted total-context fact participates.
+  if (captured.context > 0 && mdContext !== undefined && Math.floor(mdContext) !== captured.context) {
+    return `live model-level context ${Math.floor(mdContext)} conflicts with captured LKG context ${captured.context}`
+  }
+
+  // Output: every explicit output fact in the output dimension.
+  if (captured.output > 0) {
+    if (mdOutput !== undefined && Math.floor(mdOutput) !== captured.output) {
+      return `live model-level output ${Math.floor(mdOutput)} conflicts with captured LKG output ${captured.output}`
+    }
+    const outputValues = deploymentLimitEvidence(group, selected, "output").deploymentValues
+      .filter((value): value is number => value !== undefined)
+    if (outputValues.some((value) => Math.floor(value) !== captured.output)) {
+      return `live output limit conflicts with captured LKG output ${captured.output}`
+    }
+  }
+
+  // Input: recompute the current input limit with the exact derivation the
+  // published spec uses (deployment max_input_tokens, models.dev
+  // limit.input, context/tier caps) and compare like-for-like.
+  if (captured.input > 0) {
+    const liveInput = mapCapabilities(group, selected, options?.contextTierCap ?? false).limit.input
+    if (liveInput > 0 && Math.floor(liveInput) !== captured.input) {
+      return `live input limit ${Math.floor(liveInput)} conflicts with captured LKG input ${captured.input}`
+    }
   }
   return undefined
 }
@@ -958,11 +1124,18 @@ export function resolveConfigurationWithLKG(
     return { assessment }
   }
   const detailed = selectModelsDevRecordDetailed(group, catalog)
+  // Same effective record the live assessment uses (canonical inheritance
+  // included): model-level facts compared against LKG must be the facts
+  // that would be published live today.
+  const inherited = resolveInheritedRecord(detailed.selected, catalog)
+  const effectiveSelected = inherited
+    ? { ...detailed.selected!, record: inherited.record }
+    : detailed.selected
   const keys = [lastKnownGoodKey(group.modelName)]
   for (const key of keys) {
     const entry = store.get(key)
     if (!entry || !isLKGEntryCompatible(entry)) continue
-    const validation = validateLastKnownGood(entry, group, detailed.selected, now)
+    const validation = validateLastKnownGood(entry, group, effectiveSelected, now, options)
     if (!validation.valid) continue
     const captured = validateCapturedPublication(entry)
     if (!captured.valid) continue

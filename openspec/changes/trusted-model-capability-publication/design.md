@@ -109,16 +109,51 @@ and contradicting model-level metadata, is a conflict
 Minimum/maximum merging never upgrades unknown into known. Limits use
 `aggregateScalarEvidence`; tools/reasoning use `aggregateTriState`;
 modalities aggregate per dimension with the models.dev `modalities`
-array as the only documented complete-set source; group identity is
-checked with `groupIdentityConflict` (distinct explicit providers, or
-routed/base identities not provably equivalent, are ambiguous).
+array as the only documented complete-set source.
+
+Group identity (`groupIdentityConflict`) works over an identity
+equivalence graph:
+
+- Identity nodes keep the provider namespace. `openai/foo`,
+  `anthropic/foo`, and an unqualified `foo` are three distinct
+  identities; an explicit `models_dev_provider` on a deployment is the
+  deterministic namespace proof that qualifies its names. `base_model`
+  follows the same rule — qualified names stay qualified, unqualified
+  names stay unqualified.
+- Edges come from deployment declarations (a deployment's own ids
+  jointly identify it) and from catalog relations (`canonical_model_id`,
+  `aliases`, `equivalent_to`, `equivalents`, `inherits`) with targets
+  kept as written. Reconciliation is decided by connectivity in this
+  graph, which is symmetric: the verdict never depends on deployment
+  array order or on which side stores the relation. The graph proves
+  identity membership only; capability values never inherit through it.
+
+Scalar limits are three distinct dimensions by design: `context` is
+total context (models.dev `limit.context`, with deployment
+`max_input_tokens` usable as capture-time fallback only when no total
+exists), `input` is input capacity (deployment `max_input_tokens`,
+models.dev `limit.input`), `output` is the output limit (deployment
+`max_output_tokens`/`max_tokens`, models.dev `limit.output`). Any
+explicitly declared non-positive value — deployment or model-level,
+context or output — is `illegal`, never missing. Publication gates on
+context/output; adapters consume `limit.context`/`limit.output` and
+ignore `limit.input`, which stays a completeness-neutral diagnostic and
+LKG conflict dimension.
 
 LKG entries store the actual critical facts (tools/reasoning verdicts,
-resolved modality sets, context/output values) plus the verdict flags.
-Restoration re-checks every explicit live fact against them: any
-contradiction — including new limit or modality values — rejects the
-whole entry (no field-level merge), and illegal live metadata keeps
-`invalid-metadata` with no restoration.
+resolved modality sets, context/input/output values) plus the verdict
+flags, and `validateCapturedPublication` proves those facts equal the
+stored `ModelSpec` before anything restores. Restoration re-checks every
+explicit live fact against them, like-for-like per dimension: total
+context only against the trusted model-level `limit.context`, output
+against every explicit output fact, input against the recomputed current
+input limit, and modalities against every deployment's explicit flags
+plus the trusted model-level sets. Any contradiction — including a new
+model-level context/output value — rejects the whole entry (no
+field-level merge), and illegal live metadata keeps `invalid-metadata`
+with no restoration. `PUBLICATION_SCHEMA_VERSION` bumps whenever captured
+shape or meaning changes (v3 adds the `input` fact) so older snapshots
+cannot parse into a stricter policy.
 
 Deterministic inheritance (allowed, with provenance): explicit alias
 targets, `equivalent_to` / `equivalents` declarations, schema-expressed

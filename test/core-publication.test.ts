@@ -4,6 +4,7 @@ import modelsDevFixture from "./fixtures/models-dev.json" with { type: "json" }
 import { buildModelSpecs } from "../src/core/build.ts"
 import { groupLiteLLMDeployments, type DeploymentGroup } from "../src/core/litellm.ts"
 import {
+  groupIdentityConflict,
   resolveInheritedRecord,
   resolveReasoningLevels,
   resolveReasoningState,
@@ -306,6 +307,30 @@ describe("publication: completeness", () => {
     expect(result.illegalFields).toContain("limit.output")
   })
 
+  test("explicit model-level output <= 0 is illegal, not missing", () => {
+    // No deployment declares an output limit, so only the trusted
+    // model-level value speaks — and a declared 0/-1 is illegal metadata.
+    for (const output of [0, -1]) {
+      const result = assess("m", "openai/m", { max_input_tokens: 1000, ...toolReason }, {
+        openai: { models: { m: { id: "m", limit: { context: 1000, output } } } },
+      })
+      expect(result.publishable).toBeFalse()
+      expect(result.status).toBe("invalid-metadata")
+      expect(result.illegalFields).toContain("limit.output")
+      expect(result.missingFields).not.toContain("limit.output")
+    }
+  })
+
+  test("explicit model-level context <= 0 alone is illegal, not missing", () => {
+    const result = assess("m", "openai/m", { max_output_tokens: 100, ...toolReason }, {
+      openai: { models: { m: { id: "m", limit: { context: 0, output: 100 } } } },
+    })
+    expect(result.publishable).toBeFalse()
+    expect(result.status).toBe("invalid-metadata")
+    expect(result.illegalFields).toContain("limit.context")
+    expect(result.missingFields).not.toContain("limit.context")
+  })
+
   test("unknown key capability blocks publication", () => {
     const result = assess("m", "openai/m", { max_input_tokens: 1000, max_output_tokens: 100, supports_reasoning: false }, {
       openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, reasoning: false } } },
@@ -395,6 +420,92 @@ describe("publication: group identity", () => {
     expect(detailed.outcome).toBe("matched")
     const result = assessModelConfiguration(g, catalog, options)
     expect(result.status).toBe("configured")
+  })
+
+  function qualifiedRecord() {
+    return { id: "foo", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+  }
+
+  const qualifiedCatalog = () => ({
+    openai: { models: { foo: qualifiedRecord() } },
+    anthropic: { models: { foo: qualifiedRecord() } },
+  })
+
+  test("provider-qualified identities keep their provider namespace", () => {
+    // openai/foo + anthropic/foo are distinct identities — ambiguous in
+    // both deployment orders, never merged by the shared `foo` name.
+    for (const deployments of [
+      [{ model: "openai/foo" }, { model: "anthropic/foo" }],
+      [{ model: "anthropic/foo" }, { model: "openai/foo" }],
+    ]) {
+      const g = multi("shared", deployments)
+      expect(groupIdentityConflict(g, qualifiedCatalog())).toContain("cannot be proven")
+      expect(selectModelsDevRecordDetailed(g, qualifiedCatalog()).outcome).toBe("ambiguous")
+      expect(assessModelConfiguration(g, qualifiedCatalog(), options).status).toBe("ambiguous")
+    }
+
+    // openai/foo + openai/foo is one identity: no group conflict, and with
+    // a uniquely matching record the model publishes normally.
+    const same = multi("shared", [{ model: "openai/foo" }, { model: "openai/foo" }])
+    expect(groupIdentityConflict(same, qualifiedCatalog())).toBeUndefined()
+    const openaiOnly = { openai: { models: { foo: qualifiedRecord() } } }
+    expect(selectModelsDevRecordDetailed(same, openaiOnly).outcome).toBe("matched")
+    expect(assessModelConfiguration(same, openaiOnly, options).status).toBe("configured")
+
+    // openai/foo + unqualified foo without deterministic proof is NOT
+    // automatically the same identity — in either order.
+    for (const deployments of [
+      [{ model: "openai/foo" }, { model: "foo" }],
+      [{ model: "foo" }, { model: "openai/foo" }],
+    ]) {
+      const g = multi("shared", deployments)
+      expect(groupIdentityConflict(g, qualifiedCatalog())).toContain("cannot be proven")
+      expect(selectModelsDevRecordDetailed(g, qualifiedCatalog()).outcome).toBe("ambiguous")
+      expect(assessModelConfiguration(g, qualifiedCatalog(), options).status).toBe("ambiguous")
+    }
+
+    // An explicit models_dev_provider on the unqualified deployment is the
+    // deterministic namespace proof: both sides resolve to openai/foo.
+    const declared = multi("shared", [{ model: "openai/foo" }, { model: "foo", models_dev_provider: "openai" }])
+    expect(groupIdentityConflict(declared, qualifiedCatalog())).toBeUndefined()
+    const detailed = selectModelsDevRecordDetailed(declared, qualifiedCatalog())
+    expect(detailed.outcome).toBe("matched")
+    expect(detailed.selected?.providerID).toBe("openai")
+    expect(assessModelConfiguration(declared, qualifiedCatalog(), options).status).toBe("configured")
+  })
+
+  test("identity equivalence reconciliation is order-independent", () => {
+    // The only relation is stored on `other/bar`; `vendor/foo` declares
+    // nothing. Connectivity is symmetric, so both orders resolve.
+    const catalog = {
+      vendor: { models: { foo: { id: "foo", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+      other: { models: { bar: { id: "bar", canonical_model_id: "vendor/foo", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    }
+    for (const deployments of [
+      [{ model: "vendor/foo" }, { model: "other/bar" }],
+      [{ model: "other/bar" }, { model: "vendor/foo" }],
+    ]) {
+      const g = multi("shared", deployments)
+      expect(groupIdentityConflict(g, catalog)).toBeUndefined()
+      expect(selectModelsDevRecordDetailed(g, catalog).outcome).toBe("matched")
+      expect(assessModelConfiguration(g, catalog, options).status).toBe("configured")
+    }
+
+    // vendor/foo + anthropic/foo with no relation stay ambiguous in both
+    // orders: a shared unqualified name never bridges two namespaces.
+    const unrelated = {
+      vendor: { models: { foo: { id: "foo" } } },
+      anthropic: { models: { foo: { id: "foo" } } },
+    }
+    for (const deployments of [
+      [{ model: "vendor/foo" }, { model: "anthropic/foo" }],
+      [{ model: "anthropic/foo" }, { model: "vendor/foo" }],
+    ]) {
+      const g = multi("shared", deployments)
+      expect(groupIdentityConflict(g, unrelated)).toContain("cannot be proven")
+      expect(selectModelsDevRecordDetailed(g, unrelated).outcome).toBe("ambiguous")
+      expect(assessModelConfiguration(g, unrelated, options).status).toBe("ambiguous")
+    }
   })
 })
 
@@ -560,19 +671,19 @@ describe("publication: network and LKG", () => {
   function completeSpecFor(modelName: string) {
     const specs = buildModelSpecs(
       { data: [{ model_name: modelName, litellm_params: { model: `openai/${modelName}` }, model_info: { mode: "chat", ...COMPLETE_INFO } }] },
-      { openai: { models: { [modelName]: { id: modelName, limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } },
+      { openai: { models: { [modelName]: { id: modelName, limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } },
       options,
     )
     return specs.find((spec) => spec.id === modelName)!
   }
 
   const GOOD_CATALOG = {
-    openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    openai: { models: { m: { id: "m", limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
   }
 
   function seedLKG(store: ReturnType<typeof createLastKnownGoodStore>, atMs: number) {
     const captureGroup = group("m", "openai/m", { ...COMPLETE_INFO })
-    const catalog = { openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const catalog = { openai: { models: { m: { id: "m", limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
     store.set(lastKnownGoodKey("m"), createLastKnownGoodEntry(
       captureGroup,
       { providerID: "openai", modelID: "m", record: {} },
@@ -627,7 +738,7 @@ describe("publication: network and LKG", () => {
       fetchedAt: new Date(1000).toISOString(),
       fetchedAtEpochMs: 1000,
       spec,
-      captured: { tools: "supported", reasoning: "unsupported", inputModalitiesKnown: true, outputModalitiesKnown: true, inputModalities: ["text"], outputModalities: ["text"], context: 1000, output: 100 },
+      captured: { tools: "supported", reasoning: "unsupported", inputModalitiesKnown: true, outputModalitiesKnown: true, inputModalities: ["text"], outputModalities: ["text"], context: 1000, input: 1000, output: 32000 },
       provenanceDetail: "test",
     })
     const live = assessModelConfiguration(g, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
@@ -1026,12 +1137,18 @@ describe("publication: modality multi-deployment", () => {
 })
 
 describe("publication: forged LKG", () => {
-  function forged(overrides: Partial<LastKnownGoodEntry["captured"]>): LastKnownGoodEntry {
-    const spec = buildModelSpecs(
-      { data: [{ model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat", ...COMPLETE_INFO } }] },
+  function specWith(extraModelInfo: Record<string, unknown> = {}) {
+    return buildModelSpecs(
+      { data: [{ model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat", ...COMPLETE_INFO, ...extraModelInfo } }] },
       {},
       options,
     )[0]!
+  }
+
+  function forged(
+    overrides: Partial<LastKnownGoodEntry["captured"]> = {},
+    spec = specWith(),
+  ): LastKnownGoodEntry {
     return {
       schemaVersion: PUBLICATION_SCHEMA_VERSION,
       modelName: "m",
@@ -1045,10 +1162,11 @@ describe("publication: forged LKG", () => {
         reasoning: "unsupported",
         inputModalitiesKnown: true,
         outputModalitiesKnown: true,
-        inputModalities: ["text"],
-        outputModalities: ["text"],
-        context: 1000,
-        output: 100,
+        inputModalities: [...spec.capabilities.input],
+        outputModalities: [...spec.capabilities.output],
+        context: spec.limit.context,
+        input: spec.limit.input,
+        output: spec.limit.output,
         ...overrides,
       },
       provenanceDetail: "forged",
@@ -1056,12 +1174,46 @@ describe("publication: forged LKG", () => {
   }
 
   test("positive limits with unknown tools, reasoning, or modalities are rejected", () => {
+    expect(validateCapturedPublication(forged()).valid).toBeTrue()
     expect(validateCapturedPublication(forged({ tools: "unknown" })).valid).toBeFalse()
     expect(validateCapturedPublication(forged({ reasoning: "unknown" })).valid).toBeFalse()
     expect(validateCapturedPublication(forged({ inputModalitiesKnown: false })).valid).toBeFalse()
     expect(validateCapturedPublication(forged({ outputModalitiesKnown: false })).valid).toBeFalse()
     const store = createLastKnownGoodStore()
     store.set(lastKnownGoodKey("m"), forged({ tools: "unknown" }))
+    const live = assessModelConfiguration(bareGroup("m"), {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live, bareGroup("m"), {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("captured facts must match the stored spec they would restore", () => {
+    // Consistent snapshot: every captured fact equals the stored spec.
+    expect(validateCapturedPublication(forged()).valid).toBeTrue()
+
+    // Same-shaped snapshot whose modality set merely changes order still
+    // passes: comparison is canonical set equality, never array order.
+    const imageSpec = specWith({ supports_vision: true })
+    expect(imageSpec.capabilities.input).toEqual(["text", "image"])
+    expect(validateCapturedPublication(forged({}, imageSpec)).valid).toBeTrue()
+    expect(validateCapturedPublication(forged({
+      inputModalities: [...imageSpec.capabilities.input].reverse(),
+    }, imageSpec)).valid).toBeTrue()
+
+    // Forged limits: same shape, shifted numbers.
+    expect(validateCapturedPublication(forged({ context: 64000 })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ output: 16000 })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ input: 64000 })).valid).toBeFalse()
+
+    // Forged modality sets: a genuinely different set fails.
+    expect(validateCapturedPublication(forged({ inputModalities: ["text", "image"] })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ outputModalities: ["text", "audio"] })).valid).toBeFalse()
+
+    // Forged capability verdicts.
+    expect(validateCapturedPublication(forged({ tools: "unsupported" })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ reasoning: "supported" })).valid).toBeFalse()
+
+    // A forged entry never restores through the LKG path either.
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("m"), forged({ context: 64000 }))
     const live = assessModelConfiguration(bareGroup("m"), {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     expect(resolveConfigurationWithLKG(live, bareGroup("m"), {}, options, store, 2000).lkg).toBeUndefined()
   })
@@ -1152,6 +1304,8 @@ describe("publication: LKG actual-value conflicts", () => {
   const base = { max_input_tokens: 128000, max_output_tokens: 32000, supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false } as const
   /** Live body during an outage: capability flags only, no limits. */
   const liveBase = { supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false }
+  /** Live body with only tools/reasoning flags: modality evidence stays incomplete. */
+  const sparseLive = { supports_function_calling: true, supports_reasoning: false }
 
   function capture(catalog: unknown, atMs = 1000, captureInfo: Record<string, unknown> = base) {
     const store = createLastKnownGoodStore()
@@ -1163,12 +1317,13 @@ describe("publication: LKG actual-value conflicts", () => {
       catalog,
       options,
     )
+    const spec = specs.find((item) => item.id === "m")!
     store.set(lastKnownGoodKey("m"), createLastKnownGoodEntry(
       captureGroup,
       assessment.identity.selected,
-      specs.find((spec) => spec.id === "m")!,
+      spec,
       atMs,
-      capturedPublicationVerdict(assessment),
+      capturedPublicationVerdict(assessment, spec),
     ))
     return store
   }
@@ -1182,13 +1337,84 @@ describe("publication: LKG actual-value conflicts", () => {
     expect(resolved.assessment.status).toBe("configured-lkg")
   })
 
-  test("live context disagreement rejects the whole entry", () => {
+  test("live input disagreement rejects the whole entry (input capacity is not total context)", () => {
     const store = capture(TRUSTED)
     const group = two("m", [{ ...liveBase, max_input_tokens: 64000 }])
     const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
     expect(resolved.lkg).toBeUndefined()
     expect(resolved.assessment.publishable).toBeFalse()
+    // The rejection is an input-dimension contradiction: captured input is
+    // 128000 while the live input capacity is 64000. It is never reported
+    // as a total-context conflict just because both are token limits.
+    const entry = store.get(lastKnownGoodKey("m"))!
+    expect(entry.captured.context).toBe(128000)
+    expect(entry.captured.input).toBe(128000)
+    const validation = validateLastKnownGood(entry, group, undefined, 2000, options)
+    expect(validation.valid).toBeFalse()
+    expect(validation.reason).toContain("input")
+    expect(validation.reason).not.toContain("context")
+  })
+
+  test("live input capacity matching the captured input is not a conflict even without a total-context fact", () => {
+    // Capture: trusted total context 128000 with a 64000 deployment input.
+    const PARTIAL = {
+      openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    }
+    const store = capture(PARTIAL, 1000, { ...base, max_input_tokens: 64000 })
+    const entry = store.get(lastKnownGoodKey("m"))!
+    expect(entry.captured.context).toBe(128000)
+    expect(entry.captured.input).toBe(64000)
+
+    // Live: same 64000 input, and the trusted total-context fact is gone
+    // (incomplete live metadata) — no fact contradicts the snapshot.
+    const group = two("m", [{ ...liveBase, max_input_tokens: 64000 }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.assessment.publishable).toBeTrue()
+  })
+
+  test("new trusted model-level context conflicts with LKG", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [sparseLive])
+    // models.dev now declares total context 64000 while another field stays
+    // incomplete, so LKG would be attempted — and must refuse.
+    const liveCatalog = { openai: { models: { m: { id: "m", limit: { context: 64000, output: 32000 } } } } }
+    const live = assessModelConfiguration(group, liveCatalog, options)
+    expect(live.status).toBe("discovered-incomplete")
+    expect(resolveConfigurationWithLKG(live, group, liveCatalog, options, store, 2000).lkg).toBeUndefined()
+
+    const entry = store.get(lastKnownGoodKey("m"))!
+    const detailed = selectModelsDevRecordDetailed(group, liveCatalog)
+    const validation = validateLastKnownGood(entry, group, detailed.selected, 2000, options)
+    expect(validation.valid).toBeFalse()
+    expect(validation.reason).toContain("context")
+  })
+
+  test("agreeing trusted model-level context keeps LKG valid", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [sparseLive])
+    const liveCatalog = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false } } } }
+    const live = assessModelConfiguration(group, liveCatalog, options)
+    expect(live.publishable).toBeFalse()
+    const resolved = resolveConfigurationWithLKG(live, group, liveCatalog, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+  })
+
+  test("new trusted model-level output conflicts with LKG", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [sparseLive])
+    const liveCatalog = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 16000 } } } } }
+    const live = assessModelConfiguration(group, liveCatalog, options)
+    expect(live.status).toBe("discovered-incomplete")
+    expect(resolveConfigurationWithLKG(live, group, liveCatalog, options, store, 2000).lkg).toBeUndefined()
+
+    const entry = store.get(lastKnownGoodKey("m"))!
+    const detailed = selectModelsDevRecordDetailed(group, liveCatalog)
+    const validation = validateLastKnownGood(entry, group, detailed.selected, 2000, options)
+    expect(validation.valid).toBeFalse()
+    expect(validation.reason).toContain("output")
   })
 
   test("live output disagreement rejects the whole entry", () => {
@@ -1209,6 +1435,68 @@ describe("publication: LKG actual-value conflicts", () => {
     const withVision = two("m", [{ ...liveBase, supports_vision: true }])
     const live2 = assessModelConfiguration(withVision, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     expect(resolveConfigurationWithLKG(live2, withVision, {}, options, textStore, 2000).lkg).toBeUndefined()
+  })
+
+  function outage(groupBody: Record<string, unknown>[]) {
+    const group = two("m", groupBody)
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    return { group, live }
+  }
+
+  test("LKG modality conflict checks every deployment and ignores deployment order", () => {
+    const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
+    const imageStore = capture(IMAGE_TRUSTED, 1000, { ...base, supports_vision: true })
+    const textStore = capture(TRUSTED)
+    // Body without a vision flag: `undefined` on that dimension only.
+    const flagless = { supports_function_calling: true, supports_reasoning: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false }
+
+    // Captured image: any explicit false among ANY deployment rejects,
+    // regardless of deployment array order. An undefined sibling never
+    // masks the conflicting declaration.
+    const capturedImageRejects: Array<Array<Record<string, unknown>>> = [
+      [{ ...flagless, supports_vision: true }, { ...flagless, supports_vision: false }],
+      [{ ...flagless, supports_vision: false }, { ...flagless, supports_vision: true }],
+      [{ ...flagless, supports_vision: false }, flagless],
+      [flagless, { ...flagless, supports_vision: false }],
+    ]
+    for (const bodies of capturedImageRejects) {
+      const { group, live } = outage(bodies)
+      expect(resolveConfigurationWithLKG(live, group, {}, options, imageStore, 2000).lkg).toBeUndefined()
+    }
+
+    // Captured text-only: any explicit true among ANY deployment rejects,
+    // regardless of deployment array order.
+    const capturedTextRejects: Array<Array<Record<string, unknown>>> = [
+      [{ ...flagless, supports_vision: true }, { ...flagless, supports_vision: false }],
+      [{ ...flagless, supports_vision: false }, { ...flagless, supports_vision: true }],
+      [{ ...flagless, supports_vision: true }, flagless],
+      [flagless, { ...flagless, supports_vision: true }],
+    ]
+    for (const bodies of capturedTextRejects) {
+      const { group, live } = outage(bodies)
+      expect(resolveConfigurationWithLKG(live, group, {}, options, textStore, 2000).lkg).toBeUndefined()
+    }
+
+    // `undefined` is not a contradiction: agreement (or silence) on every
+    // side keeps the entry valid — also order-independent.
+    const capturedImageAccepts: Array<Array<Record<string, unknown>>> = [
+      [{ ...flagless, supports_vision: true }, { ...flagless, supports_vision: true }],
+      [{ ...flagless, supports_vision: true }, flagless],
+      [flagless, { ...flagless, supports_vision: true }],
+    ]
+    for (const bodies of capturedImageAccepts) {
+      const { group, live } = outage(bodies)
+      expect(resolveConfigurationWithLKG(live, group, {}, options, imageStore, 2000).assessment.status).toBe("configured-lkg")
+    }
+    const capturedTextAccepts: Array<Array<Record<string, unknown>>> = [
+      [{ ...flagless, supports_vision: false }, { ...flagless, supports_vision: false }],
+      [{ ...flagless, supports_vision: false }, flagless],
+      [flagless, { ...flagless, supports_vision: false }],
+    ]
+    for (const bodies of capturedTextAccepts) {
+      const { group, live } = outage(bodies)
+      expect(resolveConfigurationWithLKG(live, group, {}, options, textStore, 2000).assessment.status).toBe("configured-lkg")
+    }
   })
 
   test("live reasoning=false rejects a captured reasoning snapshot", () => {

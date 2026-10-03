@@ -28,6 +28,12 @@
 - [x] Apply group-wide evidence to limits (unknown/conflict preserved, no minimum merging) and per-dimension modality evidence (sparse flags never complete a set).
 - [x] Detect group identity conflicts (distinct explicit providers, distinct routed identities without proven equivalence) instead of first-deployment-wins.
 - [x] Store actual modality sets and context/output values in LKG captured verdicts; reject the entire entry when a new live fact contradicts them; never restore LKG over illegal live metadata.
+- [x] Round 3 blockers: LKG modality conflict inspects every live explicit declaration (order-independent, `undefined` never masks a sibling); LKG limit conflict compares context/input/output like-for-like (no `max_input_tokens` vs total context) and includes the latest trusted model-level context/output.
+- [x] Round 3 blockers: provider-qualified deployment identities keep their namespace; identity reconciliation runs over a symmetric equivalence graph so relation direction and deployment order never change the verdict.
+- [x] Round 3 blockers: LKG captured facts must equal the stored `ModelSpec` (limits, tools, reasoning, modality sets); explicit model-level output <= 0 is `invalid-metadata`, never missing; bump `PUBLICATION_SCHEMA_VERSION` for the captured `input` fact.
+- [x] Add Core tests: LKG modality order-independence, limit dimension separation, model-level limit conflicts, provider-namespace identity, equivalence order-independence, forged captured/spec mismatches, model-level output illegality.
+- [x] Add OpenSpec scenarios for all round 3 behaviors; extend `docs/testing-standard.md` with the provider-namespace, like-for-like LKG comparison, and captured↔spec long-term rules.
+- [x] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`, `npm run test:openspec-closure`.
 - [ ] Archive the change with OpenSpec CLI and re-run strict validation (deferred: Pi/OpenCode dist, package verification, and real-host E2E still require the merged Core SHA).
 
 ## Cross-repository follow-ups (owned by the adapter repositories)

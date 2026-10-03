@@ -28,6 +28,10 @@ Core SHALL define a formal, testable rule deciding whether a discovered model's 
 - **WHEN** the merged output limit is zero
 - **THEN** Core treats it as illegal/insufficient and the model is not normally publishable
 
+#### Scenario: Explicit model-level output <= 0 is illegal, not missing
+- **WHEN** the trusted model-level record explicitly declares a non-positive output limit and no deployment declares one
+- **THEN** Core reports `invalid-metadata` with an illegal output field, never a missing one
+
 #### Scenario: Unknown key capability blocks normal publication
 - **WHEN** tool calling or reasoning support is unknown
 - **THEN** Core reports the model not publishable and names the unknown field
@@ -101,6 +105,14 @@ Core SHALL resolve metadata identity only through canonical identity, provider i
 - **WHEN** deployments name different identities but trusted metadata declares those identities equivalent or canonically the same
 - **THEN** Core resolves the group deterministically with provenance
 
+#### Scenario: Provider-qualified routed identities keep their namespace
+- **WHEN** one group routes to `openai/foo` and `anthropic/foo`, or to `openai/foo` and an unqualified `foo` with no deterministic metadata proof
+- **THEN** Core keeps the identities distinct and reports `ambiguous`; an explicit `models_dev_provider` on the unqualified deployment is the deterministic proof that reconciles it
+
+#### Scenario: Identity equivalence reconciliation is order-independent
+- **WHEN** a metadata relation (`canonical_model_id`, alias, equivalent, inherits) stored on only one of two identities proves they belong to the same identity component
+- **THEN** Core reaches the same resolved/ambiguous verdict for every deployment order; the graph decides by connectivity, and capability values never inherit through it
+
 ### Requirement: Group-wide limit evidence
 Core SHALL treat context and output limits as group-wide evidence. Deployment values that agree are known; any partially-declared field stays unknown; disagreement between deployments, or between a full declaration set and contradicting model-level metadata, is a conflict that blocks normal publication. Missing values are never filtered, and minimum/maximum merging must never upgrade unknown or conflict into known.
 
@@ -119,6 +131,10 @@ Core SHALL treat context and output limits as group-wide evidence. Deployment va
 #### Scenario: Model-level metadata fills only a fully undeclared field
 - **WHEN** no deployment declares a limit but a trusted canonical record declares one
 - **THEN** Core reports the model-level value as known; when a declared deployment disagrees with it, Core reports a conflict
+
+#### Scenario: context, input, and output are distinct scalar dimensions
+- **WHEN** limits are derived or compared
+- **THEN** `context` is total context (models.dev `limit.context`, with the documented deployment `max_input_tokens` fallback only when no total exists), `input` is input capacity (LiteLLM `max_input_tokens`, models.dev `limit.input`), and `output` is the output limit (LiteLLM `max_output_tokens`/`max_tokens`, models.dev `limit.output`); no check ever compares one dimension against another
 
 ### Requirement: Per-dimension modality evidence
 Core SHALL treat modality flags as sparse per-dimension evidence. Declaring one modality flag never completes the direction's set; only a documented complete-set source (the trusted models.dev `modalities` array) fills undeclared dimensions. Multi-deployment aggregation follows the same tri-state rules as other capabilities.
@@ -177,15 +193,31 @@ Core SHALL allow ordinary degradation only for `discovered-incomplete` with a re
 - **THEN** Core rejects the acceptance and does not report success
 
 ### Requirement: LKG completeness revalidation
-Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, or conflicting live facts invalidate the entry. The entry stores the actual critical capability facts (tools/reasoning verdicts, resolved modality sets, context/output values) so any newly observed explicit live fact can be compared against them.
+Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, captured facts that do not match the stored `ModelSpec`, or conflicting live facts invalidate the entry. The entry stores the actual critical capability facts (tools/reasoning verdicts, resolved modality sets, context/input/output values) so any newly observed explicit live fact can be compared against them like-for-like: total context only against trusted total-context facts, input capacity only against input facts, output only against output facts, and every modality comparison across all deployments at once.
 
 #### Scenario: Forged complete limits with unknown capabilities are rejected
 - **WHEN** an LKG entry has positive limits but captured tools, reasoning, or modalities are unknown
 - **THEN** Core rejects the entry and does not report `configured-lkg`
 
+#### Scenario: Captured facts must match the stored ModelSpec
+- **WHEN** a stored entry's captured limits, tools/reasoning verdicts, or modality sets differ from the `ModelSpec` stored beside them
+- **THEN** Core rejects the entry as forged; matching is canonical set equality for modalities, never array order
+
 #### Scenario: New live fact conflicts with stored values
 - **WHEN** any explicit live declaration (tool, reasoning, modality flag, or limit value) contradicts the stored snapshot's captured facts
 - **THEN** Core rejects the entire entry — no field-level merge — and the model stays incomplete/unavailable
+
+#### Scenario: LKG modality conflict inspects every deployment and ignores order
+- **WHEN** any live deployment's explicit modality declaration contradicts the captured set — including a conflicting sibling next to an undeclared (`undefined`) flag —
+- **THEN** Core rejects the whole entry, and the verdict is identical for every deployment order; `undefined` alone never rejects and never masks a sibling's conflict
+
+#### Scenario: New trusted model-level limits conflict with LKG
+- **WHEN** the current trusted model-level record declares a total context or output value different from the captured facts while live completeness fails elsewhere
+- **THEN** Core rejects the stored entry instead of restoring it
+
+#### Scenario: Input capacity never contradicts total context
+- **WHEN** a live deployment declares a different `max_input_tokens` while no trusted live total-context fact exists
+- **THEN** Core never reports a context conflict from that fact; the input dimension decides via the captured input, and an equal input keeps the entry valid
 
 #### Scenario: Same live fact does not invalidate
 - **WHEN** every explicit live fact agrees with the stored snapshot

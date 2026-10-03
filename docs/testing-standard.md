@@ -169,6 +169,9 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 - modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only；sparse flag 只证明该维度，不证明整个 direction。
 - degradation 只允许已确认身份的 incomplete，以及 metadata source 失败且无有效 LKG 的 unavailable。`ambiguous`、`invalid-metadata`、单纯 `unmatched`、`configured` 与 `configured-lkg` 不得普通 accept。
 - LKG 必须由 Core 重新证明仍满足当前 publication policy，不能只检查正数 limits 或相信 adapter 当初存入的是 configured；任一新的明确 live capability fact 与 LKG snapshot 冲突时，整份 LKG fail closed，不得用旧 snapshot 覆盖新的可信事实。
+- Provider-qualified model identity MUST retain the provider namespace during trusted group reconciliation; identical unqualified model names under different providers are not the same identity without deterministic metadata proof, and relation reconciliation must be order-independent (connectivity, not directionality).
+- LKG conflict comparison MUST compare like-for-like capability dimensions; input capacity must not be compared to total context merely because both are token limits, and the latest trusted model-level context/output facts must participate in the comparison.
+- Stored LKG evidence and the `ModelSpec` restored from it MUST describe the same critical capability facts (limits, tools/reasoning verdicts, modality sets); an entry whose captured facts diverge from its stored spec is forged and never restores.
 - Core 是 publication policy 的唯一业务真源；adapter 不得复制这些判断。
 
 价格与能力必须分开判断：
