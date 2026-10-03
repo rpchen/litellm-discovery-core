@@ -27,7 +27,7 @@
     "test:package": "node scripts/test-package.mjs",
     "validate:spec": "openspec validate --all --strict --no-interactive",
     "test:openspec-closure": "node --test scripts/check-openspec-closure.test.mjs && node scripts/check-openspec-closure.mjs",
-    "test:codebase-memory": "node --test scripts/codebase-memory.test.mjs"
+    "test:codebase-memory": "node --test scripts/codebase-memory.test.mjs scripts/codebase-memory-main.test.mjs"
   },
   "devDependencies": {
     "@fission-ai/openspec": "1.13.2",
