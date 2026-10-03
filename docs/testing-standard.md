@@ -151,17 +151,25 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 
 两个插件的核心价值是让宿主**正确使用模型能力**，不是承担计费职责。实现和评审时必须优先保证 protocol、context/input/output、modalities、tools、reasoning/variants 等使用能力正确。
 
-models.dev enrichment 的记录选择顺序固定为：
+可信 publication 的 identity resolution 只使用可验证关系：
 
 1. LiteLLM 显式 `models_dev_provider`；
 2. models.dev `canonical_model_id` 可识别且原厂 provider 记录存在时的原厂记录；
-3. 仅对缺少 canonical identity 的旧/测试 catalog 使用 legacy family heuristic；
+3. 明确 alias、`equivalent_to` / `equivalents`、`inherits` 或其他 metadata 中确定可追踪的 identity relation；
 4. OpenRouter；
 5. OpenCode；
 6. 全局唯一剩余记录；
-7. 仍有多个无法消歧的 reseller 时才 unmatched。
+7. 仍有多个无法消歧的记录时保持 `ambiguous`，不得强行选择。
 
-不得因为 models.dev 新增了一个模型家族就首先扩充硬编码厂商正则；必须优先利用上游 canonical identity。
+模型名字、family substring、邻近型号和经验规则不得参与可信 publication identity resolution，也不得据此推断 tools、reasoning、modalities 或 limits。若历史非发布兼容 API 仍保留 family-name helper，它必须与 `selectModelsDevRecord` / `selectModelsDevRecordDetailed` / `assessModelConfiguration` / `buildPublicationResult` 隔离，且不得影响 `configured` 判定。
+
+长期不变量：
+
+- `unknown` 不得自动变成 `false`，也不得自动变成 `true`；多 deployment 聚合不得先丢弃缺失声明再得出 supported/unsupported。
+- modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only。
+- degradation 只允许已确认身份的 incomplete，以及 metadata source 失败且无有效 LKG 的 unavailable。`ambiguous`、`invalid-metadata`、单纯 `unmatched`、`configured` 与 `configured-lkg` 不得普通 accept。
+- LKG 必须由 Core 重新证明仍满足当前 publication policy，不能只检查正数 limits 或相信 adapter 当初存入的是 configured。
+- Core 是 publication policy 的唯一业务真源；adapter 不得复制这些判断。
 
 价格与能力必须分开判断：
 

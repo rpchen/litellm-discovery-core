@@ -89,6 +89,58 @@ Core SHALL resolve metadata identity only through canonical identity, provider i
 - **WHEN** only a model name, family substring, or neighbor-model values suggest a capability
 - **THEN** Core reports `unknown` and never fills limits, tools, reasoning, modalities, or levels from the guess
 
+#### Scenario: Family-name provider matches stay ambiguous
+- **WHEN** the same model id exists under a name-implied provider and another provider, with no canonical id, explicit provider, alias, equivalent, or inherits relation
+- **THEN** trusted publication reports `ambiguous` and does not select the name-implied provider
+
+### Requirement: Modality completeness
+Core SHALL treat input and output modalities as publication completeness fields. A text-only baseline without explicit evidence is unknown, not confirmed text-only. There is no implicit modality baseline that counts as known.
+
+#### Scenario: Explicit text-only is known
+- **WHEN** models.dev or LiteLLM explicitly declares text-only modalities
+- **THEN** Core marks the modality known and the model may be normally publishable
+
+#### Scenario: Missing modality evidence blocks publication
+- **WHEN** neither LiteLLM nor a trusted models.dev record declares input or output modalities
+- **THEN** Core names `capabilities.input` or `capabilities.output` as unknown and does not report `configured`
+
+#### Scenario: Explicit image is preserved without name inference
+- **WHEN** trusted metadata declares image input
+- **THEN** Core keeps image, and a model name containing vision/image/qwen does not add image, audio, or video by itself
+
+### Requirement: Tri-state multi-deployment aggregation
+Core SHALL aggregate tool and reasoning evidence across deployments without dropping unknown. `true + unknown` and `false + unknown` stay unknown. Model-level trusted evidence may fill a group only when every deployment declaration is absent; an explicit deployment value that disagrees with that evidence is a conflict and stays unknown.
+
+#### Scenario: Agreement stays known
+- **WHEN** every deployment explicitly agrees on true or every deployment explicitly agrees on false
+- **THEN** Core reports supported or unsupported respectively
+
+#### Scenario: Missing deployment evidence is not dropped
+- **WHEN** one deployment declares a boolean and another omits the field
+- **THEN** Core reports unknown for that capability and does not publish normally
+
+#### Scenario: Conflict stays unknown
+- **WHEN** deployments disagree, or an explicit deployment value disagrees with trusted model-level metadata
+- **THEN** Core reports unknown with conflict provenance
+
+### Requirement: Degradation eligibility
+Core SHALL allow ordinary degradation only for `discovered-incomplete` with a resolved identity and for `metadata-unavailable`. It SHALL reject `ambiguous`, `invalid-metadata`, unmatched-but-incomplete, `configured`, `configured-lkg`, and already `degraded`.
+
+#### Scenario: Incomplete and unavailable may be accepted
+- **WHEN** the user accepts a discovered-incomplete model with resolved identity, or a metadata-unavailable model with no valid LKG
+- **THEN** Core returns `degraded` and keeps the gaps
+
+#### Scenario: Identity and illegal states are rejected
+- **WHEN** the user accepts an ambiguous, invalid-metadata, or unmatched-incomplete model
+- **THEN** Core rejects the acceptance and does not report success
+
+### Requirement: LKG completeness revalidation
+Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, or conflicting live facts invalidate the entry.
+
+#### Scenario: Forged complete limits with unknown capabilities are rejected
+- **WHEN** an LKG entry has positive limits but captured tools, reasoning, or modalities are unknown
+- **THEN** Core rejects the entry and does not report `configured-lkg`
+
 ### Requirement: Failure taxonomy without pseudo-complete publication
 Core SHALL classify metadata failures and SHALL never emit a normally-published model from a failed fetch via defaults.
 

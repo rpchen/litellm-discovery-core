@@ -30,10 +30,15 @@ export type ModelsDevMatchKind = "exact" | "canonical" | "alias"
 export type ModelsDevSelectionSource =
   | "explicit-provider"
   | "canonical-original"
-  | "family-original"
   | "openrouter-fallback"
   | "opencode-fallback"
   | "unique-match"
+  /**
+   * Isolated non-publication compatibility only. Never produced by
+   * `selectModelsDevRecord` or `selectModelsDevRecordDetailed`, and never
+   * eligible for trusted publication or models.dev price fallback.
+   */
+  | "legacy-family-compatibility"
 
 export interface SelectedModelRecord {
   providerID: string
@@ -54,8 +59,7 @@ export function canUseSelectedModelsDevPrice(selected: SelectedModelRecord | und
   // construct SelectedModelRecord manually without going through the selector.
   return selected?.selectionSource === undefined ||
     selected.selectionSource === "explicit-provider" ||
-    selected.selectionSource === "canonical-original" ||
-    selected.selectionSource === "family-original"
+    selected.selectionSource === "canonical-original"
 }
 
 export interface ModelVariant {
@@ -71,22 +75,22 @@ export interface ReasoningSupportResolution {
   readonly conflict: boolean
 }
 
-interface FamilyProviders {
-  primary: string
-  alternatives: string[]
-}
-
-const FAMILY_RULES: Array<[RegExp, FamilyProviders]> = [
-  [/^(?:gpt-|o\d|.*codex)/, { primary: "openai", alternatives: [] }],
-  [/^claude-/, { primary: "anthropic", alternatives: [] }],
-  [/^gemini-/, { primary: "google", alternatives: [] }],
-  [/^grok-/, { primary: "xai", alternatives: [] }],
-  [/^glm-/, { primary: "zai", alternatives: ["zhipuai"] }],
-  [/^deepseek-/, { primary: "deepseek", alternatives: [] }],
-  [/^kimi-/, { primary: "moonshotai", alternatives: ["moonshotai-cn"] }],
-  [/^mimo-/, { primary: "xiaomi", alternatives: [] }],
-  [/^minimax-/, { primary: "minimax", alternatives: ["minimax-cn"] }],
-  [/^qwen/, { primary: "alibaba", alternatives: ["alibaba-cn"] }],
+/**
+ * Name-prefix provider guesses. Isolated from trusted publication: neither
+ * `selectModelsDevRecord` nor `selectModelsDevRecordDetailed` consults this
+ * table. A model name starting with `qwen` is not evidence of `alibaba`.
+ */
+const LEGACY_FAMILY_COMPATIBILITY_RULES: Array<[RegExp, string]> = [
+  [/^(?:gpt-|o\d|.*codex)/, "openai"],
+  [/^claude-/, "anthropic"],
+  [/^gemini-/, "google"],
+  [/^grok-/, "xai"],
+  [/^glm-/, "zai"],
+  [/^deepseek-/, "deepseek"],
+  [/^kimi-/, "moonshotai"],
+  [/^mimo-/, "xiaomi"],
+  [/^minimax-/, "minimax"],
+  [/^qwen/, "alibaba"],
 ]
 
 function providers(catalog: unknown): Array<[string, Record<string, unknown>]> {
@@ -168,15 +172,17 @@ export function candidateModelIDs(group: DeploymentGroup): string[] {
   return result
 }
 
-export function familyProviders(group: DeploymentGroup): FamilyProviders | undefined {
-  for (const deployment of group.deployments) {
-    const explicit = optionalString(deployment.modelInfo.models_dev_provider)
-    if (explicit) return { primary: explicit, alternatives: [] }
-  }
-
+/**
+ * Non-publication compatibility helper. Returns a name-prefix provider guess
+ * and never participates in trusted identity resolution.
+ *
+ * Callers that need a publishable identity must use
+ * `selectModelsDevRecord` / `selectModelsDevRecordDetailed`.
+ */
+export function legacyFamilyCompatibilityProvider(group: DeploymentGroup): string | undefined {
   for (const candidate of candidateModelIDs(group)) {
     const normalized = canonicalModelID(candidate)
-    const match = FAMILY_RULES.find(([pattern]) => pattern.test(normalized))
+    const match = LEGACY_FAMILY_COMPATIBILITY_RULES.find(([pattern]) => pattern.test(normalized))
     if (match) return match[1]
   }
   return undefined
@@ -210,63 +216,21 @@ function canonicalProviderCandidates(matches: SelectedModelRecord[]): string[] {
   return [...providers]
 }
 
+/**
+ * Trusted identity resolution. Provider choice uses only verifiable
+ * relations: explicit `models_dev_provider`, `canonical_model_id`,
+ * alias / equivalent / inherits metadata consumed by matching, OpenRouter,
+ * OpenCode, or a genuinely unique remaining record.
+ *
+ * Model-name prefixes and family substrings never select a provider.
+ * Multiple remaining records stay unresolved (`undefined`) so publication
+ * can report `ambiguous` instead of guessing.
+ */
 export function selectModelsDevRecord(
   group: DeploymentGroup,
   catalog: unknown,
 ): SelectedModelRecord | undefined {
-  const allProviders = providers(catalog)
-  const family = familyProviders(group)
-  const heuristicPreferred = family ? [family.primary, ...family.alternatives] : []
-
-  for (const candidate of candidateModelIDs(group)) {
-    const matches = allProviders.flatMap(([providerID, models]) => {
-      const match = findMatch(models, candidate)
-      return match ? [selected(providerID, candidate, match)] : []
-    })
-    if (matches.length === 0) continue
-
-    // 1. Explicit provider metadata from LiteLLM always wins.
-    const explicitProvider = group.deployments
-      .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase())
-      .find((value): value is string => value !== undefined)
-    if (explicitProvider) {
-      const explicit = matches.find((match) => match.providerID.toLowerCase() === explicitProvider)
-      if (explicit) return { ...explicit, selectionSource: "explicit-provider" }
-    }
-
-    // 2. Prefer an original provider inferred from models.dev's own
-    // canonical_model_id metadata. This avoids requiring a hard-coded family
-    // rule every time models.dev adds a new model family.
-    const canonicalProviders = canonicalProviderCandidates(matches)
-    if (canonicalProviders.length === 1) {
-      const original = matches.find(
-        (match) => match.providerID.toLowerCase() === canonicalProviders[0],
-      )
-      if (original) return { ...original, selectionSource: "canonical-original" }
-    }
-
-    // 3. Legacy family heuristics remain only as a compatibility fallback for
-    // older/synthetic catalogs that do not carry canonical_model_id.
-    for (const providerID of heuristicPreferred) {
-      const preferred = matches.find(
-        (match) => match.providerID.toLowerCase() === providerID.toLowerCase(),
-      )
-      if (preferred) return { ...preferred, selectionSource: "family-original" }
-    }
-
-    // 4. When the original provider is not present, prefer capability-rich,
-    // broadly maintained gateway records in the agreed stable order.
-    const openRouter = matches.find((match) => match.providerID.toLowerCase() === "openrouter")
-    if (openRouter) return { ...openRouter, selectionSource: "openrouter-fallback" }
-    const openCode = matches.find((match) => match.providerID.toLowerCase() === "opencode")
-    if (openCode) return { ...openCode, selectionSource: "opencode-fallback" }
-
-    // 5. A genuinely unique remaining match is safe; otherwise keep the
-    // ambiguity observable instead of choosing an arbitrary reseller.
-    if (matches.length === 1) return { ...matches[0]!, selectionSource: "unique-match" }
-  }
-
-  return undefined
+  return selectModelsDevRecordDetailed(group, catalog).selected
 }
 
 function modelsDevReasoning(selected: SelectedModelRecord | undefined): boolean | undefined {
@@ -280,24 +244,20 @@ export function resolveReasoningSupport(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
 ): ReasoningSupportResolution {
-  const modelsDev = modelsDevReasoning(selected)
+  const state = resolveReasoningState(group, selected)
   const explicit = group.deployments.map((deployment) =>
     optionalBoolean(deployment.modelInfo.supports_reasoning)
   )
-  const conflict = modelsDev !== undefined &&
-    explicit.some((value) => value !== undefined && value !== modelsDev)
-  const supported = explicit.every((value) => value ?? modelsDev ?? false)
-
-  if (explicit.every((value) => value !== undefined)) {
-    return { supported, source: "litellm", conflict }
+  const source = explicit.every((value) => value !== undefined)
+    ? "litellm"
+    : state.source
+  return {
+    // Boolean transport cannot carry unknown. Publication uses
+    // resolveReasoningState and never treats this false as confirmed.
+    supported: state.state === "supported",
+    source,
+    conflict: state.conflict,
   }
-  if (explicit.every((value) => value === undefined) && modelsDev !== undefined) {
-    return { supported, source: "models.dev", conflict }
-  }
-  if (explicit.some((value) => value !== undefined) || modelsDev !== undefined) {
-    return { supported, source: "derived", conflict }
-  }
-  return { supported: false, source: "default", conflict: false }
 }
 
 function effortVariants(options: unknown, protocol: Protocol): ModelVariant[] {
@@ -379,21 +339,11 @@ export function resolveReasoningState(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
 ): ReasoningStateResolution {
-  const modelsDev = modelsDevReasoning(selected)
-  const explicit = group.deployments.map((deployment) =>
-    optionalBoolean(deployment.modelInfo.supports_reasoning)
+  const aggregated = aggregateTriState(
+    group.deployments.map((deployment) => optionalBoolean(deployment.modelInfo.supports_reasoning)),
+    modelsDevReasoning(selected),
   )
-  const defined = explicit.filter((value): value is boolean => value !== undefined)
-  const conflict = modelsDev !== undefined && defined.some((value) => value !== modelsDev)
-
-  if (defined.length > 0) {
-    if (defined.every((value) => value === true)) return { state: "supported", source: "litellm", conflict }
-    if (defined.every((value) => value === false)) return { state: "unsupported", source: "litellm", conflict }
-    return { state: "unknown", source: "litellm", conflict: true }
-  }
-  if (modelsDev === true) return { state: "supported", source: "models.dev", conflict }
-  if (modelsDev === false) return { state: "unsupported", source: "models.dev", conflict }
-  return { state: "unknown", source: "default", conflict: false }
+  return { state: aggregated.state, source: aggregated.source, conflict: aggregated.conflict }
 }
 
 export interface ReasoningLevelsResolution {
@@ -430,13 +380,19 @@ export interface DetailedSelection {
   readonly ambiguousProviders: readonly string[]
 }
 
+function explicitModelsDevProvider(group: DeploymentGroup): string | undefined {
+  return group.deployments
+    .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase())
+    .find((value): value is string => value !== undefined)
+}
+
 /**
  * Detailed models.dev selection outcome.
  *
- * Mirrors `selectModelsDevRecord` precedence exactly (explicit provider >
- * canonical-original > legacy family hint for catalogs without
- * canonical_model_id > OpenRouter > OpenCode > unique match) but keeps
- * `ambiguous` observable instead of collapsing it into `undefined`.
+ * Trusted precedence is explicit provider > canonical-original >
+ * OpenRouter > OpenCode > unique match. Name/family heuristics are not a
+ * step. Multiple remaining records stay `ambiguous` instead of collapsing
+ * into an arbitrary reseller or a name-prefix provider.
  */
 export function selectModelsDevRecordDetailed(
   group: DeploymentGroup,
@@ -444,8 +400,6 @@ export function selectModelsDevRecordDetailed(
 ): DetailedSelection {
   const candidates = candidateModelIDs(group)
   const allProviders = providers(catalog)
-  const family = familyProviders(group)
-  const heuristicPreferred = family ? [family.primary, ...family.alternatives] : []
 
   for (const candidate of candidates) {
     const matches = allProviders.flatMap(([providerID, models]) => {
@@ -454,9 +408,7 @@ export function selectModelsDevRecordDetailed(
     })
     if (matches.length === 0) continue
 
-    const explicitProvider = group.deployments
-      .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase())
-      .find((value): value is string => value !== undefined)
+    const explicitProvider = explicitModelsDevProvider(group)
     if (explicitProvider) {
       const explicit = matches.find((match) => match.providerID.toLowerCase() === explicitProvider)
       if (explicit) return { outcome: "matched", selected: { ...explicit, selectionSource: "explicit-provider" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
@@ -468,13 +420,6 @@ export function selectModelsDevRecordDetailed(
         (match) => match.providerID.toLowerCase() === canonicalProviders[0],
       )
       if (original) return { outcome: "matched", selected: { ...original, selectionSource: "canonical-original" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
-    }
-
-    for (const providerID of heuristicPreferred) {
-      const preferred = matches.find(
-        (match) => match.providerID.toLowerCase() === providerID.toLowerCase(),
-      )
-      if (preferred) return { outcome: "matched", selected: { ...preferred, selectionSource: "family-original" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
     }
 
     const openRouter = matches.find((match) => match.providerID.toLowerCase() === "openrouter")
@@ -493,6 +438,44 @@ export function selectModelsDevRecordDetailed(
   }
 
   return { outcome: "unmatched", selected: undefined, candidates, matchCount: 0, ambiguousProviders: [] }
+}
+
+/**
+ * Tri-state aggregation for one capability across deployments.
+ *
+ * `undefined` is unknown, not a value that can be dropped. A missing
+ * deployment declaration therefore cannot turn the group into supported
+ * or unsupported. Model-level evidence fills only an entirely unevidenced
+ * group; an explicit deployment disagreement with that evidence stays a
+ * conflict.
+ */
+export function aggregateTriState(
+  deploymentValues: readonly (boolean | undefined)[],
+  modelLevel?: boolean,
+): { state: CapabilityState; conflict: boolean; source: "litellm" | "models.dev" | "derived" | "default" } {
+  const defined = deploymentValues.filter((value): value is boolean => value !== undefined)
+  const hasUnknown = deploymentValues.some((value) => value === undefined)
+  const agreesWithModel = modelLevel === undefined || defined.every((value) => value === modelLevel)
+  const deploymentConflict = defined.some((value) => value === true) && defined.some((value) => value === false)
+  const modelConflict = modelLevel !== undefined && defined.some((value) => value !== modelLevel)
+
+  if (defined.length === 0) {
+    if (modelLevel === true) return { state: "supported", conflict: false, source: "models.dev" }
+    if (modelLevel === false) return { state: "unsupported", conflict: false, source: "models.dev" }
+    return { state: "unknown", conflict: false, source: "default" }
+  }
+  if (deploymentConflict || hasUnknown || !agreesWithModel) {
+    return {
+      state: "unknown",
+      conflict: deploymentConflict || modelConflict,
+      source: modelLevel === undefined ? "litellm" : "derived",
+    }
+  }
+  return {
+    state: defined[0] === true ? "supported" : "unsupported",
+    conflict: false,
+    source: "litellm",
+  }
 }
 
 export interface InheritedRecord {

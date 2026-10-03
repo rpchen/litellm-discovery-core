@@ -19,7 +19,13 @@
 - [x] Add Core tests: explicit degradation (no-LKG failure blocked, incomplete blocked, accepted-stays-degraded, degraded-not-configured) (4+ scenarios).
 - [x] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`, `npm run test:openspec-closure`.
 - [x] Update README: no change required — Core adds neutral API and no user-visible behavior on its own (PR body records `No README change: no user-visible behavior`).
-- [ ] Archive the change with OpenSpec CLI and re-run strict validation (deferred: Pi/OpenCode adapters must consume and validate this Core SHA first; archive once the cross-repo chain is reviewed).
+- [x] Remove family-name provider preference from trusted publication identity resolution; keep any name-prefix helper isolated from publication.
+- [x] Treat unknown input/output modalities as publication completeness gaps.
+- [x] Aggregate tools and reasoning with one tri-state rule so unknown cannot be filtered into true or false.
+- [x] Restrict ordinary degradation to discovered-incomplete and metadata-unavailable; reject ambiguous, invalid-metadata, and unmatched-incomplete.
+- [x] Revalidate LKG against the current publication verdict, not only positive limits.
+- [x] Sync `docs/testing-standard.md` so family heuristics no longer participate in trusted publication.
+- [ ] Archive the change with OpenSpec CLI and re-run strict validation (deferred: Pi/OpenCode dist, package verification, and real-host E2E still require the merged Core SHA).
 
 ## Cross-repository follow-ups (owned by the adapter repositories)
 

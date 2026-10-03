@@ -18,6 +18,7 @@ import {
 import {
   canonicalModelID,
   candidateModelIDs,
+  aggregateTriState,
   resolveInheritedRecord,
   resolveReasoningLevels,
   resolveReasoningState,
@@ -320,19 +321,11 @@ export function assessModelConfiguration(
   const protocol: Protocol = resolveProtocol(group, options.protocolOverrides)
   const mapped = mapCapabilities(group, effectiveSelected, options.contextTierCap)
 
-  const mdTools = optionalBoolean(effectiveSelected?.record.tool_call)
-  const liteLLMTools = group.deployments.map((d) => optionalBoolean(d.modelInfo.supports_function_calling))
-  const definedTools = liteLLMTools.filter((v): v is boolean => v !== undefined)
-  let toolState: CapabilityState
-  if (definedTools.length > 0) {
-    toolState = definedTools.every((v) => v) ? "supported" : definedTools.every((v) => !v) ? "unsupported" : "unknown"
-  } else if (mdTools === true) toolState = "supported"
-  else if (mdTools === false) toolState = "unsupported"
-  else toolState = "unknown"
-  if (definedTools.some((v) => v === true) && mdTools === false) {
-    // Explicit LiteLLM true wins per deployment; conservative group state
-    // stays supported only when every deployment agrees (handled above).
-  }
+  const toolAggregation = aggregateTriState(
+    group.deployments.map((d) => optionalBoolean(d.modelInfo.supports_function_calling)),
+    optionalBoolean(effectiveSelected?.record.tool_call),
+  )
+  const toolState = toolAggregation.state
 
   const reasoningState = resolveReasoningState(group, effectiveSelected)
   const levels = resolveReasoningLevels(effectiveSelected, protocol)
@@ -350,23 +343,25 @@ export function assessModelConfiguration(
   if (output.illegal) illegalFields.push("limit.output")
   if (toolState === "unknown") unknownFields.push("capabilities.tools")
   if (reasoningState.state === "unknown") unknownFields.push("reasoning")
+  if (!inputModalities.known) unknownFields.push("capabilities.input")
+  if (!outputModalities.known) unknownFields.push("capabilities.output")
 
   const catalogDown = !input.catalogAvailable
+  const litellmOnlyComplete = detailed.outcome === "unmatched" &&
+    missingFields.length === 0 &&
+    unknownFields.length === 0 &&
+    illegalFields.length === 0
   let status: ModelConfigurationStatus
   if (detailed.outcome === "ambiguous") status = "ambiguous"
-  else if (detailed.outcome === "unmatched" && catalogDown) status = "metadata-unavailable"
-  else if (detailed.outcome === "unmatched") status = "unmatched"
   else if (illegalFields.length > 0) status = "invalid-metadata"
-  else if (catalogDown && (missingFields.length > 0 || unknownFields.length > 0)) status = "metadata-unavailable"
-  else if (missingFields.length > 0 || unknownFields.length > 0) status = "discovered-incomplete"
+  else if (litellmOnlyComplete) status = "configured"
+  else if (detailed.outcome === "unmatched" && catalogDown) status = "metadata-unavailable"
+  else if (detailed.outcome === "unmatched" && missingFields.length === 0 && unknownFields.length === 0) status = "unmatched"
+  else if (catalogDown && (missingFields.length > 0 || unknownFields.length > 0 || detailed.outcome === "unmatched")) {
+    status = "metadata-unavailable"
+  } else if (missingFields.length > 0 || unknownFields.length > 0) status = "discovered-incomplete"
+  else if (detailed.outcome === "unmatched") status = "unmatched"
   else status = "configured"
-
-  // LiteLLM-only private models with sufficient declarations publish normally,
-  // even while the metadata catalog is unavailable: every required field is
-  // backed by an explicit endpoint declaration, not by a default.
-  if (detailed.outcome === "unmatched" && missingFields.length === 0 && unknownFields.length === 0 && illegalFields.length === 0) {
-    status = "configured"
-  }
 
   const publishable = status === "configured"
   return {
@@ -374,7 +369,9 @@ export function assessModelConfiguration(
     status,
     tools: {
       state: toolState,
-      provenance: toolProvenance(group, effectiveSelected, inherited?.inheritedFields.includes("tool_call") ?? false),
+      provenance: toolAggregation.conflict
+        ? { source: "derived", detail: "deployment or model-level tool evidence conflicts; unknown is not coerced" }
+        : toolProvenance(group, effectiveSelected, inherited?.inheritedFields.includes("tool_call") ?? false),
     },
     reasoning: {
       state: reasoningState.state,
@@ -425,7 +422,19 @@ export function isPublishableWithDegradedAcceptance(status: ModelConfigurationSt
 // Last Known Good (no fixed TTL)
 // ---------------------------------------------------------------------------
 
-export const PUBLICATION_SCHEMA_VERSION = 1 as const
+/**
+ * Bumped when publication completeness grows. An older number cannot
+ * satisfy a newer policy; restoration also re-checks the captured verdict
+ * so a same-number entry with unknown capabilities still fails closed.
+ */
+export const PUBLICATION_SCHEMA_VERSION = 2 as const
+
+export interface LastKnownGoodCapabilityVerdict {
+  readonly tools: CapabilityState
+  readonly reasoning: CapabilityState
+  readonly inputModalitiesKnown: boolean
+  readonly outputModalitiesKnown: boolean
+}
 
 export interface LastKnownGoodEntry {
   readonly schemaVersion: typeof PUBLICATION_SCHEMA_VERSION
@@ -437,6 +446,8 @@ export interface LastKnownGoodEntry {
   readonly fetchedAt: string
   readonly fetchedAtEpochMs: number
   readonly spec: ModelSpec
+  /** Completeness verdict captured when the snapshot passed publication policy. */
+  readonly captured: LastKnownGoodCapabilityVerdict
   readonly provenanceDetail: string
 }
 
@@ -450,12 +461,30 @@ export function lastKnownGoodKey(modelName: string): string {
   return modelName.trim().toLowerCase().replace(/[\s_]+/g, "-").replace(/-+/g, "-")
 }
 
+export function capturedPublicationVerdict(assessment: CompletenessAssessment): LastKnownGoodCapabilityVerdict {
+  return {
+    tools: assessment.tools.state,
+    reasoning: assessment.reasoning.state,
+    inputModalitiesKnown: assessment.inputModalities.known,
+    outputModalitiesKnown: assessment.outputModalities.known,
+  }
+}
+
 export function createLastKnownGoodEntry(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
   spec: ModelSpec,
   now = Date.now(),
+  captured?: LastKnownGoodCapabilityVerdict,
+  catalog?: unknown,
+  options?: BuildOptions,
 ): LastKnownGoodEntry {
+  const proof = captured ?? (catalog !== undefined && options !== undefined
+    ? capturedPublicationVerdict(assessModelConfiguration(group, catalog, options))
+    : undefined)
+  if (!proof || !validateCapturedPublication({ spec, captured: proof }).valid) {
+    throw new Error("LKG can only be captured from a snapshot that passes current publication policy")
+  }
   const canonicals = [...new Set(candidateModelIDs(group).map(canonicalModelID))]
   return {
     schemaVersion: PUBLICATION_SCHEMA_VERSION,
@@ -466,10 +495,52 @@ export function createLastKnownGoodEntry(
     fetchedAt: new Date(now).toISOString(),
     fetchedAtEpochMs: now,
     spec: structuredClone(spec),
+    captured: proof,
     provenanceDetail: selected
       ? `LKG originally fetched at ${new Date(now).toISOString()} via provider ${selected.providerID} -> model ${selected.modelID}`
       : `LKG originally fetched at ${new Date(now).toISOString()} via LiteLLM-only declarations`,
   }
+}
+
+function isCapabilityState(value: unknown): value is CapabilityState {
+  return value === "supported" || value === "unsupported" || value === "unknown"
+}
+
+function isCapturedVerdict(value: unknown): value is LastKnownGoodCapabilityVerdict {
+  if (!isRecord(value)) return false
+  return isCapabilityState(value.tools) &&
+    isCapabilityState(value.reasoning) &&
+    typeof value.inputModalitiesKnown === "boolean" &&
+    typeof value.outputModalitiesKnown === "boolean"
+}
+
+/**
+ * Re-prove that a stored snapshot still satisfies the current publication
+ * completeness policy. Positive limits alone are not enough: unknown tools,
+ * reasoning, or modalities, and any illegal captured field, fail closed.
+ */
+export function validateCapturedPublication(
+  entry: Pick<LastKnownGoodEntry, "spec" | "captured">,
+): { valid: boolean; reason: string } {
+  if (!isCapturedVerdict(entry.captured)) {
+    return { valid: false, reason: "LKG completeness verdict is missing or incompatible" }
+  }
+  if (!(entry.spec.limit.context > 0 && entry.spec.limit.output > 0)) {
+    return { valid: false, reason: "LKG operational limits are not positive" }
+  }
+  if (entry.captured.tools === "unknown") {
+    return { valid: false, reason: "LKG tools were unknown when captured" }
+  }
+  if (entry.captured.reasoning === "unknown") {
+    return { valid: false, reason: "LKG reasoning was unknown when captured" }
+  }
+  if (!entry.captured.inputModalitiesKnown || !entry.captured.outputModalitiesKnown) {
+    return { valid: false, reason: "LKG modalities were not known when captured" }
+  }
+  if (entry.spec.reasoningSupported === "unknown") {
+    return { valid: false, reason: "LKG spec reasoning is unknown" }
+  }
+  return { valid: true, reason: "captured publication verdict still satisfies current completeness policy" }
 }
 
 /**
@@ -507,7 +578,32 @@ export function validateLastKnownGood(
   if (!Number.isFinite(Date.parse(entry.fetchedAt))) {
     return { valid: false, reason: "LKG fetch timestamp is not provable", ageMs }
   }
-  return { valid: true, reason: "identity, provider, and schema agree; no conflicting live metadata", ageMs }
+  const liveConflict = liveCapabilityConflict(group, entry)
+  if (liveConflict) return { valid: false, reason: liveConflict, ageMs }
+  return { valid: true, reason: "identity, provider, schema, and live facts agree", ageMs }
+}
+
+function explicitBooleanConflict(
+  values: readonly (boolean | undefined)[],
+  captured: CapabilityState,
+): boolean {
+  if (captured !== "supported" && captured !== "unsupported") return false
+  const expected = captured === "supported"
+  return values.some((value) => value !== undefined && value !== expected)
+}
+
+/** Positive live declarations that contradict the captured capability verdict. */
+function liveCapabilityConflict(group: DeploymentGroup, entry: LastKnownGoodEntry): string | undefined {
+  if (!isCapturedVerdict(entry.captured)) return "LKG completeness verdict is missing"
+  if (explicitBooleanConflict(
+    group.deployments.map((deployment) => optionalBoolean(deployment.modelInfo.supports_function_calling)),
+    entry.captured.tools,
+  )) return "live tool declaration conflicts with captured LKG"
+  if (explicitBooleanConflict(
+    group.deployments.map((deployment) => optionalBoolean(deployment.modelInfo.supports_reasoning)),
+    entry.captured.reasoning,
+  )) return "live reasoning declaration conflicts with captured LKG"
+  return undefined
 }
 
 export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntry {
@@ -517,7 +613,8 @@ export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntr
     typeof value.canonicalID === "string" &&
     typeof value.providerID === "string" &&
     typeof value.fetchedAt === "string" &&
-    typeof value.fetchedAtEpochMs === "number"
+    typeof value.fetchedAtEpochMs === "number" &&
+    isCapturedVerdict(value.captured)
 }
 
 /** In-memory LKG store. Persistence belongs to adapters; validity belongs here. */
@@ -576,8 +673,8 @@ export function resolveConfigurationWithLKG(
     if (!entry || !isLKGEntryCompatible(entry)) continue
     const validation = validateLastKnownGood(entry, group, detailed.selected, now)
     if (!validation.valid) continue
-    // The stored spec must itself have been complete when captured.
-    if (!(entry.spec.limit.context > 0 && entry.spec.limit.output > 0)) continue
+    const captured = validateCapturedPublication(entry)
+    if (!captured.valid) continue
     return {
       assessment: {
         ...assessment,
@@ -611,17 +708,61 @@ export interface DegradedConfiguration {
   readonly remainingGaps: readonly string[]
 }
 
+export type DegradationEligibility =
+  | { readonly eligible: true }
+  | { readonly eligible: false; readonly reason: string }
+
+/**
+ * Which blocked states a user may explicitly accept.
+ *
+ * Only known-identity incompleteness and a failed metadata source are
+ * "the user knows what is missing". Ambiguous identity, illegal values,
+ * and unmatched identity are different failures and stay blocked.
+ */
+export function degradationEligibility(assessment: CompletenessAssessment): DegradationEligibility {
+  if (
+    assessment.identity.outcome === "unmatched" &&
+    assessment.status !== "configured" &&
+    assessment.status !== "metadata-unavailable"
+  ) {
+    return { eligible: false, reason: "unmatched identity is not ordinary incompleteness" }
+  }
+  if (assessment.status === "discovered-incomplete" || assessment.status === "metadata-unavailable") {
+    return { eligible: true }
+  }
+  const reason = assessment.status === "ambiguous"
+    ? "ambiguous identity cannot be accepted as a missing-field risk"
+    : assessment.status === "invalid-metadata"
+      ? "illegal metadata cannot be accepted as an unknown risk"
+      : assessment.status === "unmatched"
+        ? "unmatched identity is not ordinary incompleteness"
+        : assessment.status === "configured" || assessment.status === "configured-lkg"
+          ? "fully configured models do not need degradation acceptance"
+          : assessment.status === "degraded"
+            ? "model is already degraded"
+            : `status ${assessment.status} is not eligible for degradation`
+  return { eligible: false, reason }
+}
+
+export function isDegradationEligible(assessment: CompletenessAssessment): boolean {
+  return degradationEligibility(assessment).eligible
+}
+
 /**
  * User-accepted degradation. The returned wrapper stays `degraded` and
  * keeps every missing/unknown/illegal field listed; it is publishable
  * only through the degraded path, never as `configured`.
+ *
+ * Ineligible states throw so adapters cannot report a successful accept
+ * for ambiguous, invalid, unmatched, or already-configured models.
  */
 export function acceptDegradedConfiguration(
   assessment: CompletenessAssessment,
   acceptance: { reason?: string; acceptedAt?: string },
 ): DegradedConfiguration {
-  if (assessment.publishable) {
-    throw new Error("fully configured models do not need degradation acceptance")
+  const eligibility = degradationEligibility(assessment)
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason)
   }
   return {
     status: "degraded",
@@ -734,15 +875,11 @@ export function buildPublicationResult(
       }
     }
 
-    if (buildOptions.acceptedDegradedIDs?.has(group.modelName)) {
-      try {
-        const degraded = acceptDegradedConfiguration(live, { reason: buildOptions.degradationReason })
-        publishable.push({ spec, assessment: degraded.assessment, degraded })
-        assessments.set(group.modelName, degraded.assessment)
-        continue
-      } catch {
-        // Fully configured models never reach here; fall through to blocked.
-      }
+    if (buildOptions.acceptedDegradedIDs?.has(group.modelName) && isDegradationEligible(live)) {
+      const degraded = acceptDegradedConfiguration(live, { reason: buildOptions.degradationReason })
+      publishable.push({ spec, assessment: degraded.assessment, degraded })
+      assessments.set(group.modelName, degraded.assessment)
+      continue
     }
 
     blocked.push({ spec, assessment: live })

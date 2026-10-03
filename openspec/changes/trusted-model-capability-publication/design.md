@@ -91,16 +91,14 @@ metadata without valid LKG yields `publishable=false` with explicit
 
 ### Identity and source resolution
 
-Priority unchanged (testing-standard section 8):
-explicit `models_dev_provider` > canonical-original >
-legacy family hint (old/test catalogs without `canonical_model_id` only)
-> OpenRouter > OpenCode > unique-match > unmatched; multiple remaining
-resellers stay ambiguous. Matching uses canonical identity, provider
-identity, explicit alias, equivalent relations, or metadata-expressed
-mappings only. No `startsWith` family tables drive matching; the
-remaining `FAMILY_RULES` use is restricted to the documented legacy
-fallback for catalogs lacking `canonical_model_id` and never injects
-capability values.
+Trusted publication priority:
+explicit `models_dev_provider` > canonical-original > OpenRouter >
+OpenCode > unique-match > ambiguous/unmatched. Matching uses canonical
+identity, provider identity, explicit alias, equivalent relations, or
+other metadata-expressed mappings only. Family-name provider guessing
+is not a publication step. A name-prefix helper, if retained for
+non-publication compatibility, is isolated and cannot affect
+`configured`.
 
 Deterministic inheritance (allowed, with provenance): explicit alias
 targets, `equivalent_to` / `equivalents` declarations, schema-expressed

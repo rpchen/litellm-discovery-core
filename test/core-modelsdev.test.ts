@@ -23,7 +23,7 @@ describe("models.dev 记录选择", () => {
     ])
   })
 
-  test("大小写不敏感地优先原厂记录", () => {
+  test("canonical identity prefers the original provider record", () => {
     const selected = selectModelsDevRecord(
       one("minimax-m3", "openai/minimax-m3", { base_model: "minimax-m3" }),
       modelsDev,

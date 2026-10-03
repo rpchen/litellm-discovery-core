@@ -96,8 +96,8 @@ describe("discovery diagnostics", () => {
       pricing: {
         input: { source: "litellm" },
         output: { source: "litellm" },
-        cacheRead: { source: "models.dev" },
-        cacheWrite: { source: "models.dev" },
+        cacheRead: { source: "default", detail: "models.dev unique-match price ignored; capability fallback is not deployment pricing" },
+        cacheWrite: { source: "default", detail: "models.dev unique-match price ignored; capability fallback is not deployment pricing" },
       },
       release: { source: "models.dev" },
     })

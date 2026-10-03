@@ -18,14 +18,20 @@ import {
   classifyMetadataFailure,
   createLastKnownGoodEntry,
   createLastKnownGoodStore,
+  degradationEligibility,
+  isDegradationEligible,
   isNormallyPublishable,
   isPublishableWithDegradedAcceptance,
   lastKnownGoodKey,
   metadataFailureFor,
   resolveConfigurationWithLKG,
+  validateCapturedPublication,
   validateLastKnownGood,
+  PUBLICATION_SCHEMA_VERSION,
   type CompletenessAssessment,
+  type LastKnownGoodEntry,
 } from "../src/core/publication.ts"
+import { aggregateTriState, legacyFamilyCompatibilityProvider } from "../src/core/modelsdev.ts"
 
 const options = { contextTierCap: false, protocolOverrides: {} }
 
@@ -63,6 +69,8 @@ const COMPLETE_INFO = {
   max_output_tokens: 32000,
   supports_function_calling: true,
   supports_reasoning: false,
+  supports_vision: false,
+  supports_audio_output: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +80,7 @@ const COMPLETE_INFO = {
 describe("publication: normal match", () => {
   test("primary metadata source hit is publishable", () => {
     const catalog = {
-      openai: { models: { "gpt-5.5": { id: "gpt-5.5", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false } } },
+      openai: { models: { "gpt-5.5": { id: "gpt-5.5", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     }
     const result = assess("gpt-5.5", "openai/gpt-5.5", {}, catalog)
     expect(result.publishable).toBeTrue()
@@ -84,7 +92,7 @@ describe("publication: normal match", () => {
 
   test("original provider data wins over resellers", () => {
     const catalog = {
-      alibaba: { models: { "qwen3.7-plus": { id: "qwen3.7-plus", canonical_model_id: "alibaba/qwen3.7-plus", limit: { context: 500, output: 50 }, tool_call: true, reasoning: false } } },
+      alibaba: { models: { "qwen3.7-plus": { id: "qwen3.7-plus", canonical_model_id: "alibaba/qwen3.7-plus", limit: { context: 500, output: 50 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
       openrouter: { models: { "qwen3.7-plus": { id: "qwen3.7-plus", limit: { context: 999, output: 99 } } } },
     }
     const detailed = selectModelsDevRecordDetailed(group("qwen3.7-plus", "dashscope/qwen3.7-plus"), catalog)
@@ -95,7 +103,7 @@ describe("publication: normal match", () => {
 
   test("next trusted source is used when the preferred one is absent", () => {
     const catalog = {
-      openrouter: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 262144, output: 65536 }, tool_call: true, reasoning: true, reasoning_options: [{ type: "effort", values: ["low", "high"] }] } } },
+      openrouter: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 262144, output: 65536 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, reasoning_options: [{ type: "effort", values: ["low", "high"] }] } } },
       opencode: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 1, output: 1 } } } },
     }
     const detailed = selectModelsDevRecordDetailed(group("kimi-k2.6", "openrouter/kimi-k2.6"), catalog)
@@ -114,7 +122,7 @@ describe("publication: normal match", () => {
   })
 
   test("alias resolves", () => {
-    const catalog = { openai: { models: { "gpt-versioned": { id: "gpt-versioned", aliases: ["gpt-stable"], limit: { context: 100, output: 10 }, tool_call: true, reasoning: false } } } }
+    const catalog = { openai: { models: { "gpt-versioned": { id: "gpt-versioned", aliases: ["gpt-stable"], limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
     const detailed = selectModelsDevRecordDetailed(group("gpt-stable"), catalog)
     expect(detailed.outcome).toBe("matched")
     expect(detailed.selected?.matchKind).toBe("alias")
@@ -124,8 +132,8 @@ describe("publication: normal match", () => {
     const catalog = {
       vendor: {
         models: {
-          "model-b": { id: "model-b", equivalent_to: "vendor/model-a", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false },
-          "model-a": { id: "model-a", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false },
+          "model-b": { id: "model-b", equivalent_to: "vendor/model-a", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } },
+          "model-a": { id: "model-a", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } },
         },
       },
     }
@@ -136,7 +144,7 @@ describe("publication: normal match", () => {
 
   test("provenance names provider and model", () => {
     const catalog = {
-      openai: { models: { "gpt-5.5": { id: "gpt-5.5", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false } } },
+      openai: { models: { "gpt-5.5": { id: "gpt-5.5", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     }
     const result = assess("gpt-5.5", "openai/gpt-5.5", {}, catalog)
     expect(result.context.provenance.detail).toContain("openai")
@@ -167,6 +175,7 @@ describe("publication: reasoning", () => {
             reasoning_options: [{ type: "effort", values: ["low", "medium", "high"] }],
             limit: { context: 1048576, output: 131072 },
             tool_call: false,
+            modalities: { input: ["text"], output: ["text"] },
           },
         },
       },
@@ -191,6 +200,7 @@ describe("publication: reasoning", () => {
             reasoning: true,
             limit: { context: 100000, output: 10000 },
             tool_call: false,
+            modalities: { input: ["text"], output: ["text"] },
           },
         },
       },
@@ -238,7 +248,7 @@ describe("publication: reasoning", () => {
 // ---------------------------------------------------------------------------
 
 describe("publication: completeness", () => {
-  const toolReason = { supports_function_calling: true, supports_reasoning: false }
+  const toolReason = { supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_audio_output: false }
 
   test("sufficient trustworthy info is publishable", () => {
     const result = assess("m", "openai/m", { max_input_tokens: 1000, max_output_tokens: 100, ...toolReason }, {})
@@ -248,7 +258,7 @@ describe("publication: completeness", () => {
 
   test("missing context blocks publication", () => {
     const result = assess("m", "openai/m", { ...toolReason }, {
-      openai: { models: { m: { id: "m", limit: { output: 100 }, tool_call: true, reasoning: false } } },
+      openai: { models: { m: { id: "m", limit: { output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     })
     expect(result.publishable).toBeFalse()
     expect(result.missingFields).toContain("limit.context")
@@ -257,7 +267,7 @@ describe("publication: completeness", () => {
 
   test("missing output blocks publication", () => {
     const result = assess("m", "openai/m", { ...toolReason }, {
-      openai: { models: { m: { id: "m", limit: { context: 1000 }, tool_call: true, reasoning: false } } },
+      openai: { models: { m: { id: "m", limit: { context: 1000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     })
     expect(result.publishable).toBeFalse()
     expect(result.missingFields).toContain("limit.output")
@@ -314,7 +324,7 @@ describe("publication: completeness", () => {
 describe("publication: identity", () => {
   test("provider-specific canonical match", () => {
     const catalog = {
-      moonshotai: { models: { "kimi-k2.5": { id: "kimi-k2.5", limit: { context: 10, output: 1 }, tool_call: true, reasoning: false } } },
+      moonshotai: { models: { "kimi-k2.5": { id: "kimi-k2.5", limit: { context: 10, output: 1 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     }
     const detailed = selectModelsDevRecordDetailed(group("kimi-k2.5", "moonshotai/kimi-k2.5"), catalog)
     expect(detailed.outcome).toBe("matched")
@@ -376,6 +386,28 @@ describe("publication: identity", () => {
     expect(detailed.outcome).toBe("unmatched")
   })
 
+  test("family-name matches stay ambiguous without verifiable identity", () => {
+    const qwen = selectModelsDevRecordDetailed(group("qwen-future-model"), {
+      alibaba: { models: { "qwen-future-model": { id: "qwen-future-model", tool_call: true, reasoning: true } } },
+      "reseller-x": { models: { "qwen-future-model": { id: "qwen-future-model", tool_call: false, reasoning: false } } },
+    })
+    expect(qwen.outcome).toBe("ambiguous")
+    expect(qwen.selected).toBeUndefined()
+    expect(qwen.ambiguousProviders).toEqual(["alibaba", "reseller-x"])
+
+    const claude = selectModelsDevRecordDetailed(group("claude-future-model"), {
+      anthropic: { models: { "claude-future-model": { id: "claude-future-model" } } },
+      "reseller-y": { models: { "claude-future-model": { id: "claude-future-model" } } },
+    })
+    expect(claude.outcome).toBe("ambiguous")
+    expect(claude.selected).toBeUndefined()
+    expect(legacyFamilyCompatibilityProvider(group("qwen-future-model"))).toBe("alibaba")
+    expect(selectModelsDevRecord(group("qwen-future-model"), {
+      alibaba: { models: { "qwen-future-model": { id: "qwen-future-model" } } },
+      "reseller-x": { models: { "qwen-future-model": { id: "qwen-future-model" } } },
+    })).toBeUndefined()
+  })
+
   test("no heuristic family guessing", () => {
     // A novel "flash" model shares a substring with a reasoning-capable
     // sibling, but capabilities must not leak across identities.
@@ -397,6 +429,8 @@ describe("publication: identity", () => {
     const result = assessModelConfiguration(g, catalog, options)
     expect(result.inputModalities.values).toEqual(["text"])
     expect(result.inputModalities.known).toBeFalse()
+    expect(result.unknownFields).toContain("capabilities.input")
+    expect(result.publishable).toBeFalse()
   })
 })
 
@@ -425,7 +459,7 @@ describe("publication: network and LKG", () => {
 
   test("retry recovery restores publication", () => {
     const goodCatalog = {
-      openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false } } },
+      openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     }
     const g = group("m", "openai/m")
     const failed = assessModelConfiguration(g, {}, options, {
@@ -445,25 +479,27 @@ describe("publication: network and LKG", () => {
   function completeSpecFor(modelName: string) {
     const specs = buildModelSpecs(
       { data: [{ model_name: modelName, litellm_params: { model: `openai/${modelName}` }, model_info: { mode: "chat", ...COMPLETE_INFO } }] },
-      { openai: { models: { [modelName]: { id: modelName, limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false } } } },
+      { openai: { models: { [modelName]: { id: modelName, limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } },
       options,
     )
     return specs.find((spec) => spec.id === modelName)!
   }
 
   const GOOD_CATALOG = {
-    openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false } } },
+    openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
   }
 
   function seedLKG(store: ReturnType<typeof createLastKnownGoodStore>, atMs: number) {
-    // Entry captured while metadata was complete; the live group below
-    // declares nothing itself so an outage leaves it incomplete.
     const captureGroup = group("m", "openai/m", { ...COMPLETE_INFO })
+    const catalog = { openai: { models: { m: { id: "m", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
     store.set(lastKnownGoodKey("m"), createLastKnownGoodEntry(
       captureGroup,
       { providerID: "openai", modelID: "m", record: {} },
       completeSpecFor("m"),
       atMs,
+      undefined,
+      catalog,
+      options,
     ))
   }
 
@@ -503,13 +539,14 @@ describe("publication: network and LKG", () => {
     const spec = completeSpecFor("m")
     const g = bareGroup("m", "openai/m")
     store.set(lastKnownGoodKey("m"), {
-      schemaVersion: 1,
+      schemaVersion: PUBLICATION_SCHEMA_VERSION,
       modelName: "m",
       canonicalID: "other-model",
       providerID: "openai",
       fetchedAt: new Date(1000).toISOString(),
       fetchedAtEpochMs: 1000,
       spec,
+      captured: { tools: "supported", reasoning: "unsupported", inputModalitiesKnown: true, outputModalitiesKnown: true },
       provenanceDetail: "test",
     })
     const live = assessModelConfiguration(g, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
@@ -549,7 +586,10 @@ describe("publication: network and LKG", () => {
     const g = group("m", "openai/m", { ...COMPLETE_INFO })
     const spec = completeSpecFor("m")
     const validation = validateLastKnownGood(
-      { ...(createLastKnownGoodEntry(g, { providerID: "openai", modelID: "m", record: {} }, spec, 1000)), schemaVersion: 999 as never },
+      {
+        ...(createLastKnownGoodEntry(g, { providerID: "openai", modelID: "m", record: {} }, spec, 1000, undefined, GOOD_CATALOG, options)),
+        schemaVersion: 999 as never,
+      },
       g,
       { providerID: "openai", modelID: "m", record: {} },
       2000,
@@ -584,7 +624,7 @@ describe("publication: explicit degradation", () => {
 
   test("accepted degradation stays degraded", () => {
     const g = group("m", "openai/m", { max_input_tokens: 1000, supports_reasoning: false })
-    const live = assessModelConfiguration(g, {}, options, { catalogAvailable: true })
+    const live = assessModelConfiguration(g, { openai: { models: { m: { id: "m", tool_call: true, reasoning: false } } } }, options, { catalogAvailable: true })
     expect(live.publishable).toBeFalse()
     const degraded = acceptDegradedConfiguration(live, { reason: "user accepted in TUI" })
     expect(degraded.status).toBe("degraded")
@@ -594,9 +634,50 @@ describe("publication: explicit degradation", () => {
     expect(isNormallyPublishable("degraded")).toBeFalse()
   })
 
+  test("degradation is allowed only for incomplete and unavailable states", () => {
+    const incomplete = assess("gap", "openai/gap", { max_input_tokens: 1000, max_output_tokens: 100 }, { openai: { models: { gap: { id: "gap" } } } })
+    expect(incomplete.status).toBe("discovered-incomplete")
+    expect(isDegradationEligible(incomplete)).toBeTrue()
+    expect(acceptDegradedConfiguration(incomplete, {}).status).toBe("degraded")
+
+    const unavailable = assessModelConfiguration(bareGroup("down"), {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    expect(unavailable.status).toBe("metadata-unavailable")
+    expect(degradationEligibility(unavailable).eligible).toBeTrue()
+
+    const ambiguous = assessModelConfiguration(group("shared"), {
+      a: { models: { shared: { id: "shared" } } },
+      b: { models: { shared: { id: "shared" } } },
+    }, options)
+    expect(ambiguous.status).toBe("ambiguous")
+    expect(() => acceptDegradedConfiguration(ambiguous, {})).toThrow(/ambiguous/)
+
+    const invalid = assess("bad", "openai/bad", { max_input_tokens: 0, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_audio_output: false }, { openai: { models: { bad: { id: "bad" } } } })
+    expect(invalid.status).toBe("invalid-metadata")
+    expect(() => acceptDegradedConfiguration(invalid, {})).toThrow(/illegal/)
+
+    const sufficientPrivate = assess("private-complete", "custom/private-complete", COMPLETE_INFO, { openai: { models: { other: { id: "other" } } } })
+    expect(sufficientPrivate.status).toBe("configured")
+    const unmatched = assess("private", "custom/private", { max_input_tokens: 100, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false }, { openai: { models: { other: { id: "other" } } } })
+    expect(unmatched.status).toBe("discovered-incomplete")
+    expect(unmatched.identity.outcome).toBe("unmatched")
+    expect(isDegradationEligible(unmatched)).toBeFalse()
+    expect(() => acceptDegradedConfiguration(unmatched, {})).toThrow(/unmatched/)
+
+    const configured = assess("ok", "openai/ok", COMPLETE_INFO, {})
+    expect(configured.status).toBe("configured")
+    expect(() => acceptDegradedConfiguration(configured, {})).toThrow(/configured/)
+    const lkg = { ...configured, status: "configured-lkg" as const, publishable: true, usingLKG: true, identity: { ...configured.identity, outcome: "matched" as const } }
+    expect(() => acceptDegradedConfiguration(lkg, {})).toThrow(/configured/)
+    const already = acceptDegradedConfiguration(incomplete, {})
+    expect(() => acceptDegradedConfiguration(already.assessment, {})).toThrow(/already degraded/)
+  })
+
   test("degraded is never mislabeled configured", () => {
     const g = group("m", "openai/m", { max_input_tokens: 1000, supports_reasoning: false })
-    const live = assessModelConfiguration(g, {}, options, { catalogAvailable: true })
+    const live = assessModelConfiguration(g, { openai: { models: { m: { id: "m" } } } }, options, { catalogAvailable: true })
     const degraded = acceptDegradedConfiguration(live, {})
     expect(degraded.assessment.status).not.toBe("configured")
     expect(degraded.assessment.status).not.toBe("configured-lkg")
@@ -613,7 +694,7 @@ describe("publication: deterministic inheritance", () => {
     const catalog = {
       vendor: {
         models: {
-          "base": { id: "base", limit: { context: 100000, output: 10000 }, tool_call: true, reasoning: false },
+          "base": { id: "base", limit: { context: 100000, output: 10000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } },
           "alias-model": { id: "alias-model", canonical_model_id: "vendor/base" },
         },
       },
@@ -648,19 +729,183 @@ describe("publication: deterministic inheritance", () => {
 // Fixture regression: real-world models
 // ---------------------------------------------------------------------------
 
+describe("publication: modality completeness", () => {
+  const modalityCatalog = {
+    vendor: {
+      models: {
+        "text-only": { id: "text-only", modalities: { input: ["text"], output: ["text"] }, limit: { context: 100, output: 10 }, tool_call: true, reasoning: false },
+        "image-model": { id: "image-model", modalities: { input: ["text", "image"], output: ["text"] }, limit: { context: 100, output: 10 }, tool_call: true, reasoning: false },
+      },
+    },
+  }
+
+  test("explicit models.dev text-only is known and publishable", () => {
+    const result = assessModelConfiguration(group("text-only", "vendor/text-only"), modalityCatalog, options)
+    expect(result.inputModalities.known).toBeTrue()
+    expect(result.outputModalities.known).toBeTrue()
+    expect(result.inputModalities.values).toEqual(["text"])
+    expect(result.publishable).toBeTrue()
+  })
+
+  test("explicit LiteLLM modality declarations are known", () => {
+    const result = assess("declared", "custom/declared", {
+      ...COMPLETE_INFO,
+      supports_vision: true,
+      supports_audio_output: false,
+    }, {})
+    expect(result.inputModalities.known).toBeTrue()
+    expect(result.inputModalities.values).toEqual(["text", "image"])
+    expect(result.outputModalities.known).toBeTrue()
+    expect(result.unknownFields).not.toContain("capabilities.input")
+  })
+
+  test("no modality evidence blocks normal publication", () => {
+    const result = assess("bare", "custom/bare", {
+      max_input_tokens: 100,
+      max_output_tokens: 10,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    }, {})
+    expect(result.inputModalities.known).toBeFalse()
+    expect(result.outputModalities.known).toBeFalse()
+    expect(result.inputModalities.values).toEqual(["text"])
+    expect(result.unknownFields).toContain("capabilities.input")
+    expect(result.unknownFields).toContain("capabilities.output")
+    expect(result.publishable).toBeFalse()
+    expect(result.status).toBe("discovered-incomplete")
+  })
+
+  test("explicit image metadata is preserved and names do not infer modalities", () => {
+    const image = assessModelConfiguration(group("image-model", "vendor/image-model"), modalityCatalog, options)
+    expect(image.inputModalities.values).toEqual(["text", "image"])
+    const named = assess("vision-pro-max", "custom/vision-pro-max", {
+      max_input_tokens: 100,
+      max_output_tokens: 10,
+      supports_function_calling: false,
+      supports_reasoning: false,
+    }, {})
+    expect(named.inputModalities.values).toEqual(["text"])
+    expect(named.inputModalities.known).toBeFalse()
+    expect(named.publishable).toBeFalse()
+  })
+})
+
+describe("publication: tri-state deployment aggregation", () => {
+  function two(modelName: string, left: Record<string, unknown>, right: Record<string, unknown>) {
+    return groupLiteLLMDeployments({
+      data: [
+        { model_name: modelName, litellm_params: { model: `custom/${modelName}` }, model_info: { mode: "chat", ...left } },
+        { model_name: modelName, litellm_params: { model: `custom/${modelName}-b` }, model_info: { mode: "chat", ...right } },
+      ],
+    })[0]!
+  }
+
+  const cases: Array<[string, boolean | undefined, boolean | undefined, "supported" | "unsupported" | "unknown"]> = [
+    ["true + true", true, true, "supported"],
+    ["false + false", false, false, "unsupported"],
+    ["true + false", true, false, "unknown"],
+    ["true + unknown", true, undefined, "unknown"],
+    ["false + unknown", false, undefined, "unknown"],
+    ["unknown + unknown", undefined, undefined, "unknown"],
+  ]
+
+  for (const [label, left, right, expected] of cases) {
+    test(`tools ${label} -> ${expected}`, () => {
+      expect(aggregateTriState([left, right]).state).toBe(expected)
+      const info = (value: boolean | undefined) => ({
+        max_input_tokens: 100,
+        max_output_tokens: 10,
+        supports_reasoning: false,
+        supports_vision: false,
+        supports_audio_output: false,
+        ...(value === undefined ? {} : { supports_function_calling: value }),
+      })
+      const result = assessModelConfiguration(two("tools", info(left), info(right)), {}, options)
+      expect(result.tools.state).toBe(expected)
+      if (expected === "unknown") expect(result.publishable).toBeFalse()
+    })
+
+    test(`reasoning ${label} -> ${expected}`, () => {
+      expect(aggregateTriState([left, right]).state).toBe(expected)
+      const info = (value: boolean | undefined) => ({
+        max_input_tokens: 100,
+        max_output_tokens: 10,
+        supports_function_calling: true,
+        supports_vision: false,
+        supports_audio_output: false,
+        ...(value === undefined ? {} : { supports_reasoning: value }),
+      })
+      const result = assessModelConfiguration(two("reason", info(left), info(right)), {}, options)
+      expect(result.reasoning.state).toBe(expected)
+      if (expected === "unknown") expect(result.unknownFields).toContain("reasoning")
+    })
+  }
+
+  test("trusted model-level evidence fills an entirely unevidenced group and records conflicts", () => {
+    const catalog = { vendor: { models: { partial: { id: "partial", tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, limit: { context: 100, output: 10 } } } } }
+    const filled = assessModelConfiguration(two("partial", { max_input_tokens: 100 }, { max_output_tokens: 10 }), catalog, options)
+    expect(filled.tools.state).toBe("supported")
+    expect(filled.tools.provenance.source).toBe("models.dev")
+    expect(filled.reasoning.state).toBe("supported")
+
+    const conflicted = assessModelConfiguration(two("partial", { supports_function_calling: false }, {}), catalog, options)
+    expect(conflicted.tools.state).toBe("unknown")
+    expect(conflicted.tools.provenance.detail).toContain("conflicts")
+    expect(conflicted.publishable).toBeFalse()
+  })
+})
+
+describe("publication: forged LKG", () => {
+  function forged(overrides: Partial<LastKnownGoodEntry["captured"]>): LastKnownGoodEntry {
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat", ...COMPLETE_INFO } }] },
+      {},
+      options,
+    )[0]!
+    return {
+      schemaVersion: PUBLICATION_SCHEMA_VERSION,
+      modelName: "m",
+      canonicalID: "m",
+      providerID: "openai",
+      fetchedAt: new Date(1000).toISOString(),
+      fetchedAtEpochMs: 1000,
+      spec,
+      captured: {
+        tools: "supported",
+        reasoning: "unsupported",
+        inputModalitiesKnown: true,
+        outputModalitiesKnown: true,
+        ...overrides,
+      },
+      provenanceDetail: "forged",
+    }
+  }
+
+  test("positive limits with unknown tools, reasoning, or modalities are rejected", () => {
+    expect(validateCapturedPublication(forged({ tools: "unknown" })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ reasoning: "unknown" })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ inputModalitiesKnown: false })).valid).toBeFalse()
+    expect(validateCapturedPublication(forged({ outputModalitiesKnown: false })).valid).toBeFalse()
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("m"), forged({ tools: "unknown" }))
+    const live = assessModelConfiguration(bareGroup("m"), {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live, bareGroup("m"), {}, options, store, 2000).lkg).toBeUndefined()
+  })
+})
+
 describe("publication: fixture regression", () => {
   test("fixture models keep their publishability verdicts", () => {
     const result = buildPublicationResult(litellmFixture, modelsDevFixture, options)
     const byID = new Map(result.publishable.map((entry) => [entry.spec.id, entry]))
-    // Fully described fixture models publish normally, including the
-    // reasoning-with-levels mimo models.
-    for (const id of ["kimi-k2.6", "mimo-v2.6-pro", "mimo-v2.6-flash", "gpt-6-sol"]) {
-      expect(byID.get(id)?.assessment.status).toBe("configured")
-    }
-    // Models with unknown key capabilities are blocked, never silently
-    // published: qwen3.7-plus has no reasoning evidence anywhere.
     const blockedByID = new Map(result.blocked.map((entry) => [entry.spec.id, entry]))
+    for (const id of ["kimi-k2.6", "mimo-v2.6-pro", "gpt-6-sol"]) {
+      expect(byID.get(id)?.assessment.status).toBe("configured")
+      expect(byID.get(id)?.assessment.outputModalities.known).toBeTrue()
+    }
+    // Flash has endpoint modality flags but no trusted output-modality record.
+    expect(blockedByID.get("mimo-v2.6-flash")?.assessment.unknownFields).toContain("capabilities.output")
     expect(blockedByID.get("qwen3.7-plus")?.assessment.unknownFields).toContain("reasoning")
+    expect(blockedByID.get("qwen3.7-plus")?.assessment.identity.selected?.selectionSource).not.toBe("legacy-family-compatibility")
     // Every blocked model carries an explicit non-configured status.
     for (const blocked of result.blocked) {
       expect(blocked.assessment.publishable).toBeFalse()
