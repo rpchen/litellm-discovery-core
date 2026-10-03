@@ -597,6 +597,9 @@ export function aggregateTriState(
   return {
     state: defined[0] === true ? "supported" : "unsupported",
     conflict: false,
+    // All deployments declared and agreed; a corroborating model-level
+    // record means litellm and models.dev agree — provenance still names
+    // the endpoint declarations as the group evidence.
     source: "litellm",
   }
 }

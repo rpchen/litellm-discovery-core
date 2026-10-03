@@ -884,13 +884,15 @@ function liveCapabilityConflict(group: DeploymentGroup, entry: LastKnownGoodEntr
   }
   if (illegalLiveLimit(group, "context")) return "live context limit is illegal; LKG cannot mask invalid metadata"
   if (illegalLiveLimit(group, "output")) return "live output limit is illegal; LKG cannot mask invalid metadata"
-  const liveContext = deploymentLimitEvidence(group, undefined, "context").deploymentValues.find((value) => value !== undefined)
-  if (liveContext !== undefined && Math.floor(liveContext) !== entry.captured.context) {
-    return `live context limit ${liveContext} conflicts with captured LKG ${entry.captured.context}`
+  const contextValues = deploymentLimitEvidence(group, undefined, "context").deploymentValues
+    .filter((value): value is number => value !== undefined)
+  if (contextValues.some((value) => Math.floor(value) !== entry.captured.context)) {
+    return `live context limit conflicts with captured LKG ${entry.captured.context}`
   }
-  const liveOutput = deploymentLimitEvidence(group, undefined, "output").deploymentValues.find((value) => value !== undefined)
-  if (liveOutput !== undefined && Math.floor(liveOutput) !== entry.captured.output) {
-    return `live output limit ${liveOutput} conflicts with captured LKG ${entry.captured.output}`
+  const outputValues = deploymentLimitEvidence(group, undefined, "output").deploymentValues
+    .filter((value): value is number => value !== undefined)
+  if (outputValues.some((value) => Math.floor(value) !== entry.captured.output)) {
+    return `live output limit conflicts with captured LKG ${entry.captured.output}`
   }
   return undefined
 }
