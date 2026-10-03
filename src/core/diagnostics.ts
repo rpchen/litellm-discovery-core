@@ -18,6 +18,7 @@ import {
   type ReasoningSupportResolution,
   type SelectedModelRecord,
 } from "./modelsdev.js"
+import { assessModelConfiguration } from "./publication.js"
 import {
   resolveProtocolResolution,
   resolveProtocolSupport,
@@ -28,8 +29,16 @@ import {
 export const DISCOVERY_DIAGNOSTICS_SCHEMA_VERSION = 1 as const
 
 export type DiagnosticSeverity = "info" | "warning" | "error"
-export type DiagnosticStage = "model-info" | "models-list" | "models-dev" | "protocol" | "mapping"
-export type DiagnosticFieldSource = "override" | "litellm" | "models.dev" | "derived" | "default" | "none"
+export type DiagnosticStage = "model-info" | "models-list" | "models-dev" | "protocol" | "mapping" | "publication"
+export type DiagnosticFieldSource =
+  | "override"
+  | "litellm"
+  | "models.dev"
+  | "derived"
+  | "default"
+  | "none"
+  | "lkg"
+  | "canonical-inheritance"
 
 export interface DiagnosticIssue {
   readonly severity: DiagnosticSeverity
@@ -77,6 +86,20 @@ export interface ModelDiagnostic {
     readonly deploymentProtocols: readonly ModelSpec["protocol"][]
   }
   readonly quality: ModelQualityDiagnostic
+  readonly publication: {
+    readonly status: import("./publication.js").ModelConfigurationStatus
+    readonly publishable: boolean
+    readonly missingFields: readonly string[]
+    readonly unknownFields: readonly string[]
+    readonly illegalFields: readonly string[]
+    readonly conflictFields: readonly string[]
+    readonly toolState: import("./publication.js").CapabilityState
+    readonly reasoningState: import("./publication.js").CapabilityState
+    readonly reasoningLevelsKnown: boolean
+    readonly reasoningLevels: readonly string[]
+    readonly inheritedFields: readonly string[]
+    readonly inheritanceChain: readonly string[]
+  }
   readonly provenance: {
     readonly protocol: FieldProvenance
     readonly reasoning: FieldProvenance
@@ -407,16 +430,27 @@ function modelDiagnostic(
   const variants = buildVariants(selected, spec.protocol)
   const reasoning = resolveReasoningSupport(group, selected)
   const conflicts = metadataConflicts(group, selected, reasoning)
+  const publication = assessModelConfiguration(group, catalog, options)
   const issues: DiagnosticIssue[] = []
 
   if (!selected) {
-    issues.push({
-      severity: "warning",
-      stage: "models-dev",
-      code: "models-dev-unmatched",
-      modelId: group.modelName,
-      message: "No models.dev record matched this LiteLLM model.",
-    })
+    if (publication.identity.outcome === "ambiguous") {
+      issues.push({
+        severity: "warning",
+        stage: "models-dev",
+        code: "models-dev-ambiguous",
+        modelId: group.modelName,
+        message: `Multiple models.dev providers match this LiteLLM model (${publication.identity.ambiguousProviders.join(", ")}); enrichment stays unresolved instead of guessing.`,
+      })
+    } else {
+      issues.push({
+        severity: "warning",
+        stage: "models-dev",
+        code: "models-dev-unmatched",
+        modelId: group.modelName,
+        message: "No models.dev record matched this LiteLLM model.",
+      })
+    }
   }
   if (!hasOperationalLimits(spec)) {
     issues.push({
@@ -425,6 +459,25 @@ function modelDiagnostic(
       code: "model-operational-limits-missing",
       modelId: group.modelName,
       message: "Model context/output limits are not positive; host adapters must not publish this model as operational.",
+    })
+  }
+  if (!publication.publishable) {
+    const gaps = [...publication.missingFields, ...publication.unknownFields, ...publication.illegalFields, ...publication.conflictFields]
+    issues.push({
+      severity: "warning",
+      stage: "publication",
+      code: `publication-${publication.status}`,
+      modelId: group.modelName,
+      message: `Model is not normally publishable (status ${publication.status})${gaps.length > 0 ? `: ${gaps.join(", ")}` : ""}.`,
+    })
+  }
+  if (publication.inheritedFields.length > 0) {
+    issues.push({
+      severity: "info",
+      stage: "mapping",
+      code: "metadata-inheritance",
+      modelId: group.modelName,
+      message: `Deterministic inheritance for ${publication.inheritedFields.join(", ")}: ${publication.inheritanceChain.join("; ")}.`,
     })
   }
   for (const conflict of conflicts) {
@@ -479,6 +532,20 @@ function modelDiagnostic(
         protocolSupport: resolveProtocolSupport(group),
         fallback: selected ? "enriched" : "litellm-only",
         conflicts,
+      },
+      publication: {
+        status: publication.status,
+        publishable: publication.publishable,
+        missingFields: [...publication.missingFields],
+        unknownFields: [...publication.unknownFields],
+        illegalFields: [...publication.illegalFields],
+        conflictFields: [...publication.conflictFields],
+        toolState: publication.tools.state,
+        reasoningState: publication.reasoning.state,
+        reasoningLevelsKnown: publication.reasoning.levelsKnown,
+        reasoningLevels: [...publication.reasoning.levels],
+        inheritedFields: [...publication.inheritedFields],
+        inheritanceChain: [...publication.inheritanceChain],
       },
       provenance: {
         protocol: protocolProvenance(protocol.reason),

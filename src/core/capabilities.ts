@@ -6,13 +6,11 @@ import {
   optionalBoolean,
   optionalNumber,
   positiveInteger,
-  stripRoutePrefix,
   type DeploymentGroup,
   type LiteLLMDeployment,
 } from "./litellm.js"
 import {
   canUseSelectedModelsDevPrice,
-  candidateModelIDs,
   type SelectedModelRecord,
 } from "./modelsdev.js"
 
@@ -92,12 +90,6 @@ function intersect(sets: Set<string>[]): string[] {
   return [...sets[0]!].filter((value) => sets.every((set) => set.has(value)))
 }
 
-function isModalitiesTrustFamily(group: DeploymentGroup): boolean {
-  return candidateModelIDs(group).some((candidate) =>
-    /^(?:deepseek-|kimi-|mimo-|qwen)/.test(stripRoutePrefix(candidate).toLowerCase()),
-  )
-}
-
 function minimum(values: Array<number | undefined>, fallback = 0): number {
   const provided = values.filter((value): value is number => value !== undefined)
   return provided.length > 0 ? Math.min(...provided) : fallback
@@ -148,14 +140,7 @@ export function mapCapabilities(
   )
 
   const inputSets = group.deployments.map((deployment) => deploymentModalities(deployment, selected, "input"))
-  let input = intersect(inputSets)
-  const mdInputModalities = modelsDevModalities(selected, "input")
-  const liteLLMDeclaresExtraInput = group.deployments.some((deployment) =>
-    INPUT_MODALITIES.some(([field]) => optionalBoolean(deployment.modelInfo[field]) === true),
-  )
-  if (isModalitiesTrustFamily(group) && !liteLLMDeclaresExtraInput && mdInputModalities.length > 1) {
-    input = [...new Set(["text", ...mdInputModalities])]
-  }
+  const input = intersect(inputSets)
   const output = intersect(
     group.deployments.map((deployment) => deploymentModalities(deployment, selected, "output")),
   )

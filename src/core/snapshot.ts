@@ -85,6 +85,12 @@ function isModelSpec(value: unknown): value is ModelSpec {
   if (!isRecord(value.capabilities) || typeof value.capabilities.tools !== "boolean") return false
   if (!stringArray(value.capabilities.input) || !stringArray(value.capabilities.output)) return false
   if (!Array.isArray(value.variants)) return false
+  if (
+    value.reasoningSupported !== undefined &&
+    value.reasoningSupported !== "supported" &&
+    value.reasoningSupported !== "unsupported" &&
+    value.reasoningSupported !== "unknown"
+  ) return false
   if (!finiteNumber(value.released)) return false
   if (
     value.releaseUnit !== undefined &&
