@@ -1,0 +1,21 @@
+# Tasks: trusted model capability publication (Core)
+
+- [ ] Remove family-name influence from capability mapping (`isModalitiesTrustFamily`); modalities come only from explicit declarations or the text-only baseline.
+- [ ] Add tri-state capability assessment (tools / reasoning unknown-aware) without breaking the `ModelSpec` wire shape.
+- [ ] Add tri-state reasoning resolver decoupled from variant levels; keep legacy boolean resolver as wrapper.
+- [ ] Add detailed models.dev selection outcome (`matched` / `unmatched` / `ambiguous`) with deterministic canonical inheritance and provenance.
+- [ ] Add completeness / publishability policy (`assessPublishability`) with missing/unknown/illegal field lists.
+- [ ] Add configuration status model (`configured`, `configured-lkg`, `discovered-incomplete`, `unmatched`, `ambiguous`, `metadata-unavailable`, `invalid-metadata`, `degraded`) and publish predicates.
+- [ ] Add metadata failure taxonomy (`classifyMetadataFailure`) covering timeout / 5xx / unreachable / not-found / ambiguous / missing-field / illegal-value / schema-incompatible / cached / recovered.
+- [ ] Add Last Known Good store without TTL (identity/schema/conflict validity, age reporting).
+- [ ] Add explicit degradation acceptance path that never re-labels degraded as configured.
+- [ ] Extend diagnostics provenance with publication status, per-field `lkg` / `canonical-inheritance` sources, and degraded marking.
+- [ ] Add Core tests: normal match, provider priority, alias/equivalent/canonical inheritance, provenance (7+ scenarios).
+- [ ] Add Core tests: reasoning false / true+levels / true+no-levels / unknown, no auto-flip invariants (6+ scenarios).
+- [ ] Add Core tests: completeness (publishable, missing context/maxTokens, zero values, unknown capability, illegal, schema-incompatible) (8+ scenarios).
+- [ ] Add Core tests: identity (provider canonical, OpenRouter/OpenCode fallback, alias, equivalent, unique global, ambiguous, unmatched, no family guessing) (9+ scenarios).
+- [ ] Add Core tests: network/LKG (timeout, 5xx, unreachable, retry-recovery, valid LKG, old-but-stable LKG, identity conflict, live-conflicts-LKG, schema change) (9+ scenarios).
+- [ ] Add Core tests: explicit degradation (no-LKG failure blocked, incomplete blocked, accepted-stays-degraded, degraded-not-configured) (4+ scenarios).
+- [ ] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`.
+- [ ] Update README only if public API or user-visible behavior changed; otherwise declare `No README change`.
+- [ ] Archive the change with OpenSpec CLI and re-run strict validation.

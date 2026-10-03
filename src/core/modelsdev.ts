@@ -347,3 +347,246 @@ export function releaseTimestamp(selected: SelectedModelRecord | undefined): num
   const timestamp = Date.parse(value)
   return Number.isFinite(timestamp) ? timestamp : 0
 }
+
+/**
+ * Trusted-publication additions (see `trusted-model-capability-publication`).
+ *
+ * The legacy boolean/zero defaults above stay wire-compatible. The helpers
+ * below expose the unknown-aware semantics the publication policy needs:
+ * tri-state capability states, detailed selection outcomes, and
+ * deterministic canonical inheritance with provenance. Nothing here
+ * performs I/O or guesses capabilities from names or families.
+ */
+
+/** Unknown-aware capability state: `unknown` means no trusted evidence. */
+export type CapabilityState = "supported" | "unsupported" | "unknown"
+
+export interface ReasoningStateResolution {
+  readonly state: CapabilityState
+  readonly source: ReasoningSupportSource
+  readonly conflict: boolean
+}
+
+/**
+ * Tri-state reasoning support, independent from variant levels.
+ *
+ * Unlike the legacy boolean resolver (which maps "no evidence" to
+ * `false`), this resolver reports `unknown` when neither LiteLLM nor
+ * models.dev supplies trusted evidence, and when explicit LiteLLM
+ * declarations disagree with each other.
+ */
+export function resolveReasoningState(
+  group: DeploymentGroup,
+  selected: SelectedModelRecord | undefined,
+): ReasoningStateResolution {
+  const modelsDev = modelsDevReasoning(selected)
+  const explicit = group.deployments.map((deployment) =>
+    optionalBoolean(deployment.modelInfo.supports_reasoning)
+  )
+  const defined = explicit.filter((value): value is boolean => value !== undefined)
+  const conflict = modelsDev !== undefined && defined.some((value) => value !== modelsDev)
+
+  if (defined.length > 0) {
+    if (defined.every((value) => value === true)) return { state: "supported", source: "litellm", conflict }
+    if (defined.every((value) => value === false)) return { state: "unsupported", source: "litellm", conflict }
+    return { state: "unknown", source: "litellm", conflict: true }
+  }
+  if (modelsDev === true) return { state: "supported", source: "models.dev", conflict }
+  if (modelsDev === false) return { state: "unsupported", source: "models.dev", conflict }
+  return { state: "unknown", source: "default", conflict: false }
+}
+
+export interface ReasoningLevelsResolution {
+  /** Whether level metadata was explicitly declared (possibly empty). */
+  readonly known: boolean
+  /** Selectable level ids; empty is legal alongside supported reasoning. */
+  readonly values: readonly string[]
+}
+
+/**
+ * Reasoning levels decoupled from support. `known=true` with empty
+ * `values` means the model reasons without user-selectable grades; it
+ * never implies lack of support. `known=false` means no level metadata
+ * was declared at all.
+ */
+export function resolveReasoningLevels(
+  selected: SelectedModelRecord | undefined,
+  protocol: Protocol,
+): ReasoningLevelsResolution {
+  const options = selected?.record.reasoning_options
+  if (!Array.isArray(options)) return { known: false, values: [] }
+  return { known: true, values: buildVariants(selected, protocol).map((variant) => variant.id) }
+}
+
+export type SelectionOutcomeKind = "matched" | "unmatched" | "ambiguous"
+
+export interface DetailedSelection {
+  readonly outcome: SelectionOutcomeKind
+  readonly selected?: SelectedModelRecord
+  readonly candidates: readonly string[]
+  /** How many provider records matched the deciding candidate. */
+  readonly matchCount: number
+  /** Provider ids involved when the outcome is ambiguous. */
+  readonly ambiguousProviders: readonly string[]
+}
+
+/**
+ * Detailed models.dev selection outcome.
+ *
+ * Mirrors `selectModelsDevRecord` precedence exactly (explicit provider >
+ * canonical-original > legacy family hint for catalogs without
+ * canonical_model_id > OpenRouter > OpenCode > unique match) but keeps
+ * `ambiguous` observable instead of collapsing it into `undefined`.
+ */
+export function selectModelsDevRecordDetailed(
+  group: DeploymentGroup,
+  catalog: unknown,
+): DetailedSelection {
+  const candidates = candidateModelIDs(group)
+  const allProviders = providers(catalog)
+  const family = familyProviders(group)
+  const heuristicPreferred = family ? [family.primary, ...family.alternatives] : []
+
+  for (const candidate of candidates) {
+    const matches = allProviders.flatMap(([providerID, models]) => {
+      const match = findMatch(models, candidate)
+      return match ? [selected(providerID, candidate, match)] : []
+    })
+    if (matches.length === 0) continue
+
+    const explicitProvider = group.deployments
+      .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase())
+      .find((value): value is string => value !== undefined)
+    if (explicitProvider) {
+      const explicit = matches.find((match) => match.providerID.toLowerCase() === explicitProvider)
+      if (explicit) return { outcome: "matched", selected: { ...explicit, selectionSource: "explicit-provider" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+    }
+
+    const canonicalProviders = canonicalProviderCandidates(matches)
+    if (canonicalProviders.length === 1) {
+      const original = matches.find(
+        (match) => match.providerID.toLowerCase() === canonicalProviders[0],
+      )
+      if (original) return { outcome: "matched", selected: { ...original, selectionSource: "canonical-original" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+    }
+
+    for (const providerID of heuristicPreferred) {
+      const preferred = matches.find(
+        (match) => match.providerID.toLowerCase() === providerID.toLowerCase(),
+      )
+      if (preferred) return { outcome: "matched", selected: { ...preferred, selectionSource: "family-original" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+    }
+
+    const openRouter = matches.find((match) => match.providerID.toLowerCase() === "openrouter")
+    if (openRouter) return { outcome: "matched", selected: { ...openRouter, selectionSource: "openrouter-fallback" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+    const openCode = matches.find((match) => match.providerID.toLowerCase() === "opencode")
+    if (openCode) return { outcome: "matched", selected: { ...openCode, selectionSource: "opencode-fallback" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+
+    if (matches.length === 1) return { outcome: "matched", selected: { ...matches[0]!, selectionSource: "unique-match" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+    return {
+      outcome: "ambiguous",
+      selected: undefined,
+      candidates,
+      matchCount: matches.length,
+      ambiguousProviders: [...new Set(matches.map((match) => match.providerID))].sort(),
+    }
+  }
+
+  return { outcome: "unmatched", selected: undefined, candidates, matchCount: 0, ambiguousProviders: [] }
+}
+
+export interface InheritedRecord {
+  /** Effective record after deterministic inheritance. */
+  readonly record: ModelsDevRecord
+  /** Provenance chain, e.g. `canonical: xiaomi/mimo-v2.6-pro`. */
+  readonly chain: readonly string[]
+  /** Field names inherited from another declared identity. */
+  readonly inheritedFields: readonly string[]
+}
+
+function lookupProviderModels(catalog: unknown, providerID: string): Record<string, unknown> | undefined {
+  if (!isRecord(catalog)) return undefined
+  const provider = catalog[providerID]
+  if (!isRecord(provider) || !isRecord(provider.models)) {
+    const lower = providerID.toLowerCase()
+    for (const [key, value] of Object.entries(catalog)) {
+      if (key.toLowerCase() === lower && isRecord(value) && isRecord(value.models)) {
+        return value.models as Record<string, unknown>
+      }
+    }
+    return undefined
+  }
+  return provider.models as Record<string, unknown>
+}
+
+function inheritanceTargets(record: ModelsDevRecord): string[] {
+  const targets: string[] = []
+  const push = (value: unknown) => {
+    if (typeof value === "string" && value.includes("/")) targets.push(value)
+  }
+  push(record.canonical_model_id)
+  push(record.inherits)
+  const equivalent = (record as Record<string, unknown>).equivalent_to
+  if (typeof equivalent === "string") push(equivalent)
+  else if (Array.isArray(equivalent)) for (const item of equivalent) push(item)
+  const equivalents = (record as Record<string, unknown>).equivalents
+  if (Array.isArray(equivalents)) for (const item of equivalents) push(item)
+  return [...new Set(targets)]
+}
+
+const INHERITABLE_FIELDS = [
+  "reasoning",
+  "reasoning_options",
+  "modalities",
+  "limit",
+  "tool_call",
+  "cost",
+  "release_date",
+] as const
+
+/**
+ * Deterministic capability inheritance.
+ *
+ * Only metadata-expressed relations (`canonical_model_id`,
+ * `inherits`, `equivalent_to` / `equivalents` naming a
+ * `provider/model` identity) may supply missing fields. Name similarity,
+ * family membership, or neighbor-model values never inherit. Every
+ * inherited field is reported so provenance can name its source.
+ */
+export function resolveInheritedRecord(
+  selected: SelectedModelRecord | undefined,
+  catalog: unknown,
+): InheritedRecord | undefined {
+  if (!selected) return undefined
+  const chain: string[] = []
+  const inheritedFields: string[] = []
+  const merged: Record<string, unknown> = { ...selected.record }
+
+  for (const target of inheritanceTargets(selected.record)) {
+    const slash = target.indexOf("/")
+    if (slash <= 0) continue
+    const providerID = target.slice(0, slash)
+    const modelRef = target.slice(slash + 1)
+    const models = lookupProviderModels(catalog, providerID)
+    if (!models) continue
+    const match = findMatch(models, modelRef)
+    if (!match || !isRecord(match[1])) continue
+    const source = match[1] as Record<string, unknown>
+    const label = `${providerID}/${match[0]}`
+    for (const field of INHERITABLE_FIELDS) {
+      if (merged[field] !== undefined) continue
+      if (source[field] === undefined) continue
+      merged[field] = source[field]
+      inheritedFields.push(field)
+    }
+    if (inheritedFields.length > 0) chain.push(`canonical: ${label}`)
+    if (inheritedFields.length > 0) break
+  }
+
+  if (inheritedFields.length === 0) return undefined
+  return {
+    record: merged as ModelsDevRecord,
+    chain,
+    inheritedFields: [...new Set(inheritedFields)],
+  }
+}
