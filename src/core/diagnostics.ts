@@ -92,6 +92,7 @@ export interface ModelDiagnostic {
     readonly missingFields: readonly string[]
     readonly unknownFields: readonly string[]
     readonly illegalFields: readonly string[]
+    readonly conflictFields: readonly string[]
     readonly toolState: import("./publication.js").CapabilityState
     readonly reasoningState: import("./publication.js").CapabilityState
     readonly reasoningLevelsKnown: boolean
@@ -461,7 +462,7 @@ function modelDiagnostic(
     })
   }
   if (!publication.publishable) {
-    const gaps = [...publication.missingFields, ...publication.unknownFields, ...publication.illegalFields]
+    const gaps = [...publication.missingFields, ...publication.unknownFields, ...publication.illegalFields, ...publication.conflictFields]
     issues.push({
       severity: "warning",
       stage: "publication",
@@ -538,6 +539,7 @@ function modelDiagnostic(
         missingFields: [...publication.missingFields],
         unknownFields: [...publication.unknownFields],
         illegalFields: [...publication.illegalFields],
+        conflictFields: [...publication.conflictFields],
         toolState: publication.tools.state,
         reasoningState: publication.reasoning.state,
         reasoningLevelsKnown: publication.reasoning.levelsKnown,
