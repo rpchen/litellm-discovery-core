@@ -93,6 +93,48 @@ Core SHALL resolve metadata identity only through canonical identity, provider i
 - **WHEN** the same model id exists under a name-implied provider and another provider, with no canonical id, explicit provider, alias, equivalent, or inherits relation
 - **THEN** trusted publication reports `ambiguous` and does not select the name-implied provider
 
+#### Scenario: Deployment group identities must be consistent
+- **WHEN** one LiteLLM model name has deployments declaring different explicit providers, or routed/base identities that no alias, canonical, equivalent, or inherits relation proves to be the same model
+- **THEN** Core reports `ambiguous` for the group and never resolves by first-deployment order
+
+#### Scenario: Equivalent relations reconcile a group
+- **WHEN** deployments name different identities but trusted metadata declares those identities equivalent or canonically the same
+- **THEN** Core resolves the group deterministically with provenance
+
+### Requirement: Group-wide limit evidence
+Core SHALL treat context and output limits as group-wide evidence. Deployment values that agree are known; any partially-declared field stays unknown; disagreement between deployments, or between a full declaration set and contradicting model-level metadata, is a conflict that blocks normal publication. Missing values are never filtered, and minimum/maximum merging must never upgrade unknown or conflict into known.
+
+#### Scenario: Agreeing deployment limits are known
+- **WHEN** every deployment declares the same context or output value
+- **THEN** Core reports that value as known group evidence
+
+#### Scenario: Partially declared limits stay unknown
+- **WHEN** some deployments declare a limit and others leave it undefined
+- **THEN** Core reports unknown and does not publish normally
+
+#### Scenario: Disagreeing deployment limits are a conflict
+- **WHEN** deployments declare different context or output values
+- **THEN** Core reports a conflict and does not publish normally
+
+#### Scenario: Model-level metadata fills only a fully undeclared field
+- **WHEN** no deployment declares a limit but a trusted canonical record declares one
+- **THEN** Core reports the model-level value as known; when a declared deployment disagrees with it, Core reports a conflict
+
+### Requirement: Per-dimension modality evidence
+Core SHALL treat modality flags as sparse per-dimension evidence. Declaring one modality flag never completes the direction's set; only a documented complete-set source (the trusted models.dev `modalities` array) fills undeclared dimensions. Multi-deployment aggregation follows the same tri-state rules as other capabilities.
+
+#### Scenario: Sparse false does not prove the remaining set
+- **WHEN** only `supports_vision = false` is declared
+- **THEN** input modalities stay `known=false` and are listed as unknown for publication
+
+#### Scenario: Documented complete set is known
+- **WHEN** the trusted models.dev record declares the direction's complete modality set, or every current dimension of the direction is explicitly declared
+- **THEN** Core marks the direction known with the resolved values
+
+#### Scenario: Declared dimension contradicting the model set is a conflict
+- **WHEN** a declared modality flag disagrees with the trusted model-level set
+- **THEN** Core reports the direction not known and publication stays blocked
+
 ### Requirement: Modality completeness
 Core SHALL treat input and output modalities as publication completeness fields. A text-only baseline without explicit evidence is unknown, not confirmed text-only. There is no implicit modality baseline that counts as known.
 
@@ -135,11 +177,23 @@ Core SHALL allow ordinary degradation only for `discovered-incomplete` with a re
 - **THEN** Core rejects the acceptance and does not report success
 
 ### Requirement: LKG completeness revalidation
-Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, or conflicting live facts invalidate the entry.
+Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, or conflicting live facts invalidate the entry. The entry stores the actual critical capability facts (tools/reasoning verdicts, resolved modality sets, context/output values) so any newly observed explicit live fact can be compared against them.
 
 #### Scenario: Forged complete limits with unknown capabilities are rejected
 - **WHEN** an LKG entry has positive limits but captured tools, reasoning, or modalities are unknown
 - **THEN** Core rejects the entry and does not report `configured-lkg`
+
+#### Scenario: New live fact conflicts with stored values
+- **WHEN** any explicit live declaration (tool, reasoning, modality flag, or limit value) contradicts the stored snapshot's captured facts
+- **THEN** Core rejects the entire entry — no field-level merge — and the model stays incomplete/unavailable
+
+#### Scenario: Same live fact does not invalidate
+- **WHEN** every explicit live fact agrees with the stored snapshot
+- **THEN** the entry remains valid and may substitute during the outage
+
+#### Scenario: Illegal live metadata never hides behind LKG
+- **WHEN** a live declared limit is non-positive or otherwise illegal
+- **THEN** Core keeps `invalid-metadata` and does not restore the snapshot
 
 ### Requirement: Failure taxonomy without pseudo-complete publication
 Core SHALL classify metadata failures and SHALL never emit a normally-published model from a failed fetch via defaults.

@@ -165,10 +165,10 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 
 长期不变量：
 
-- `unknown` 不得自动变成 `false`，也不得自动变成 `true`；多 deployment 聚合不得先丢弃缺失声明再得出 supported/unsupported。
-- modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only。
+- `unknown` 不得自动变成 `false`，也不得自动变成 `true`；多 deployment 聚合不得先丢弃缺失声明再得出 supported/unsupported。对同一宿主模型聚合多个 LiteLLM deployments 时，任何 publication-critical 字段（identity、limits、modalities、tools、reasoning）都必须具有 group-wide trustworthy evidence；不得通过过滤缺失值、选择首条 deployment、取最小/最大值或部分 sparse flags，将部分未知/冲突事实提升为 known。
+- modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only；sparse flag 只证明该维度，不证明整个 direction。
 - degradation 只允许已确认身份的 incomplete，以及 metadata source 失败且无有效 LKG 的 unavailable。`ambiguous`、`invalid-metadata`、单纯 `unmatched`、`configured` 与 `configured-lkg` 不得普通 accept。
-- LKG 必须由 Core 重新证明仍满足当前 publication policy，不能只检查正数 limits 或相信 adapter 当初存入的是 configured。
+- LKG 必须由 Core 重新证明仍满足当前 publication policy，不能只检查正数 limits 或相信 adapter 当初存入的是 configured；任一新的明确 live capability fact 与 LKG snapshot 冲突时，整份 LKG fail closed，不得用旧 snapshot 覆盖新的可信事实。
 - Core 是 publication policy 的唯一业务真源；adapter 不得复制这些判断。
 
 价格与能力必须分开判断：

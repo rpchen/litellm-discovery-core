@@ -25,6 +25,9 @@
 - [x] Restrict ordinary degradation to discovered-incomplete and metadata-unavailable; reject ambiguous, invalid-metadata, and unmatched-incomplete.
 - [x] Revalidate LKG against the current publication verdict, not only positive limits.
 - [x] Sync `docs/testing-standard.md` so family heuristics no longer participate in trusted publication.
+- [x] Apply group-wide evidence to limits (unknown/conflict preserved, no minimum merging) and per-dimension modality evidence (sparse flags never complete a set).
+- [x] Detect group identity conflicts (distinct explicit providers, distinct routed identities without proven equivalence) instead of first-deployment-wins.
+- [x] Store actual modality sets and context/output values in LKG captured verdicts; reject the entire entry when a new live fact contradicts them; never restore LKG over illegal live metadata.
 - [ ] Archive the change with OpenSpec CLI and re-run strict validation (deferred: Pi/OpenCode dist, package verification, and real-host E2E still require the merged Core SHA).
 
 ## Cross-repository follow-ups (owned by the adapter repositories)

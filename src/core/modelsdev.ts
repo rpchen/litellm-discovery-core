@@ -387,12 +387,120 @@ function explicitModelsDevProvider(group: DeploymentGroup): string | undefined {
 }
 
 /**
+ * Group-wide explicit provider evidence. Distinct explicit
+ * `models_dev_provider` values inside one deployment group mean the host
+ * model identity cannot be stated as one fact: that is a conflict, not a
+ * first-deployment choice.
+ */
+export function groupExplicitProviderConflict(group: DeploymentGroup): { providers: string[] } | undefined {
+  const declared = [...new Set(
+    group.deployments
+      .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase())
+      .filter((value): value is string => value !== undefined),
+  )]
+  return declared.length > 1 ? { providers: declared } : undefined
+}
+
+/**
+ * Routed/base identity ids per deployment (base_model first: it is
+ * LiteLLM's own declared upstream identity; the routed param is a route).
+ * Deployments without any id cannot be judged and are skipped.
+ */
+function deploymentIdentityIDs(deployment: { modelInfo: Record<string, unknown>; litellmParams: { model?: unknown } }): string[] {
+  const ids: string[] = []
+  const base = optionalString(deployment.modelInfo.base_model)
+  if (base) ids.push(canonicalModelID(base))
+  const routed = optionalString(deployment.litellmParams.model)
+  if (routed) {
+    const stripped = canonicalModelID(stripRoutePrefix(routed))
+    if (stripped.length > 0) ids.push(stripped)
+  }
+  return [...new Set(ids)]
+}
+
+function recordIdentityNames(record: ModelsDevRecord): string[] {
+  const names = new Set<string>()
+  const add = (value: string | undefined) => {
+    if (value) names.add(canonicalModelID(value))
+  }
+  const id = optionalString(record.id)
+  add(id)
+  const aliases = Array.isArray(record.aliases)
+    ? record.aliases.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : []
+  for (const alias of aliases) add(alias)
+  for (const target of inheritanceTargets(record)) add(target.includes("/") ? target.slice(target.indexOf("/") + 1) : target)
+  return [...names]
+}
+
+/**
+ * Group identity conflict. Pure over the group and catalog.
+ *
+ * Returns a reason when deployments provably cannot name the same model:
+ * distinct explicit `models_dev_provider` values, or deployment id sets
+ * that neither overlap nor are reconciled by metadata equivalence
+ * (alias / canonical / equivalent / inherits relations). Absent a
+ * conflict the group shares one provable identity and first-vs-later
+ * candidate order stops mattering.
+ */
+export function groupIdentityConflict(group: DeploymentGroup, catalog: unknown): string | undefined {
+  const providerConflict = groupExplicitProviderConflict(group)
+  if (providerConflict) {
+    return `deployments declare different models_dev_provider values (${providerConflict.providers.join(", ")})`
+  }
+  if (group.deployments.length > 1) {
+    const idSets = group.deployments.map(deploymentIdentityIDs).filter((ids) => ids.length > 0)
+    if (idSets.length > 1) {
+      // Union-find over deployments linked by shared ids or by metadata
+      // equivalence between one deployment's ids and another's.
+      const links = (a: string[], b: string[]): boolean => {
+        if (a.some((id) => b.includes(id))) return true
+        for (const id of a) {
+          for (const match of matchesForID(id, catalog)) {
+            const names = recordIdentityNames(match.record)
+            if (b.some((other) => names.includes(other))) return true
+          }
+        }
+        return false
+      }
+      const parent = idSets.map((_, index) => index)
+      const find = (value: number): number => parent[value] === value ? value : (parent[value] = find(parent[value]!))
+      for (let i = 0; i < idSets.length; i++) {
+        for (let j = i + 1; j < idSets.length; j++) {
+          if (links(idSets[i]!, idSets[j]!)) {
+            parent[find(i)!] = find(j)!
+          }
+        }
+      }
+      const roots = new Set(idSets.map((_, index) => find(index)))
+      if (roots.size > 1) {
+        return `deployment identities cannot be proven to name the same model (${idSets.map((ids) => ids.join("|")).join(" vs ")})`
+      }
+    }
+  }
+  return undefined
+}
+
+/** Records matching one candidate id, at most one per provider. */
+function matchesForID(id: string, catalog: unknown): SelectedModelRecord[] {
+  return providers(catalog).flatMap(([providerID, models]) => {
+    const match = findMatch(models, id)
+    return match ? [selected(providerID, id, match)] : []
+  })
+}
+
+/**
  * Detailed models.dev selection outcome.
  *
  * Trusted precedence is explicit provider > canonical-original >
  * OpenRouter > OpenCode > unique match. Name/family heuristics are not a
  * step. Multiple remaining records stay `ambiguous` instead of collapsing
  * into an arbitrary reseller or a name-prefix provider.
+ *
+ * Group consistency: distinct explicit `models_dev_provider` values, or
+ * distinct per-deployment candidate identities that metadata cannot prove
+ * equivalent, make the whole group `ambiguous` — never first-deployment
+ * wins.
  */
 export function selectModelsDevRecordDetailed(
   group: DeploymentGroup,
@@ -400,6 +508,20 @@ export function selectModelsDevRecordDetailed(
 ): DetailedSelection {
   const candidates = candidateModelIDs(group)
   const allProviders = providers(catalog)
+
+  const identityConflict = groupIdentityConflict(group, catalog)
+  if (identityConflict) {
+    return {
+      outcome: "ambiguous",
+      selected: undefined,
+      candidates,
+      matchCount: 0,
+      ambiguousProviders: [...new Set(group.deployments
+        .map((deployment) => optionalString(deployment.modelInfo.models_dev_provider))
+        .filter((value): value is string => value !== undefined))]
+        .sort(),
+    }
+  }
 
   for (const candidate of candidates) {
     const matches = allProviders.flatMap(([providerID, models]) => {
@@ -428,6 +550,7 @@ export function selectModelsDevRecordDetailed(
     if (openCode) return { outcome: "matched", selected: { ...openCode, selectionSource: "opencode-fallback" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
 
     if (matches.length === 1) return { outcome: "matched", selected: { ...matches[0]!, selectionSource: "unique-match" }, candidates, matchCount: matches.length, ambiguousProviders: [] }
+
     return {
       outcome: "ambiguous",
       selected: undefined,

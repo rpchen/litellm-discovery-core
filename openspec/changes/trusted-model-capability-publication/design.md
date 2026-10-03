@@ -100,6 +100,26 @@ is not a publication step. A name-prefix helper, if retained for
 non-publication compatibility, is isolated and cannot affect
 `configured`.
 
+Group-wide evidence: when one model name aggregates multiple
+deployments, every publication-critical field needs group-wide proof.
+Deployment values that agree are known; partially-declared fields stay
+unknown; disagreement between deployments, or between declared values
+and contradicting model-level metadata, is a conflict
+(`invalid-metadata`, in `conflictFields`) that blocks publication.
+Minimum/maximum merging never upgrades unknown into known. Limits use
+`aggregateScalarEvidence`; tools/reasoning use `aggregateTriState`;
+modalities aggregate per dimension with the models.dev `modalities`
+array as the only documented complete-set source; group identity is
+checked with `groupIdentityConflict` (distinct explicit providers, or
+routed/base identities not provably equivalent, are ambiguous).
+
+LKG entries store the actual critical facts (tools/reasoning verdicts,
+resolved modality sets, context/output values) plus the verdict flags.
+Restoration re-checks every explicit live fact against them: any
+contradiction — including new limit or modality values — rejects the
+whole entry (no field-level merge), and illegal live metadata keeps
+`invalid-metadata` with no restoration.
+
 Deterministic inheritance (allowed, with provenance): explicit alias
 targets, `equivalent_to` / `equivalents` declarations, schema-expressed
 `inherits` / canonical `canonical_model_id` field inheritance, provider

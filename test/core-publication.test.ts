@@ -15,6 +15,7 @@ import {
   acceptDegradedConfiguration,
   assessModelConfiguration,
   buildPublicationResult,
+  capturedPublicationVerdict,
   classifyMetadataFailure,
   createLastKnownGoodEntry,
   createLastKnownGoodStore,
@@ -158,7 +159,12 @@ describe("publication: normal match", () => {
 
 describe("publication: reasoning", () => {
   test("reasoning=false is publishable and explicit", () => {
-    const result = assess("m", "openai/m", { ...COMPLETE_INFO, supports_reasoning: false }, {
+    const result = assess("m", "openai/m", {
+      ...COMPLETE_INFO,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+    }, {
       openai: { models: { m: { id: "m", reasoning: false } } },
     })
     expect(result.reasoning.state).toBe("unsupported")
@@ -248,7 +254,17 @@ describe("publication: reasoning", () => {
 // ---------------------------------------------------------------------------
 
 describe("publication: completeness", () => {
-  const toolReason = { supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_audio_output: false }
+  // Every input modality flag declared false: confirmed text-only under
+  // the documented sparse-flag rule.
+  const toolReason = {
+    supports_function_calling: true,
+    supports_reasoning: false,
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
 
   test("sufficient trustworthy info is publishable", () => {
     const result = assess("m", "openai/m", { max_input_tokens: 1000, max_output_tokens: 100, ...toolReason }, {})
@@ -313,6 +329,71 @@ describe("publication: completeness", () => {
     // LiteLLM-only declarations still satisfy completeness; the broken
     // catalog shape is ignored, never treated as capability fact.
     expect(result.publishable).toBeTrue()
+    expect(result.status).toBe("configured")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Group identity consistency
+// ---------------------------------------------------------------------------
+
+describe("publication: group identity", () => {
+  function multi(modelName: string, deployments: Array<Record<string, unknown>>) {
+    return groupLiteLLMDeployments({
+      data: deployments.map((deployment, index) => ({
+        model_name: modelName,
+        litellm_params: { model: deployment.model ?? `${modelName}-${index}` },
+        model_info: { mode: "chat", ...deployment },
+      })),
+    })[0]!
+  }
+
+  test("consistent explicit provider resolves normally", () => {
+    const catalog = { openai: { models: { shared: { id: "shared", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const g = multi("shared", [{ models_dev_provider: "openai", model: "openai/shared" }, { models_dev_provider: "openai", model: "foo/shared" }])
+    const detailed = selectModelsDevRecordDetailed(g, catalog)
+    expect(detailed.outcome).toBe("matched")
+    expect(detailed.selected?.providerID).toBe("openai")
+    const result = assessModelConfiguration(g, catalog, options)
+    expect(result.status).toBe("configured")
+  })
+
+  test("conflicting explicit providers are ambiguous, never first-wins", () => {
+    const g = multi("shared", [{ models_dev_provider: "openai", model: "openai/shared" }, { models_dev_provider: "anthropic", model: "openai/shared" }])
+    const detailed = selectModelsDevRecordDetailed(g, {})
+    expect(detailed.outcome).toBe("ambiguous")
+    expect(detailed.ambiguousProviders).toEqual(["anthropic", "openai"])
+    const result = assessModelConfiguration(g, {}, options)
+    expect(result.status).toBe("ambiguous")
+    expect(result.publishable).toBeFalse()
+  })
+
+  test("distinct routed identities without proven equivalence stay ambiguous", () => {
+    const g = multi("shared", [{ model: "vendor/foo" }, { model: "other/bar" }])
+    const detailed = selectModelsDevRecordDetailed(g, { vendor: { models: { foo: { id: "foo" } } }, other: { models: { bar: { id: "bar" } } } })
+    expect(detailed.outcome).toBe("ambiguous")
+    const result = assessModelConfiguration(g, { vendor: { models: { foo: { id: "foo" } } }, other: { models: { bar: { id: "bar" } } } }, options)
+    expect(result.status).toBe("ambiguous")
+    expect(result.publishable).toBeFalse()
+  })
+
+  test("same routed identity resolves normally", () => {
+    const catalog = { vendor: { models: { foo: { id: "foo", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const g = multi("shared", [{ model: "vendor/foo" }, { model: "vendor/foo" }])
+    expect(selectModelsDevRecordDetailed(g, catalog).outcome).toBe("matched")
+    const result = assessModelConfiguration(g, catalog, options)
+    expect(result.status).toBe("configured")
+  })
+
+  test("distinct routed identities with declared equivalence resolve deterministically", () => {
+    const catalog = {
+      vendor: { models: { foo: { id: "foo", equivalent_to: "other/bar", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+      other: { models: { bar: { id: "bar", canonical_model_id: "other/bar", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    }
+    const g = multi("shared", [{ model: "vendor/foo" }, { model: "other/bar" }])
+    const detailed = selectModelsDevRecordDetailed(g, catalog)
+    expect(detailed.outcome).toBe("matched")
+    const result = assessModelConfiguration(g, catalog, options)
     expect(result.status).toBe("configured")
   })
 })
@@ -546,7 +627,7 @@ describe("publication: network and LKG", () => {
       fetchedAt: new Date(1000).toISOString(),
       fetchedAtEpochMs: 1000,
       spec,
-      captured: { tools: "supported", reasoning: "unsupported", inputModalitiesKnown: true, outputModalitiesKnown: true },
+      captured: { tools: "supported", reasoning: "unsupported", inputModalitiesKnown: true, outputModalitiesKnown: true, inputModalities: ["text"], outputModalities: ["text"], context: 1000, output: 100 },
       provenanceDetail: "test",
     })
     const live = assessModelConfiguration(g, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
@@ -658,7 +739,12 @@ describe("publication: explicit degradation", () => {
     expect(invalid.status).toBe("invalid-metadata")
     expect(() => acceptDegradedConfiguration(invalid, {})).toThrow(/illegal/)
 
-    const sufficientPrivate = assess("private-complete", "custom/private-complete", COMPLETE_INFO, { openai: { models: { other: { id: "other" } } } })
+    const sufficientPrivate = assess("private-complete", "custom/private-complete", {
+      ...COMPLETE_INFO,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+    }, { openai: { models: { other: { id: "other" } } } })
     expect(sufficientPrivate.status).toBe("configured")
     const unmatched = assess("private", "custom/private", { max_input_tokens: 100, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false }, { openai: { models: { other: { id: "other" } } } })
     expect(unmatched.status).toBe("discovered-incomplete")
@@ -666,7 +752,12 @@ describe("publication: explicit degradation", () => {
     expect(isDegradationEligible(unmatched)).toBeFalse()
     expect(() => acceptDegradedConfiguration(unmatched, {})).toThrow(/unmatched/)
 
-    const configured = assess("ok", "openai/ok", COMPLETE_INFO, {})
+    const configured = assess("ok", "openai/ok", {
+      ...COMPLETE_INFO,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+    }, {})
     expect(configured.status).toBe("configured")
     expect(() => acceptDegradedConfiguration(configured, {})).toThrow(/configured/)
     const lkg = { ...configured, status: "configured-lkg" as const, publishable: true, usingLKG: true, identity: { ...configured.identity, outcome: "matched" as const } }
@@ -747,16 +838,26 @@ describe("publication: modality completeness", () => {
     expect(result.publishable).toBeTrue()
   })
 
-  test("explicit LiteLLM modality declarations are known", () => {
+  test("sparse LiteLLM vision=true alone does not complete the input set", () => {
     const result = assess("declared", "custom/declared", {
-      ...COMPLETE_INFO,
+      max_input_tokens: 200000,
+      max_output_tokens: 32000,
+      supports_function_calling: true,
+      supports_reasoning: false,
       supports_vision: true,
       supports_audio_output: false,
     }, {})
-    expect(result.inputModalities.known).toBeTrue()
+    expect(result.inputModalities.known).toBeFalse()
     expect(result.inputModalities.values).toEqual(["text", "image"])
-    expect(result.outputModalities.known).toBeTrue()
-    expect(result.unknownFields).not.toContain("capabilities.input")
+    expect(result.unknownFields).toContain("capabilities.input")
+    expect(result.publishable).toBeFalse()
+  })
+
+  test("all current input flags false is the documented confirmed text-only shape", () => {
+    const result = assess("declared", "custom/declared", { ...COMPLETE_INFO, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false }, {})
+    expect(result.inputModalities.known).toBeTrue()
+    expect(result.inputModalities.values).toEqual(["text"])
+    expect(result.publishable).toBeTrue()
   })
 
   test("no modality evidence blocks normal publication", () => {
@@ -777,7 +878,8 @@ describe("publication: modality completeness", () => {
 
   test("explicit image metadata is preserved and names do not infer modalities", () => {
     const image = assessModelConfiguration(group("image-model", "vendor/image-model"), modalityCatalog, options)
-    expect(image.inputModalities.values).toEqual(["text", "image"])
+    expect(image.inputModalities.known).toBeTrue()
+    expect([...image.inputModalities.values].sort()).toEqual(["image", "text"])
     const named = assess("vision-pro-max", "custom/vision-pro-max", {
       max_input_tokens: 100,
       max_output_tokens: 10,
@@ -792,10 +894,18 @@ describe("publication: modality completeness", () => {
 
 describe("publication: tri-state deployment aggregation", () => {
   function two(modelName: string, left: Record<string, unknown>, right: Record<string, unknown>) {
+    const info = (record: Record<string, unknown>) => {
+      const model = typeof record.model === "string" ? record.model : undefined
+      const rest = { ...record }
+      delete (rest as Record<string, unknown>).model
+      return { route: model ?? `custom/${modelName}`, modelInfo: rest }
+    }
+    const l = info(left)
+    const r = info(right)
     return groupLiteLLMDeployments({
       data: [
-        { model_name: modelName, litellm_params: { model: `custom/${modelName}` }, model_info: { mode: "chat", ...left } },
-        { model_name: modelName, litellm_params: { model: `custom/${modelName}-b` }, model_info: { mode: "chat", ...right } },
+        { model_name: modelName, litellm_params: { model: l.route }, model_info: { mode: "chat", ...l.modelInfo } },
+        { model_name: modelName, litellm_params: { model: r.route }, model_info: { mode: "chat", ...r.modelInfo } },
       ],
     })[0]!
   }
@@ -813,6 +923,7 @@ describe("publication: tri-state deployment aggregation", () => {
     test(`tools ${label} -> ${expected}`, () => {
       expect(aggregateTriState([left, right]).state).toBe(expected)
       const info = (value: boolean | undefined) => ({
+        model: "custom/tools",
         max_input_tokens: 100,
         max_output_tokens: 10,
         supports_reasoning: false,
@@ -828,6 +939,7 @@ describe("publication: tri-state deployment aggregation", () => {
     test(`reasoning ${label} -> ${expected}`, () => {
       expect(aggregateTriState([left, right]).state).toBe(expected)
       const info = (value: boolean | undefined) => ({
+        model: "custom/reason",
         max_input_tokens: 100,
         max_output_tokens: 10,
         supports_function_calling: true,
@@ -843,15 +955,73 @@ describe("publication: tri-state deployment aggregation", () => {
 
   test("trusted model-level evidence fills an entirely unevidenced group and records conflicts", () => {
     const catalog = { vendor: { models: { partial: { id: "partial", tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, limit: { context: 100, output: 10 } } } } }
-    const filled = assessModelConfiguration(two("partial", { max_input_tokens: 100 }, { max_output_tokens: 10 }), catalog, options)
+    // Same routed identity on both deployments, so group identity is provable.
+    const sameIdentity = (extra: Record<string, unknown>) => ({ model: "custom/partial", ...extra })
+    const filled = assessModelConfiguration(two("partial", sameIdentity({ max_input_tokens: 100 }), sameIdentity({ max_output_tokens: 10 })), catalog, options)
     expect(filled.tools.state).toBe("supported")
     expect(filled.tools.provenance.source).toBe("models.dev")
     expect(filled.reasoning.state).toBe("supported")
 
-    const conflicted = assessModelConfiguration(two("partial", { supports_function_calling: false }, {}), catalog, options)
+    const conflicted = assessModelConfiguration(two("partial", sameIdentity({ supports_function_calling: false }), sameIdentity({})), catalog, options)
     expect(conflicted.tools.state).toBe("unknown")
     expect(conflicted.tools.provenance.detail).toContain("conflicts")
     expect(conflicted.publishable).toBeFalse()
+  })
+})
+
+describe("publication: modality multi-deployment", () => {
+  function two(modelName: string, left: Record<string, unknown>, right: Record<string, unknown>) {
+    return groupLiteLLMDeployments({
+      data: [
+        { model_name: modelName, litellm_params: { model: "custom/mod" }, model_info: { mode: "chat", ...left } },
+        { model_name: modelName, litellm_params: { model: "custom/mod" }, model_info: { mode: "chat", ...right } },
+      ],
+    })[0]!
+  }
+
+  const base = { max_input_tokens: 100, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false, model: "custom/mod" } as Record<string, unknown>
+
+  test("image agreement resolves; sparse and conflicting combinations stay unknown", () => {
+    const supported = assessModelConfiguration(two("m", { ...base, supports_vision: true }, { ...base, supports_vision: true }), {}, options)
+    expect(supported.inputModalities.known).toBeTrue()
+
+    const unsupported = assessModelConfiguration(two("m", { ...base, supports_vision: false }, { ...base, supports_vision: false }), {}, options)
+    expect(unsupported.inputModalities.known).toBeTrue()
+    expect(unsupported.inputModalities.values).toEqual(["text"])
+
+    const partialTrue = assessModelConfiguration(two("m", { ...base, supports_vision: true }, { ...base }), {}, options)
+    expect(partialTrue.inputModalities.known).toBeFalse()
+    expect(partialTrue.publishable).toBeFalse()
+
+    const partialFalse = assessModelConfiguration(two("m", { ...base, supports_vision: false }, { ...base }), {}, options)
+    expect(partialFalse.inputModalities.known).toBeFalse()
+
+    const conflict = assessModelConfiguration(two("m", { ...base, supports_vision: true }, { ...base, supports_vision: false }), {}, options)
+    expect(conflict.inputModalities.known).toBeFalse()
+    expect(conflict.publishable).toBeFalse()
+  })
+
+  test("sparse single-deployment flags never complete the set", () => {
+    const visionOnly = assessModelConfiguration(group("m", "custom/m", {
+      max_input_tokens: 1, max_output_tokens: 1, supports_function_calling: true, supports_reasoning: false,
+      supports_vision: false, supports_audio_output: false,
+    }), {}, options)
+    expect(visionOnly.inputModalities.known).toBeFalse()
+    expect(visionOnly.unknownFields).toContain("capabilities.input")
+    // output has a single dimension: one explicit flag settles the direction
+    expect(visionOnly.outputModalities.known).toBeTrue()
+  })
+
+  test("models.dev complete set fills undeclared dimensions and conflicts with disagreeing flags", () => {
+    const imageSet = { vendor: { models: { mm: { id: "mm", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
+    const groupFor = (extra: Record<string, unknown>) => two("mm", { ...base, model: "custom/mm", ...extra }, { ...base, model: "custom/mm" })
+    const filled = assessModelConfiguration(groupFor({}), imageSet, options)
+    expect(filled.inputModalities.known).toBeTrue()
+    expect([...filled.inputModalities.values].sort()).toEqual(["image", "text"])
+
+    const disagrees = assessModelConfiguration(groupFor({ supports_vision: false }), imageSet, options)
+    expect(disagrees.inputModalities.known).toBeFalse()
+    expect(disagrees.publishable).toBeFalse()
   })
 })
 
@@ -875,6 +1045,10 @@ describe("publication: forged LKG", () => {
         reasoning: "unsupported",
         inputModalitiesKnown: true,
         outputModalitiesKnown: true,
+        inputModalities: ["text"],
+        outputModalities: ["text"],
+        context: 1000,
+        output: 100,
         ...overrides,
       },
       provenanceDetail: "forged",
@@ -893,17 +1067,179 @@ describe("publication: forged LKG", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Group limit evidence
+// ---------------------------------------------------------------------------
+
+describe("publication: group limit evidence", () => {
+  function two(modelName: string, left: Record<string, unknown>, right: Record<string, unknown>) {
+    return groupLiteLLMDeployments({
+      data: [
+        { model_name: modelName, litellm_params: { model: "custom/lim" }, model_info: { mode: "chat", ...left } },
+        { model_name: modelName, litellm_params: { model: "custom/lim" }, model_info: { mode: "chat", ...right } },
+      ],
+    })[0]!
+  }
+
+  const base = { supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false } as const
+
+  test("context: same values are known; disagreement conflicts; value+unknown stays unknown", () => {
+    const same = assessModelConfiguration(two("m", { ...base, max_input_tokens: 128000 }, { max_input_tokens: 128000 }), {}, options)
+    expect(same.context).toMatchObject({ value: 128000, valid: true, unknown: false, conflict: false })
+
+    const differing = assessModelConfiguration(two("m", { ...base, max_input_tokens: 128000 }, { max_input_tokens: 64000 }), {}, options)
+    expect(differing.context).toMatchObject({ value: 0, conflict: true })
+    expect(differing.status).toBe("invalid-metadata")
+    expect(differing.conflictFields).toContain("limit.context")
+
+    const partial = assessModelConfiguration(two("m", { ...base, max_input_tokens: 128000 }, {}), {}, options)
+    expect(partial.context).toMatchObject({ value: 0, unknown: true, conflict: false })
+    expect(partial.publishable).toBeFalse()
+  })
+
+  test("output: same values known; differing values conflict; value+unknown unknown", () => {
+    const same = assessModelConfiguration(two("m", { ...base, max_output_tokens: 32000 }, { max_output_tokens: 32000 }), {}, options)
+    expect(same.output).toMatchObject({ value: 32000, valid: true, conflict: false })
+
+    const differing = assessModelConfiguration(two("m", { ...base, max_output_tokens: 32000 }, { max_output_tokens: 16000 }), {}, options)
+    expect(differing.output).toMatchObject({ value: 0, conflict: true })
+    expect(differing.status).toBe("invalid-metadata")
+
+    const partial = assessModelConfiguration(two("m", { ...base, max_output_tokens: 32000 }, {}), {}, options)
+    expect(partial.output).toMatchObject({ value: 0, unknown: true, conflict: false })
+    expect(partial.publishable).toBeFalse()
+  })
+
+  test("all deployments unknown fall back to trusted model-level, and disagreeing model-level conflicts", () => {
+    const modelCatalog = { vendor: { models: { lm: { id: "lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const filled = assessModelConfiguration(two("lm", { ...base }, { ...base }), modelCatalog, options)
+    expect(filled.context).toMatchObject({ value: 128000, valid: true })
+    expect(filled.output).toMatchObject({ value: 32000, valid: true })
+    expect(filled.status).toBe("configured")
+
+    const conflicted = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 16000 }, { ...base, max_output_tokens: 16000 }), modelCatalog, options)
+    expect(conflicted.output).toMatchObject({ value: 0, conflict: true })
+    expect(conflicted.publishable).toBeFalse()
+  })
+
+  test("partial deployment evidence is not filled by model-level metadata", () => {
+    const modelCatalog = { vendor: { models: { lm: { id: "lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const partial = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 32000 }, {}), modelCatalog, options)
+    expect(partial.output).toMatchObject({ value: 0, unknown: true, conflict: false })
+    expect(partial.publishable).toBeFalse()
+  })
+
+  test("private unmatched models obey the same group completeness rule", () => {
+    const partial = assessModelConfiguration(two("pm", { ...base, max_input_tokens: 128000 }, {}), {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(partial.status).toBe("metadata-unavailable")
+    expect(partial.publishable).toBeFalse()
+    const same = assessModelConfiguration(two("pm", { ...base, max_input_tokens: 128000, max_output_tokens: 32000 }, { ...base, max_input_tokens: 128000, max_output_tokens: 32000 }), {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(same.status).toBe("configured")
+  })
+})
+
+describe("publication: LKG actual-value conflicts", () => {
+  function two(modelName: string, deployments: Array<Record<string, unknown>>) {
+    return groupLiteLLMDeployments({
+      data: deployments.map((modelInfo) => ({
+        model_name: modelName,
+        litellm_params: { model: "openai/m" },
+        model_info: { mode: "chat", ...modelInfo },
+      })),
+    })[0]!
+  }
+
+  const base = { max_input_tokens: 128000, max_output_tokens: 32000, supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false } as const
+  /** Live body during an outage: capability flags only, no limits. */
+  const liveBase = { supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_pdf_input: false, supports_audio_input: false, supports_video_input: false, supports_audio_output: false }
+
+  function capture(catalog: unknown, atMs = 1000, captureInfo: Record<string, unknown> = base) {
+    const store = createLastKnownGoodStore()
+    const captureGroup = two("m", [captureInfo])
+    const assessment = assessModelConfiguration(captureGroup, catalog, options)
+    expect(assessment.status).toBe("configured")
+    const specs = buildModelSpecs(
+      { data: [{ model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat", ...captureInfo } }] },
+      catalog,
+      options,
+    )
+    store.set(lastKnownGoodKey("m"), createLastKnownGoodEntry(
+      captureGroup,
+      assessment.identity.selected,
+      specs.find((spec) => spec.id === "m")!,
+      atMs,
+      capturedPublicationVerdict(assessment),
+    ))
+    return store
+  }
+
+  const TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+
+  test("same live fact is not a conflict and LKG still applies", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [liveBase]); const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+  })
+
+  test("live context disagreement rejects the whole entry", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [{ ...liveBase, max_input_tokens: 64000 }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.lkg).toBeUndefined()
+    expect(resolved.assessment.publishable).toBeFalse()
+  })
+
+  test("live output disagreement rejects the whole entry", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [{ ...liveBase, max_output_tokens: 16000 }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("live vision=false rejects a captured image-capable snapshot and vice versa", () => {
+    const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
+    const imageStore = capture(IMAGE_TRUSTED, 1000, { ...base, supports_vision: true })
+    const noVision = two("m", [{ ...liveBase, supports_vision: false }])
+    const live1 = assessModelConfiguration(noVision, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live1, noVision, {}, options, imageStore, 2000).lkg).toBeUndefined()
+
+    const textStore = capture(TRUSTED)
+    const withVision = two("m", [{ ...liveBase, supports_vision: true }])
+    const live2 = assessModelConfiguration(withVision, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live2, withVision, {}, options, textStore, 2000).lkg).toBeUndefined()
+  })
+
+  test("live reasoning=false rejects a captured reasoning snapshot", () => {
+    const REASONING_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] } } } } }
+    const store = capture(REASONING_TRUSTED, 1000, { ...base, supports_reasoning: true })
+    const group = two("m", [{ ...liveBase, supports_reasoning: false }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("illegal live limit never restores LKG", () => {
+    const store = capture(TRUSTED)
+    const group = two("m", [{ ...liveBase, max_input_tokens: 0 }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(live.status).toBe("invalid-metadata")
+    expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
+    expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).assessment.status).toBe("invalid-metadata")
+  })
+})
+
 describe("publication: fixture regression", () => {
   test("fixture models keep their publishability verdicts", () => {
     const result = buildPublicationResult(litellmFixture, modelsDevFixture, options)
     const byID = new Map(result.publishable.map((entry) => [entry.spec.id, entry]))
     const blockedByID = new Map(result.blocked.map((entry) => [entry.spec.id, entry]))
-    for (const id of ["kimi-k2.6", "mimo-v2.6-pro", "gpt-6-sol"]) {
-      expect(byID.get(id)?.assessment.status).toBe("configured")
-      expect(byID.get(id)?.assessment.outputModalities.known).toBeTrue()
-    }
-    // Flash has endpoint modality flags but no trusted output-modality record.
-    expect(blockedByID.get("mimo-v2.6-flash")?.assessment.unknownFields).toContain("capabilities.output")
+    expect(byID.get("kimi-k2.6")?.assessment.status).toBe("configured")
+    expect(byID.get("kimi-k2.6")?.assessment.outputModalities.known).toBeTrue()
+    // gpt-6-sol: LiteLLM declares pdf=true but the trusted record's set
+    // [text,image] omits pdf — a real conflict, and audio stays undeclared
+    // on both sides, so the input direction cannot be named known.
+    expect(blockedByID.get("gpt-6-sol")?.assessment.unknownFields).toContain("capabilities.input")
     expect(blockedByID.get("qwen3.7-plus")?.assessment.unknownFields).toContain("reasoning")
     expect(blockedByID.get("qwen3.7-plus")?.assessment.identity.selected?.selectionSource).not.toBe("legacy-family-compatibility")
     // Every blocked model carries an explicit non-configured status.

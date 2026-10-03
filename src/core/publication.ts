@@ -33,6 +33,7 @@ import {
   optionalNumber,
   groupLiteLLMDeployments,
   type DeploymentGroup,
+  type LiteLLMDeployment,
 } from "./litellm.js"
 import { resolveProtocol, type Protocol } from "./protocol.js"
 import { buildModelSpecs, type BuildOptions, type ModelSpec } from "./build.js"
@@ -161,10 +162,12 @@ export interface ReasoningAssessment {
 }
 
 export interface LimitAssessment {
-  /** Merged value; 0 means unknown, never a usable default. */
+  /** Positive agreed value when known; otherwise 0, never a usable default. */
   readonly value: number
   readonly valid: boolean
   readonly missing: boolean
+  readonly unknown: boolean
+  readonly conflict: boolean
   readonly illegal: boolean
   readonly provenance: PublicationFieldProvenance
 }
@@ -191,6 +194,8 @@ export interface CompletenessAssessment {
   readonly missingFields: readonly string[]
   readonly unknownFields: readonly string[]
   readonly illegalFields: readonly string[]
+  /** Fields whose deployment/model-level evidence contradicts itself. */
+  readonly conflictFields: readonly string[]
   readonly failure?: MetadataFailure
   readonly usingLKG: boolean
   readonly lkgDetail?: string
@@ -213,51 +218,239 @@ function toolProvenance(
   return { source: "none", detail: "no trusted tool-call evidence" }
 }
 
-function explicitLimit(
+/**
+ * Per-deployment explicit limit plus the trusted model-level fallback.
+ * Values are never aggregated here; aggregation happens once, in one place.
+ *
+ * Context evidence is two different dimensions by design: LiteLLM
+ * `max_input_tokens` is the deployment's input capacity, while models.dev
+ * `limit.context` is the total context window. They never conflict across
+ * dimensions; the model-level total wins when present (it is the more
+ * precise fact), and deployment inputs fall back to being the group's
+ * context evidence only when models.dev declares no total.
+ */
+function deploymentLimitEvidence(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
   field: "context" | "output",
-): { raw: number | undefined; provenance: PublicationFieldProvenance } {
+): { deploymentValues: Array<number | undefined>; modelLevel: number | undefined } {
   const liteLLMKeys = field === "context" ? ["max_input_tokens"] : ["max_output_tokens", "max_tokens"]
-  for (const deployment of group.deployments) {
+  const deploymentValues = group.deployments.map((deployment) => {
     for (const key of liteLLMKeys) {
       const value = optionalNumber(deployment.modelInfo[key])
-      if (value !== undefined) {
-        return { raw: value, provenance: { source: "litellm", detail: key } }
-      }
+      if (value !== undefined) return value
     }
-  }
+    return undefined
+  })
   const recordLimit = isRecord(selected?.record.limit)
     ? optionalNumber((selected!.record.limit as Record<string, unknown>)[field])
     : undefined
-  if (recordLimit !== undefined) {
-    const provider = selected?.providerID ?? "unknown-provider"
-    const model = selected?.modelID ?? "unknown-model"
-    return {
-      raw: recordLimit,
-      provenance: { source: "models.dev", detail: `limit.${field} -> provider ${provider} -> model ${model}` },
-    }
-  }
-  return { raw: undefined, provenance: { source: "none", detail: `no ${field} limit metadata` } }
+  return { deploymentValues, modelLevel: recordLimit }
 }
 
-function assessLimit(
-  merged: number,
-  explicit: { raw: number | undefined; provenance: PublicationFieldProvenance },
-): LimitAssessment {
-  if (merged > 0 && Number.isFinite(merged)) {
-    return { value: Math.floor(merged), valid: true, missing: false, illegal: false, provenance: explicit.provenance }
+type ScalarEvidenceState = "known" | "unknown" | "conflict"
+
+export interface ScalarEvidence {
+  readonly state: ScalarEvidenceState
+  /** The agreed value when known; 0 otherwise. */
+  readonly value: number
+  readonly conflict: boolean
+  readonly source: "litellm" | "models.dev" | "derived" | "none"
+}
+
+function firstTierPoint(deployment: LiteLLMDeployment): number | undefined {
+  const points: number[] = []
+  for (const [key, rawValue] of Object.entries(deployment.modelInfo)) {
+    const match = /^input_cost_per_token_above_(\d+)k_tokens$/.exec(key)
+    const value = optionalNumber(rawValue)
+    if (match?.[1] && value !== undefined && value !== 0) points.push(Number(match[1]) * 1000)
   }
-  if (explicit.raw !== undefined && !(explicit.raw > 0)) {
-    return {
-      value: 0,
-      valid: false,
-      missing: false,
-      illegal: true,
-      provenance: { source: explicit.provenance.source, detail: `illegal ${explicit.provenance.detail} = ${explicit.raw}` },
+  const tiers = deployment.modelInfo.tiered_pricing
+  if (Array.isArray(tiers)) {
+    for (const tier of tiers) {
+      if (!isRecord(tier) || !Array.isArray(tier.range)) continue
+      const start = optionalNumber(tier.range[0])
+      if (start !== undefined && start > 0) points.push(Math.floor(start))
     }
   }
-  return { value: 0, valid: false, missing: true, illegal: false, provenance: explicit.provenance }
+  return points.length > 0 ? Math.min(...points) : undefined
+}
+
+/**
+ * Scalar group aggregation preserving unknown and conflict. Never drops
+ * missing declarations: `value + unknown` stays unknown. Deployment
+ * disagreement and same-dimension deployment-vs-model-level disagreement
+ * are conflicts, not silently-minimum merges.
+ *
+ * `modelLevelAuthoritative` marks fields where the model-level value is a
+ * distinct, more precise dimension (context): there it decides known on
+ * its own and never conflicts with deployment inputs.
+ */
+export function aggregateScalarEvidence(
+  deploymentValues: readonly (number | undefined)[],
+  modelLevel: number | undefined,
+  modelLevelAuthoritative = false,
+): ScalarEvidence {
+  const defined = deploymentValues.filter((value): value is number => value !== undefined)
+  const hasUnknown = deploymentValues.length > defined.length
+  const useModel = modelLevel !== undefined && modelLevel > 0
+  const model = useModel ? modelLevel! : undefined
+
+  if (useModel && modelLevelAuthoritative) {
+    return { state: "known", value: model!, conflict: false, source: "models.dev" }
+  }
+  if (defined.length === 0) {
+    if (useModel) return { state: "known", value: model!, conflict: false, source: "models.dev" }
+    return { state: "unknown", value: 0, conflict: false, source: "none" }
+  }
+  const deploymentConflict = !defined.every((value) => value === defined[0])
+  // Model-level evidence must not turn `value + unknown` into known even
+  // when it happens to agree with the declared deployments; it may only
+  // fill a group where every deployment left the field undeclared. When
+  // every deployment declares and all agree, an agreeing model-level value
+  // corroborates; a contradicting one is a real conflict.
+  const everyDeclared = defined.length === deploymentValues.length
+  const corroborates = useModel && everyDeclared && defined.every((value) => value === model)
+  const modelConflict = useModel && !corroborates && defined.some((value) => value !== model)
+  if (deploymentConflict || modelConflict) {
+    return { state: "conflict", value: 0, conflict: true, source: useModel ? "derived" : "litellm" }
+  }
+  if (hasUnknown) return { state: "unknown", value: 0, conflict: false, source: "litellm" }
+  return { state: "known", value: defined[0]!, conflict: false, source: useModel && corroborates ? "derived" : "litellm" }
+}
+
+/**
+ * The group's agreed limit value, mirroring exactly what the published
+ * spec carries (context capped when `contextTierCap` is enabled).
+ * `undefined` when the group evidence is unknown or conflicting.
+ */
+export function agreedLimitValue(
+  group: DeploymentGroup,
+  selected: SelectedModelRecord | undefined,
+  field: "context" | "output",
+  contextTierCap = false,
+): number | undefined {
+  const { deploymentValues, modelLevel } = deploymentLimitEvidence(group, selected, field)
+  const aggregate = aggregateScalarEvidence(
+    deploymentValues,
+    modelLevel,
+    field === "context" && modelLevel !== undefined && modelLevel > 0,
+  )
+  if (aggregate.state !== "known" || !(aggregate.value > 0)) return undefined
+  if (field === "context" && contextTierCap) {
+    const tierPoints = group.deployments
+      .map(firstTierPoint)
+      .filter((value): value is number => value !== undefined)
+    const firstTier = tierPoints.length > 0 ? Math.min(...tierPoints) : undefined
+    if (firstTier !== undefined) return Math.min(aggregate.value, firstTier)
+  }
+  return aggregate.value
+}
+
+/**
+ * Group limit evidence with unknown/conflict semantics, then legality.
+ *
+ * Illegality is a declared fact: a non-positive declared value is illegal
+ * metadata regardless of the group decision.
+ */
+function assessGroupLimit(
+  group: DeploymentGroup,
+  selected: SelectedModelRecord | undefined,
+  field: "context" | "output",
+  options: BuildOptions,
+): LimitAssessment {
+  const { deploymentValues, modelLevel } = deploymentLimitEvidence(group, selected, field)
+  const knownValue = agreedLimitValue(group, selected, field, options.contextTierCap)
+  const provenance = (detail: string, source: PublicationFieldProvenance["source"]): PublicationFieldProvenance => {
+    if (source === "models.dev") {
+      return {
+        source,
+        detail: `limit.${field} -> provider ${selected?.providerID ?? "unknown-provider"} -> model ${selected?.modelID ?? "unknown-model"}`,
+      }
+    }
+    return { source, detail }
+  }
+  const knownSource = modelLevel !== undefined && modelLevel > 0 && field === "context" ? "models.dev" : "litellm"
+
+  const illegal = deploymentValues.some((value) => value !== undefined && !(value > 0)) ||
+    (modelLevel !== undefined && !(modelLevel > 0) && field === "context")
+  if (illegal) {
+    return {
+      value: 0, valid: false, missing: false, unknown: false, conflict: false, illegal: true,
+      provenance: { source: "litellm", detail: `illegal ${field} limit metadata` },
+    }
+  }
+  if (knownValue !== undefined) {
+    return {
+      value: Math.floor(knownValue), valid: true, missing: false, unknown: false, conflict: false, illegal: false,
+      provenance: provenance(`limit.${field} group evidence`, knownSource),
+    }
+  }
+
+  const defined = deploymentValues.filter((value): value is number => value !== undefined)
+  const declaredConflict = defined.length > 0 && !defined.every((value) => value === defined[0]) ||
+    (defined.length > 0 && modelLevel !== undefined && modelLevel > 0 && field === "output" && defined[0] !== modelLevel)
+  if (declaredConflict) {
+    return {
+      value: 0, valid: false, missing: false, unknown: false, conflict: true, illegal: false,
+      provenance: provenance(`limit.${field} deployment or model-level conflict`, "derived"),
+    }
+  }
+  const everythingUndeclared = deploymentValues.every((value) => value === undefined) &&
+    !(modelLevel !== undefined && modelLevel > 0)
+  if (everythingUndeclared) {
+    return {
+      value: 0, valid: false, missing: true, unknown: false, conflict: false, illegal: false,
+      provenance: provenance(`no ${field} limit metadata`, "none"),
+    }
+  }
+  return {
+    value: 0, valid: false, missing: false, unknown: true, conflict: false, illegal: false,
+    provenance: provenance(`partial ${field} limit evidence; unknown is not coerced`, "litellm"),
+  }
+}
+
+const INPUT_MODALITY_FIELDS = [
+  ["supports_vision", "image"],
+  ["supports_pdf_input", "pdf"],
+  ["supports_audio_input", "audio"],
+  ["supports_video_input", "video"],
+] as const
+
+const OUTPUT_MODALITY_FIELDS = [
+  ["supports_audio_output", "audio"],
+] as const
+
+/**
+ * Raw per-dimension evidence for one direction. Each dimension carries
+ * every deployment's declaration so aggregation can distinguish
+ * all-unknown, partially-declared, fully-declared-agreed, and conflicting.
+ */
+function modalityDimensionEvidence(
+  group: DeploymentGroup,
+  direction: "input" | "output",
+): Array<{ modality: string; values: Array<boolean | undefined> }> {
+  const fields = direction === "input" ? INPUT_MODALITY_FIELDS : OUTPUT_MODALITY_FIELDS
+  return fields.map(([key, modality]) => ({
+    modality,
+    values: group.deployments.map((d) => optionalBoolean(d.modelInfo[key])),
+  }))
+}
+
+/**
+ * models.dev complete modality set: listed means supported, unlisted means
+ * not in the declared set. Only consumed when trusted record-level metadata
+ * exists for the direction.
+ */
+function modelsDevModalitySet(
+  selected: SelectedModelRecord | undefined,
+  direction: "input" | "output",
+): ReadonlySet<string> | undefined {
+  const modalities = selected?.record.modalities
+  if (!isRecord(modalities) || !Array.isArray(modalities[direction])) return undefined
+  const list = (modalities[direction] as unknown[]).filter((value): value is string => typeof value === "string")
+  if (list.length === 0) return undefined
+  return new Set(list)
 }
 
 function assessModalities(
@@ -266,27 +459,47 @@ function assessModalities(
   selected: SelectedModelRecord | undefined,
   direction: "input" | "output",
 ): ModalityAssessment {
-  const fields = direction === "input"
-    ? ["supports_vision", "supports_pdf_input", "supports_audio_input", "supports_video_input"]
-    : ["supports_audio_output"]
-  const liteLLMDeclares = fields.some((key) =>
-    group.deployments.some((d) => optionalBoolean(d.modelInfo[key]) !== undefined)
-  )
-  const modalities = selected?.record.modalities
-  const mdDeclares = isRecord(modalities) && Array.isArray(modalities[direction]) &&
-    (modalities[direction] as unknown[]).length > 0
-  if (liteLLMDeclares) return { values, known: true, provenance: { source: "litellm", detail: `${direction} modality declarations` } }
-  if (mdDeclares) {
-    return {
-      values,
-      known: true,
-      provenance: {
-        source: "models.dev",
-        detail: `modalities.${direction} -> provider ${selected?.providerID} -> model ${selected?.modelID}`,
-      },
+  const dimensions = modalityDimensionEvidence(group, direction)
+  const modelSet = modelsDevModalitySet(selected, direction)
+
+  let conflict = false
+  const supported = new Set<string>()
+  for (const dimension of dimensions) {
+    const defined = dimension.values.filter((value): value is boolean => value !== undefined)
+    if (defined.length === 0) {
+      if (modelSet?.has(dimension.modality)) supported.add(dimension.modality)
+      continue
     }
+    if (!defined.every((value) => value === defined[0])) {
+      conflict = true
+      continue
+    }
+    const isSupported = defined[0] === true
+    if (modelSet !== undefined && modelSet.has(dimension.modality) !== isSupported) conflict = true
+    if (isSupported) supported.add(dimension.modality)
   }
-  return { values, known: false, provenance: { source: "default", detail: "text-only baseline without explicit evidence" } }
+
+  const known = !conflict && dimensions.every((dimension) => {
+    const defined = dimension.values.filter((value): value is boolean => value !== undefined)
+    if (defined.length === 0) return modelSet !== undefined
+    return defined.length === dimension.values.length &&
+      defined.every((value) => value === defined[0])
+  })
+
+  if (known && !supported.has("text")) supported.add("text")
+
+  return {
+    values: known ? [...supported] : values,
+    known,
+    provenance: conflict
+      ? { source: "derived", detail: `${direction} modality evidence conflicts; not coerced to a set` }
+      : known
+        ? {
+          source: modelSet !== undefined ? "models.dev" : "litellm",
+          detail: `${direction} modality evidence covers every dimension`,
+        }
+        : { source: "default", detail: `${direction} modality evidence incomplete; text baseline without full evidence` },
+  }
 }
 
 export interface AssessInput {
@@ -329,31 +542,41 @@ export function assessModelConfiguration(
 
   const reasoningState = resolveReasoningState(group, effectiveSelected)
   const levels = resolveReasoningLevels(effectiveSelected, protocol)
-  const context = assessLimit(mapped.limit.context, explicitLimit(group, effectiveSelected, "context"))
-  const output = assessLimit(mapped.limit.output, explicitLimit(group, effectiveSelected, "output"))
+  const context = assessGroupLimit(group, effectiveSelected, "context", options)
+  const output = assessGroupLimit(group, effectiveSelected, "output", options)
   const inputModalities = assessModalities(mapped.capabilities.input, group, effectiveSelected, "input")
   const outputModalities = assessModalities(mapped.capabilities.output, group, effectiveSelected, "output")
 
   const missingFields: string[] = []
   const unknownFields: string[] = []
   const illegalFields: string[] = []
+  const conflictFields: string[] = []
   if (context.missing) missingFields.push("limit.context")
   if (output.missing) missingFields.push("limit.output")
   if (context.illegal) illegalFields.push("limit.context")
   if (output.illegal) illegalFields.push("limit.output")
+  if (context.conflict) conflictFields.push("limit.context")
+  if (output.conflict) conflictFields.push("limit.output")
   if (toolState === "unknown") unknownFields.push("capabilities.tools")
   if (reasoningState.state === "unknown") unknownFields.push("reasoning")
   if (!inputModalities.known) unknownFields.push("capabilities.input")
   if (!outputModalities.known) unknownFields.push("capabilities.output")
+  if (context.unknown || output.unknown) {
+    // Unknown limits participate as unknowns, not missing values.
+    if (context.unknown) unknownFields.push("limit.context")
+    if (output.unknown) unknownFields.push("limit.output")
+  }
 
   const catalogDown = !input.catalogAvailable
   const litellmOnlyComplete = detailed.outcome === "unmatched" &&
     missingFields.length === 0 &&
     unknownFields.length === 0 &&
-    illegalFields.length === 0
+    illegalFields.length === 0 &&
+    conflictFields.length === 0
+  const groupConflicts = conflictFields.length > 0
   let status: ModelConfigurationStatus
   if (detailed.outcome === "ambiguous") status = "ambiguous"
-  else if (illegalFields.length > 0) status = "invalid-metadata"
+  else if (groupConflicts || illegalFields.length > 0) status = "invalid-metadata"
   else if (litellmOnlyComplete) status = "configured"
   else if (detailed.outcome === "unmatched" && catalogDown) status = "metadata-unavailable"
   else if (detailed.outcome === "unmatched" && missingFields.length === 0 && unknownFields.length === 0) status = "unmatched"
@@ -403,6 +626,7 @@ export function assessModelConfiguration(
     missingFields,
     unknownFields,
     illegalFields,
+    conflictFields,
     failure: input.failure,
     usingLKG: false,
   }
@@ -434,6 +658,12 @@ export interface LastKnownGoodCapabilityVerdict {
   readonly reasoning: CapabilityState
   readonly inputModalitiesKnown: boolean
   readonly outputModalitiesKnown: boolean
+  /** Actual modality sets when known, so live evidence can conflict-check them. */
+  readonly inputModalities: readonly string[]
+  readonly outputModalities: readonly string[]
+  /** Captured context/output limits used for live conflict detection. */
+  readonly context: number
+  readonly output: number
 }
 
 export interface LastKnownGoodEntry {
@@ -467,6 +697,10 @@ export function capturedPublicationVerdict(assessment: CompletenessAssessment): 
     reasoning: assessment.reasoning.state,
     inputModalitiesKnown: assessment.inputModalities.known,
     outputModalitiesKnown: assessment.outputModalities.known,
+    inputModalities: [...assessment.inputModalities.values],
+    outputModalities: [...assessment.outputModalities.values],
+    context: assessment.context.value,
+    output: assessment.output.value,
   }
 }
 
@@ -511,7 +745,11 @@ function isCapturedVerdict(value: unknown): value is LastKnownGoodCapabilityVerd
   return isCapabilityState(value.tools) &&
     isCapabilityState(value.reasoning) &&
     typeof value.inputModalitiesKnown === "boolean" &&
-    typeof value.outputModalitiesKnown === "boolean"
+    typeof value.outputModalitiesKnown === "boolean" &&
+    Array.isArray(value.inputModalities) &&
+    Array.isArray(value.outputModalities) &&
+    typeof value.context === "number" &&
+    typeof value.output === "number"
 }
 
 /**
@@ -592,7 +830,42 @@ function explicitBooleanConflict(
   return values.some((value) => value !== undefined && value !== expected)
 }
 
-/** Positive live declarations that contradict the captured capability verdict. */
+/**
+ * Modality conflict: any explicitly declared live flag contradicting the
+ * captured set. `LKG contains image` + `live supports_vision=false` and
+ * `LKG text-only` + `live supports_vision=true` both reject.
+ */
+function explicitModalityConflict(
+  group: DeploymentGroup,
+  capturedSet: ReadonlySet<string>,
+  direction: "input" | "output",
+): boolean {
+  const fields = direction === "input" ? INPUT_MODALITY_FIELDS : OUTPUT_MODALITY_FIELDS
+  return fields.some(([key, modality]) => {
+    const live = group.deployments
+      .map((deployment) => optionalBoolean(deployment.modelInfo[key]))
+      .find((value) => value !== undefined)
+    if (live === undefined) return false
+    return live !== capturedSet.has(modality)
+  })
+}
+
+/** Illegal live limit values are never hidden behind an LKG restore. */
+function illegalLiveLimit(group: DeploymentGroup, field: "context" | "output"): boolean {
+  const keys = field === "context" ? ["max_input_tokens", "max_tokens"] : ["max_output_tokens", "max_tokens"]
+  return group.deployments.some((deployment) =>
+    keys.some((key) => {
+      const value = optionalNumber(deployment.modelInfo[key])
+      return value !== undefined && !(value > 0)
+    })
+  )
+}
+
+/**
+ * Positive live declarations that contradict the captured capability
+ * verdict, including actual modality sets and limit values. Any single
+ * conflict invalidates the whole entry (no field-level merge).
+ */
 function liveCapabilityConflict(group: DeploymentGroup, entry: LastKnownGoodEntry): string | undefined {
   if (!isCapturedVerdict(entry.captured)) return "LKG completeness verdict is missing"
   if (explicitBooleanConflict(
@@ -603,6 +876,22 @@ function liveCapabilityConflict(group: DeploymentGroup, entry: LastKnownGoodEntr
     group.deployments.map((deployment) => optionalBoolean(deployment.modelInfo.supports_reasoning)),
     entry.captured.reasoning,
   )) return "live reasoning declaration conflicts with captured LKG"
+  if (explicitModalityConflict(group, new Set(entry.captured.inputModalities), "input")) {
+    return "live input modality declaration conflicts with captured LKG"
+  }
+  if (explicitModalityConflict(group, new Set(entry.captured.outputModalities), "output")) {
+    return "live output modality declaration conflicts with captured LKG"
+  }
+  if (illegalLiveLimit(group, "context")) return "live context limit is illegal; LKG cannot mask invalid metadata"
+  if (illegalLiveLimit(group, "output")) return "live output limit is illegal; LKG cannot mask invalid metadata"
+  const liveContext = deploymentLimitEvidence(group, undefined, "context").deploymentValues.find((value) => value !== undefined)
+  if (liveContext !== undefined && Math.floor(liveContext) !== entry.captured.context) {
+    return `live context limit ${liveContext} conflicts with captured LKG ${entry.captured.context}`
+  }
+  const liveOutput = deploymentLimitEvidence(group, undefined, "output").deploymentValues.find((value) => value !== undefined)
+  if (liveOutput !== undefined && Math.floor(liveOutput) !== entry.captured.output) {
+    return `live output limit ${liveOutput} conflicts with captured LKG ${entry.captured.output}`
+  }
   return undefined
 }
 
