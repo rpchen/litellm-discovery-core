@@ -328,6 +328,9 @@ describe("PR8 discovery quality", () => {
       releaseUnit: "none",
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       limit: { context: 0, input: 0, output: 0 },
+      // Unknown reasoning evidence stays unknown on the neutral spec; it is
+      // never collapsed into false (adapters read this verdict).
+      reasoningSupported: "unknown",
     }])
     expect(hasOperationalLimits(specs[0]!)).toBeFalse()
 
