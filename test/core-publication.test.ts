@@ -1424,6 +1424,15 @@ describe("publication: LKG actual-value conflicts", () => {
     expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
   })
 
+  test("live output matching the captured output keeps LKG valid", () => {
+    const store = capture(TRUSTED)
+    const entry = store.get(lastKnownGoodKey("m"))!
+    expect(entry.captured.output).toBe(32000)
+    const group = two("m", [{ ...liveBase, max_output_tokens: 32000 }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).assessment.status).toBe("configured-lkg")
+  })
+
   test("live vision=false rejects a captured image-capable snapshot and vice versa", () => {
     const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
     const imageStore = capture(IMAGE_TRUSTED, 1000, { ...base, supports_vision: true })
