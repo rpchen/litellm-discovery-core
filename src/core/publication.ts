@@ -198,19 +198,18 @@ export interface CompletenessAssessment {
 function toolProvenance(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
-  state: CapabilityState,
+  inherited: boolean,
 ): PublicationFieldProvenance {
   if (group.deployments.some((d) => optionalBoolean(d.modelInfo.supports_function_calling) !== undefined)) {
     return { source: "litellm", detail: "supports_function_calling" }
   }
   if (optionalBoolean(selected?.record.tool_call) !== undefined) {
-    const inherited = selected?.record.tool_call === undefined ? false : false
-    void inherited
-    return { source: "models.dev", detail: "tool_call" }
+    const detail = `tool_call -> provider ${selected?.providerID} -> model ${selected?.modelID}`
+    return inherited
+      ? { source: "canonical-inheritance", detail }
+      : { source: "models.dev", detail }
   }
-  return state === "unknown"
-    ? { source: "none", detail: "no trusted tool-call evidence" }
-    : { source: "none", detail: "no trusted tool-call evidence" }
+  return { source: "none", detail: "no trusted tool-call evidence" }
 }
 
 function explicitLimit(
@@ -354,10 +353,6 @@ export function assessModelConfiguration(
 
   const catalogDown = !input.catalogAvailable
   let status: ModelConfigurationStatus
-  if (input.failure && !catalogDown && detailed.outcome === "matched") {
-    // A fetch failure with matched-but-incomplete data stays incomplete;
-    // LKG substitution is decided by resolveConfigurationWithLKG.
-  }
   if (detailed.outcome === "ambiguous") status = "ambiguous"
   else if (detailed.outcome === "unmatched" && catalogDown) status = "metadata-unavailable"
   else if (detailed.outcome === "unmatched") status = "unmatched"
@@ -366,7 +361,9 @@ export function assessModelConfiguration(
   else if (missingFields.length > 0 || unknownFields.length > 0) status = "discovered-incomplete"
   else status = "configured"
 
-  // LiteLLM-only private models with sufficient declarations publish normally.
+  // LiteLLM-only private models with sufficient declarations publish normally,
+  // even while the metadata catalog is unavailable: every required field is
+  // backed by an explicit endpoint declaration, not by a default.
   if (detailed.outcome === "unmatched" && missingFields.length === 0 && unknownFields.length === 0 && illegalFields.length === 0) {
     status = "configured"
   }
@@ -375,7 +372,10 @@ export function assessModelConfiguration(
   return {
     publishable,
     status,
-    tools: { state: toolState, provenance: toolProvenance(group, effectiveSelected, toolState) },
+    tools: {
+      state: toolState,
+      provenance: toolProvenance(group, effectiveSelected, inherited?.inheritedFields.includes("tool_call") ?? false),
+    },
     reasoning: {
       state: reasoningState.state,
       levelsKnown: levels.known,
