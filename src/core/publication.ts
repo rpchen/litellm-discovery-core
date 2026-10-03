@@ -673,6 +673,8 @@ export interface BuildPublicationOptions {
   /** Model ids the user explicitly accepted as degraded. */
   readonly acceptedDegradedIDs?: ReadonlySet<string>
   readonly degradationReason?: string
+  /** Classified metadata failure when the catalog itself failed to load. */
+  readonly failure?: MetadataFailure
   readonly now?: number
 }
 
@@ -704,7 +706,10 @@ export function buildPublicationResult(
   for (const group of groups) {
     const spec = byID.get(group.modelName)
     if (!spec) continue
-    const live = assessModelConfiguration(group, catalog, options, { catalogAvailable })
+    const live = assessModelConfiguration(group, catalog, options, {
+      catalogAvailable,
+      failure: buildOptions.failure,
+    })
     assessments.set(group.modelName, live)
 
     if (live.publishable) {
