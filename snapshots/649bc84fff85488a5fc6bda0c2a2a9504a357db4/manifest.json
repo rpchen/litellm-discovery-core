@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "kind": "merged-main",
+  "repository": "rpchen/litellm-discovery-core",
+  "commit": "649bc84fff85488a5fc6bda0c2a2a9504a357db4",
+  "tree": "429668339754689960dfabcceb387e329ece4585",
+  "project": "litellm-discovery-core-main-649bc84fff85488a5fc6bda0c2a2a9504a357db4",
+  "cbm_version": "0.11.0",
+  "source": {
+    "kind": "isolated-git",
+    "commit": "649bc84fff85488a5fc6bda0c2a2a9504a357db4",
+    "tree": "429668339754689960dfabcceb387e329ece4585",
+    "clean": true
+  },
+  "sha256": {
+    "graph.db.zst": "5a5f5c23b587fad4d57eec1febcfb9b4b84385561c38d70082f5b6b09e98a753",
+    "artifact.json": "fa5607c7e9dd6d4098b9d00528ed78a0cba66e4184e8f9dc978fca7529a6b951"
+  }
+}
