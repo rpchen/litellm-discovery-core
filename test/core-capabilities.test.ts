@@ -39,11 +39,11 @@ describe("能力映射", () => {
     expect(mapped("deepseek-v4.1-flash").limit.context).toBe(1000000)
   })
 
-  test("模态信任名单允许 models.dev 补充 Qwen 输入模态", () => {
+  test("models.dev 模态在 LiteLLM 未声明时按显式记录补充（无 family 特判）", () => {
     expect(mapped("qwen3.7-plus").capabilities.input).toEqual(["text", "image", "video"])
   })
 
-  test("信任名单只在 LiteLLM 未声明额外模态时生效", () => {
+  test("LiteLLM 显式模态声明优先于 models.dev", () => {
     // mimo-v2.6-pro declares audio/video inputs itself → LiteLLM values are authoritative.
     const result = mapped("mimo-v2.6-pro")
     expect(result.capabilities.input).toEqual(["text", "image", "audio", "video"])

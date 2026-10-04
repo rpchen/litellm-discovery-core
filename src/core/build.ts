@@ -7,7 +7,9 @@ import { groupLiteLLMDeployments } from "./litellm.js"
 import {
   buildVariants,
   releaseTimestamp,
+  resolveReasoningState,
   selectModelsDevRecord,
+  type CapabilityState,
   type ModelVariant,
 } from "./modelsdev.js"
 import { resolveProtocol, type Protocol } from "./protocol.js"
@@ -27,6 +29,13 @@ export interface ModelSpec {
   releaseUnit?: "unix-ms" | "unknown" | "none"
   cost: ModelCost
   limit: ModelLimits
+  /**
+   * Core-resolved reasoning support, independent from `variants`.
+   * `supported` with empty `variants` is legal (no selectable levels).
+   * Optional for wire compatibility with hand-built specs; adapters must
+   * treat a missing value as unknown, never derive it from variant count.
+   */
+  reasoningSupported?: CapabilityState
 }
 
 /**
@@ -64,6 +73,7 @@ export function buildModelSpecs(
           : typeof sourceDate === "string" && Number.isFinite(Date.parse(sourceDate)) ? "unix-ms" : "none",
         cost: mapped.cost,
         limit: mapped.limit,
+        reasoningSupported: resolveReasoningState(group, selected).state,
       }
     })
     .sort((left, right) => left.id.localeCompare(right.id, "en"))
