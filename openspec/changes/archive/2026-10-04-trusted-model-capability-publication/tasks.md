@@ -38,7 +38,7 @@
 - [x] Add Core tests: outage provider change rejects LKG, same identity survives outage, qualified≠unqualified, `models_dev_provider` namespace proof, base_model provider change, unprovable/incomplete live group blocks restore, capture refuses identity-less groups, identity completeness order-independence.
 - [x] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`, `npm run test:openspec-closure`.
 - [x] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`, `npm run test:openspec-closure`.
-- [ ] Archive the change with OpenSpec CLI and re-run strict validation (deferred: Pi/OpenCode dist, package verification, and real-host E2E still require the merged Core SHA).
+- [x] Archive the change with OpenSpec CLI and re-run strict validation (Core #26 merged as `649bc84fff85488a5fc6bda0c2a2a9504a357db4`; both adapters refreshed to that SHA and their full CI plus real-host E2E gates are green).
 
 ## Cross-repository follow-ups (owned by the adapter repositories)
 
