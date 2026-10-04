@@ -24,6 +24,7 @@ import {
   resolveReasoningState,
   selectModelsDevRecordDetailed,
   modelsDevReasoning,
+  groupIdentityEvidence,
   type CapabilityState,
   type DetailedSelection,
   type SelectedModelRecord,
@@ -650,13 +651,15 @@ export function isPublishableWithDegradedAcceptance(status: ModelConfigurationSt
 // ---------------------------------------------------------------------------
 
 /**
- * Bumped when publication completeness grows or captured facts change
- * meaning. An older number cannot satisfy a newer policy; restoration
- * also re-checks the captured verdict against the stored spec so a
- * same-number entry with unknown capabilities or inconsistent facts
- * still fails closed.
+ * Bumped when publication completeness grows, captured facts change
+ * meaning, or the LKG identity shape changes. An older number cannot
+ * satisfy a newer policy; restoration also re-checks the captured verdict
+ * against the stored spec and the stored stable identity against the
+ * current group evidence, so a same-number entry with unknown
+ * capabilities, inconsistent facts, or a route-stripped identity still
+ * fails closed.
  */
-export const PUBLICATION_SCHEMA_VERSION = 3 as const
+export const PUBLICATION_SCHEMA_VERSION = 4 as const
 
 export interface LastKnownGoodCapabilityVerdict {
   readonly tools: CapabilityState
@@ -682,6 +685,15 @@ export interface LastKnownGoodEntry {
   readonly schemaVersion: typeof PUBLICATION_SCHEMA_VERSION
   /** Stable LiteLLM model name this entry was captured for. */
   readonly modelName: string
+  /**
+   * Provider-aware stable identity of the captured group (sorted union
+   * of every deployment's identity ids, `|`-joined). This is the field
+   * LKG validity compares — it keeps provider namespaces and works with
+   * no enrichment source available. `canonicalID` stays as the legacy
+   * route-stripped name for provenance/compatibility only.
+   */
+  readonly stableIdentity: string
+  /** Legacy route-stripped canonical name; provenance/compatibility only. */
   readonly canonicalID: string
   readonly providerID: string
   readonly matchKind?: string
@@ -737,6 +749,14 @@ export function createLastKnownGoodEntry(
   catalog?: unknown,
   options?: BuildOptions,
 ): LastKnownGoodEntry {
+  // Capture requires provable group identity from the deployments'
+  // own evidence (same model as live publication). A caller cannot
+  // register an entry for a group whose identity is incomplete or
+  // unprovable, even with a configured-looking spec in hand.
+  const evidence = groupIdentityEvidence(group, catalog ?? {})
+  if (evidence.status !== "known" || evidence.identity === undefined) {
+    throw new Error(`LKG can only be captured from a group with a provable identity (${evidence.reason ?? "identity unknown"})`)
+  }
   const raw = captured ?? (catalog !== undefined && options !== undefined
     ? capturedPublicationVerdict(assessModelConfiguration(group, catalog, options), spec)
     : undefined)
@@ -756,6 +776,7 @@ export function createLastKnownGoodEntry(
   return {
     schemaVersion: PUBLICATION_SCHEMA_VERSION,
     modelName: group.modelName,
+    stableIdentity: evidence.identity,
     canonicalID: canonicals[0] ?? group.modelName.toLowerCase(),
     providerID: selected?.providerID ?? "litellm-only",
     matchKind: selected?.matchKind,
@@ -854,6 +875,11 @@ export function validateCapturedPublication(
 /**
  * Validate a stored entry against the current discovery inputs.
  * Age is reported but never a validity condition.
+ *
+ * Identity validity is decided FIRST from the current deployments'
+ * own provider-aware evidence — never from `selected`, which is exactly
+ * what a metadata outage removes. `selected` only adds a positive
+ * provider cross-check when enrichment is available.
  */
 export function validateLastKnownGood(
   entry: LastKnownGoodEntry,
@@ -861,6 +887,7 @@ export function validateLastKnownGood(
   selected: SelectedModelRecord | undefined,
   now = Date.now(),
   options?: Pick<BuildOptions, "contextTierCap">,
+  catalog?: unknown,
 ): LKGValidation {
   const ageMs = Math.max(0, now - entry.fetchedAtEpochMs)
   if (entry.schemaVersion !== PUBLICATION_SCHEMA_VERSION) {
@@ -872,14 +899,26 @@ export function validateLastKnownGood(
   if (lastKnownGoodKey(entry.modelName) !== lastKnownGoodKey(group.modelName)) {
     return { valid: false, reason: `model identity changed (${entry.modelName} != ${group.modelName})`, ageMs }
   }
+  // Stable identity from the live deployments alone: works with no
+  // enrichment source available. An identity the current group cannot
+  // prove, or proves differently (provider namespace included), rejects
+  // the entry before any weaker check could accept it.
+  const evidence = groupIdentityEvidence(group, catalog ?? {})
+  if (evidence.status !== "known" || evidence.identity === undefined) {
+    return { valid: false, reason: `LKG identity is not provable (${evidence.reason ?? "identity unknown"})`, ageMs }
+  }
+  if (evidence.identity !== entry.stableIdentity) {
+    return { valid: false, reason: `stable identity changed (${entry.stableIdentity} != ${evidence.identity})`, ageMs }
+  }
   const canonicals = [...new Set(candidateModelIDs(group).map(canonicalModelID))]
   const currentCanonical = canonicals[0] ?? group.modelName.toLowerCase()
   if (currentCanonical.toLowerCase() !== entry.canonicalID.toLowerCase()) {
     return { valid: false, reason: `canonical identity changed (${entry.canonicalID} != ${currentCanonical})`, ageMs }
   }
-  // When the live catalog is unavailable there is no current provider
-  // mapping to compare against; the stored mapping stands with cached
-  // provenance. Only a positively selected conflicting provider rejects.
+  // Additional cross-check only: when the live catalog is unavailable
+  // there is no current provider mapping to compare against; the stored
+  // mapping stands with cached provenance. Only a positively selected
+  // conflicting provider rejects — never the sole identity proof.
   const currentProvider = selected?.providerID
   if (currentProvider !== undefined && currentProvider.toLowerCase() !== entry.providerID.toLowerCase()) {
     return { valid: false, reason: `provider identity conflict (${entry.providerID} != ${currentProvider})`, ageMs }
@@ -1067,6 +1106,8 @@ export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntr
   if (!isRecord(value)) return false
   return value.schemaVersion === PUBLICATION_SCHEMA_VERSION &&
     typeof value.modelName === "string" &&
+    typeof value.stableIdentity === "string" &&
+    value.stableIdentity.length > 0 &&
     typeof value.canonicalID === "string" &&
     typeof value.providerID === "string" &&
     typeof value.fetchedAt === "string" &&
@@ -1135,7 +1176,7 @@ export function resolveConfigurationWithLKG(
   for (const key of keys) {
     const entry = store.get(key)
     if (!entry || !isLKGEntryCompatible(entry)) continue
-    const validation = validateLastKnownGood(entry, group, effectiveSelected, now, options)
+    const validation = validateLastKnownGood(entry, group, effectiveSelected, now, options, catalog)
     if (!validation.valid) continue
     const captured = validateCapturedPublication(entry)
     if (!captured.valid) continue

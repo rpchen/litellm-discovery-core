@@ -507,6 +507,75 @@ describe("publication: group identity", () => {
       expect(assessModelConfiguration(g, unrelated, options).status).toBe("ambiguous")
     }
   })
+
+  /** Deployment-level identity declarations only; no synthetic defaults. */
+  function raw(deployments: Array<{ route?: string; base?: string; provider?: string }>) {
+    return groupLiteLLMDeployments({
+      data: deployments.map((declared) => ({
+        model_name: "shared",
+        litellm_params: declared.route !== undefined ? { model: declared.route } : {},
+        model_info: {
+          mode: "chat",
+          ...(declared.base !== undefined ? { base_model: declared.base } : {}),
+          ...(declared.provider !== undefined ? { models_dev_provider: declared.provider } : {}),
+        },
+      })),
+    })[0]!
+  }
+
+  test("group identity requires positive evidence for every deployment", () => {
+    const catalog = {
+      openai: { models: { foo: { id: "foo", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    }
+
+    // Known + identity-less: blocked in BOTH deployment orders. Absence
+    // of a detected conflict is not proof of identity consistency.
+    for (const deployments of [
+      [{ route: "openai/foo" }, {}],
+      [{}, { route: "openai/foo" }],
+    ]) {
+      const g = raw(deployments)
+      expect(groupIdentityConflict(g, catalog)).toContain("no provable identity")
+      expect(selectModelsDevRecordDetailed(g, catalog).outcome).toBe("ambiguous")
+      const result = assessModelConfiguration(g, catalog, options)
+      expect(result.status).toBe("ambiguous")
+      expect(result.publishable).toBeFalse()
+    }
+
+    // Two identity-less deployments do not agree merely by having no conflict.
+    const bothUnknown = raw([{}, {}])
+    expect(groupIdentityConflict(bothUnknown, catalog)).toContain("no provable identity")
+    expect(assessModelConfiguration(bothUnknown, catalog, options).status).toBe("ambiguous")
+    expect(assessModelConfiguration(bothUnknown, catalog, options).publishable).toBeFalse()
+
+    // A declared provider without any model id proves a provider, not a model.
+    const providerOnly = raw([{ provider: "openai" }, { route: "openai/foo" }])
+    expect(groupIdentityConflict(providerOnly, catalog)).toContain("no provable identity")
+    expect(assessModelConfiguration(providerOnly, catalog, options).status).toBe("ambiguous")
+
+    // A single identity-less deployment is incomplete as well: model_name
+    // is the aggregate route alias, never per-deployment identity evidence.
+    const solo = groupLiteLLMDeployments({
+      data: [{
+        model_name: "shared",
+        litellm_params: {},
+        model_info: {
+          mode: "chat",
+          max_input_tokens: 100,
+          max_output_tokens: 10,
+          supports_function_calling: true,
+          supports_reasoning: false,
+          supports_vision: false,
+          supports_pdf_input: false,
+          supports_audio_input: false,
+          supports_video_input: false,
+          supports_audio_output: false,
+        },
+      }],
+    })[0]!
+    expect(assessModelConfiguration(solo, catalog, options).status).toBe("ambiguous")
+    expect(assessModelConfiguration(solo, catalog, options).publishable).toBeFalse()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -733,6 +802,7 @@ describe("publication: network and LKG", () => {
     store.set(lastKnownGoodKey("m"), {
       schemaVersion: PUBLICATION_SCHEMA_VERSION,
       modelName: "m",
+      stableIdentity: "openai/m",
       canonicalID: "other-model",
       providerID: "openai",
       fetchedAt: new Date(1000).toISOString(),
@@ -1152,6 +1222,7 @@ describe("publication: forged LKG", () => {
     return {
       schemaVersion: PUBLICATION_SCHEMA_VERSION,
       modelName: "m",
+      stableIdentity: "openai/m",
       canonicalID: "m",
       providerID: "openai",
       fetchedAt: new Date(1000).toISOString(),
@@ -1523,6 +1594,164 @@ describe("publication: LKG actual-value conflicts", () => {
     expect(live.status).toBe("invalid-metadata")
     expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
     expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).assessment.status).toBe("invalid-metadata")
+  })
+})
+
+describe("publication: LKG stable identity", () => {
+  const FOO_CATALOG = {
+    openai: { models: { foo: { id: "foo", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+  }
+  const CAPTURE_INFO = {
+    max_input_tokens: 128000,
+    max_output_tokens: 32000,
+    supports_function_calling: true,
+    supports_reasoning: false,
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  function fooResponse(route: string, info: Record<string, unknown> = {}) {
+    return { data: [{ model_name: "foo", litellm_params: { model: route }, model_info: { mode: "chat", ...info } }] }
+  }
+
+  function captureFoo(route: string, extraInfo: Record<string, unknown> = {}) {
+    const response = fooResponse(route, { ...CAPTURE_INFO, ...extraInfo })
+    const group = groupLiteLLMDeployments(response)[0]!
+    const assessment = assessModelConfiguration(group, FOO_CATALOG, options)
+    expect(assessment.status).toBe("configured")
+    const spec = buildModelSpecs(response, FOO_CATALOG, options).find((item) => item.id === "foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    return store
+  }
+
+  /** Outage-time group: identity declarations only, no capability evidence. */
+  function outageGroup(route: string, info: Record<string, unknown> = {}) {
+    return groupLiteLLMDeployments(fooResponse(route, info))[0]!
+  }
+
+  function outageResolve(store: ReturnType<typeof createLastKnownGoodStore>, group: DeploymentGroup) {
+    const live = assessModelConfiguration(group, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("server-5xx", "HTTP 503"),
+    })
+    return resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+  }
+
+  test("provider changed during metadata outage rejects the LKG entry", () => {
+    const store = captureFoo("openai/foo")
+    const entry = store.get(lastKnownGoodKey("foo"))!
+    expect(entry.stableIdentity).toBe("openai/foo")
+
+    const live = outageGroup("anthropic/foo")
+    // No enrichment source: `selected` is undefined, yet identity must
+    // still be decided from the deployments alone.
+    expect(selectModelsDevRecordDetailed(live, {}).outcome).toBe("unmatched")
+    const validation = validateLastKnownGood(entry, live, undefined, 2000, options, {})
+    expect(validation.valid).toBeFalse()
+    expect(validation.reason).toContain("stable identity changed")
+
+    const assessment = assessModelConfiguration(live, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("server-5xx", "HTTP 503"),
+    })
+    expect(resolveConfigurationWithLKG(assessment, live, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("same provider-qualified identity survives the outage", () => {
+    const store = captureFoo("openai/foo")
+    const resolved = outageResolve(store, outageGroup("openai/foo"))
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.assessment.publishable).toBeTrue()
+  })
+
+  test("unqualified identity never equals a qualified one without proof", () => {
+    const store = captureFoo("openai/foo")
+    const live = outageGroup("foo")
+    const validation = validateLastKnownGood(store.get(lastKnownGoodKey("foo"))!, live, undefined, 2000, options, {})
+    expect(validation.valid).toBeFalse()
+    expect(validation.reason).toContain("stable identity changed")
+    expect(outageResolve(store, live).lkg).toBeUndefined()
+  })
+
+  test("explicit models_dev_provider proves the namespace for an unqualified route", () => {
+    const store = captureFoo("openai/foo")
+    const live = outageGroup("foo", { models_dev_provider: "openai" })
+    expect(outageResolve(store, live).assessment.status).toBe("configured-lkg")
+  })
+
+  test("base_model provider change rejects the LKG entry", () => {
+    const store = captureFoo("openai/foo", { base_model: "openai/foo" })
+    const entry = store.get(lastKnownGoodKey("foo"))!
+    expect(entry.stableIdentity).toBe("openai/foo")
+
+    const live = outageGroup("openai/foo", { base_model: "anthropic/foo" })
+    const validation = validateLastKnownGood(entry, live, undefined, 2000, options, {})
+    expect(validation.valid).toBeFalse()
+    expect(validation.reason).toContain("stable identity changed")
+    expect(outageResolve(store, live).lkg).toBeUndefined()
+  })
+
+  test("LKG restore requires a provable live group identity", () => {
+    const store = captureFoo("openai/foo")
+    const entry = store.get(lastKnownGoodKey("foo"))!
+
+    // Unreconcilable multi-deployment group: LKG may not prove what the
+    // live group cannot.
+    const conflictGroup = groupLiteLLMDeployments({
+      data: [
+        { model_name: "foo", litellm_params: { model: "openai/foo" }, model_info: { mode: "chat" } },
+        { model_name: "foo", litellm_params: { model: "anthropic/foo" }, model_info: { mode: "chat" } },
+      ],
+    })[0]!
+    const conflict = validateLastKnownGood(entry, conflictGroup, undefined, 2000, options, {})
+    expect(conflict.valid).toBeFalse()
+    expect(conflict.reason).toContain("cannot be proven")
+
+    // Identity-less live member: incomplete evidence fails closed too.
+    const unknownGroup = groupLiteLLMDeployments({
+      data: [
+        { model_name: "foo", litellm_params: { model: "openai/foo" }, model_info: { mode: "chat" } },
+        { model_name: "foo", litellm_params: {}, model_info: { mode: "chat" } },
+      ],
+    })[0]!
+    const unknown = validateLastKnownGood(entry, unknownGroup, undefined, 2000, options, {})
+    expect(unknown.valid).toBeFalse()
+    expect(unknown.reason).toContain("no provable identity")
+
+    const live = assessModelConfiguration(conflictGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    expect(resolveConfigurationWithLKG(live, conflictGroup, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("LKG capture refuses a group without provable identity", () => {
+    const store = captureFoo("openai/foo")
+    const entry = store.get(lastKnownGoodKey("foo"))!
+    const spec = buildModelSpecs(fooResponse("openai/foo", CAPTURE_INFO), FOO_CATALOG, options).find((item) => item.id === "foo")!
+
+    const identityLess = groupLiteLLMDeployments({
+      data: [{ model_name: "foo", litellm_params: {}, model_info: { mode: "chat", ...CAPTURE_INFO } }],
+    })[0]!
+    expect(() => createLastKnownGoodEntry(identityLess, undefined, spec, 1000, entry.captured)).toThrow("provable identity")
+
+    const partial = groupLiteLLMDeployments({
+      data: [
+        { model_name: "foo", litellm_params: { model: "openai/foo" }, model_info: { mode: "chat", ...CAPTURE_INFO } },
+        { model_name: "foo", litellm_params: {}, model_info: { mode: "chat", ...CAPTURE_INFO } },
+      ],
+    })[0]!
+    expect(() => createLastKnownGoodEntry(partial, undefined, spec, 1000, entry.captured)).toThrow("provable identity")
   })
 })
 

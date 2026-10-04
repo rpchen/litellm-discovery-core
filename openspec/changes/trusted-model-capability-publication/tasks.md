@@ -33,6 +33,10 @@
 - [x] Round 3 blockers: LKG captured facts must equal the stored `ModelSpec` (limits, tools, reasoning, modality sets); explicit model-level output <= 0 is `invalid-metadata`, never missing; bump `PUBLICATION_SCHEMA_VERSION` for the captured `input` fact.
 - [x] Add Core tests: LKG modality order-independence, limit dimension separation, model-level limit conflicts, provider-namespace identity, equivalence order-independence, forged captured/spec mismatches, model-level output illegality.
 - [x] Add OpenSpec scenarios for all round 3 behaviors; extend `docs/testing-standard.md` with the provider-namespace, like-for-like LKG comparison, and captured↔spec long-term rules.
+- [x] Round 4 blockers: LKG gains a provider-aware `stableIdentity` (schema v4) decided from the deployments' own evidence before any enrichment-dependent check; `selected` stays an additional cross-check only.
+- [x] Round 4 blockers: group identity evidence (`known`/`unknown`/`conflict`) requires positive identity for every deployment — identity-less members are counted, never filtered; `groupIdentityConflict` becomes the compatibility wrapper and publication/LKG share one evidence model.
+- [x] Add Core tests: outage provider change rejects LKG, same identity survives outage, qualified≠unqualified, `models_dev_provider` namespace proof, base_model provider change, unprovable/incomplete live group blocks restore, capture refuses identity-less groups, identity completeness order-independence.
+- [x] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`, `npm run test:openspec-closure`.
 - [x] Run `npm run typecheck`, `bun test`, `npm run build:dist`, `npm run test:package`, `npm run validate:spec`, `npm run test:openspec-closure`.
 - [ ] Archive the change with OpenSpec CLI and re-run strict validation (deferred: Pi/OpenCode dist, package verification, and real-host E2E still require the merged Core SHA).
 

@@ -430,7 +430,8 @@ function identityNodeID(value: string): string {
  *   for that deployment, so its names qualify as `<provider>/<name>` and a
  *   pure route prefix never masquerades as an identity.
  *
- * Deployments without any id cannot be judged and are skipped.
+ * An empty result means the deployment carries no identity evidence at
+ * all; callers must treat that as identity-unknown, never as skippable.
  */
 function deploymentIdentityIDs(deployment: { modelInfo: Record<string, unknown>; litellmParams: { model?: unknown } }): string[] {
   const declaredProvider = optionalString(deployment.modelInfo.models_dev_provider)
@@ -454,30 +455,69 @@ function deploymentIdentityIDs(deployment: { modelInfo: Record<string, unknown>;
   return [...new Set(ids)]
 }
 
+export type GroupIdentityStatus = "known" | "unknown" | "conflict"
+
 /**
- * Group identity conflict. Pure over the group and catalog.
+ * Group-wide identity evidence. Identity is publication-critical like
+ * every other capability: the absence of a detected conflict is NOT
+ * proof of identity.
  *
- * Returns a reason when deployments provably cannot name the same model:
- * distinct explicit `models_dev_provider` values, or deployment id sets
- * that stay in different components of the identity equivalence graph.
+ * - `known`: every deployment carries positive identity evidence and all
+ *   ids reconcile into one component. `identity` is deterministic and
+ *   order-independent — the sorted union of every deployment's
+ *   provider-aware ids, joined by `|`. It preserves provider namespaces
+ *   (`openai/foo` never collapses to `foo`) and is never derived from
+ *   `model_name`, family names, or a sibling deployment's evidence.
+ * - `unknown`: one or more deployments declare no identity at all
+ *   (no route, no base model, no deterministic provider proof).
+ * - `conflict`: deployments provably cannot name the same model.
  *
- * The graph's nodes are normalized identity strings (provider namespace
- * preserved) and its edges come from deployment declarations plus catalog
- * relations (`canonical_model_id`, `aliases`, `equivalent_to`,
- * `equivalents`, `inherits`). Reconciliation is decided by *connectivity*,
- * which is symmetric, so it is order-independent in both directions: it
- * never depends on deployment array order nor on which side of a relation
- * stores the declaration. This graph proves identity membership only —
- * capability values never inherit through it.
+ * The same evidence serves live selection/publication and LKG
+ * capture/restore, so provider-aware publication and LKG matching can
+ * never drift apart.
  */
-export function groupIdentityConflict(group: DeploymentGroup, catalog: unknown): string | undefined {
+export interface GroupIdentityEvidence {
+  readonly status: GroupIdentityStatus
+  /** Deterministic stable identity; defined iff `status === "known"`. */
+  readonly identity?: string
+  /** Why the group cannot be trusted; defined for unknown/conflict. */
+  readonly reason?: string
+}
+
+/**
+ * Group identity evidence. Pure over the group and catalog.
+ *
+ * Reconciliation runs on the identity equivalence graph: nodes are
+ * normalized identity strings (provider namespace preserved), edges come
+ * from deployment declarations plus catalog relations
+ * (`canonical_model_id`, `aliases`, `equivalent_to`, `equivalents`,
+ * `inherits`). Connectivity is symmetric, so the verdict never depends
+ * on deployment array order nor on which side of a relation stores the
+ * declaration. The graph proves identity membership only — capability
+ * values never inherit through it.
+ */
+export function groupIdentityEvidence(group: DeploymentGroup, catalog: unknown): GroupIdentityEvidence {
   const providerConflict = groupExplicitProviderConflict(group)
   if (providerConflict) {
-    return `deployments declare different models_dev_provider values (${providerConflict.providers.join(", ")})`
+    return {
+      status: "conflict",
+      reason: `deployments declare different models_dev_provider values (${providerConflict.providers.join(", ")})`,
+    }
   }
-  if (group.deployments.length <= 1) return undefined
-  const idSets = group.deployments.map(deploymentIdentityIDs).filter((ids) => ids.length > 0)
-  if (idSets.length <= 1) return undefined
+  // Every deployment must carry positive identity evidence; an
+  // identity-less member is never filtered out of the judgment.
+  const idSets = group.deployments.map(deploymentIdentityIDs)
+  const identityLess = idSets.filter((ids) => ids.length === 0).length
+  if (identityLess > 0) {
+    return {
+      status: "unknown",
+      reason: `one or more deployments have no provable identity (${identityLess} of ${idSets.length} deployments declare no route, base model, or deterministic provider proof)`,
+    }
+  }
+  const stableIdentity = [...new Set(idSets.flat())].sort().join("|")
+  if (idSets.length <= 1) {
+    return { status: "known", identity: stableIdentity }
+  }
 
   // Union-find over identity strings. Node identity is the normalized
   // string itself, so a deployment id and a catalog record/target with the
@@ -550,9 +590,22 @@ export function groupIdentityConflict(group: DeploymentGroup, catalog: unknown):
 
   const roots = new Set(hubs.map((hub) => find(hub)))
   if (roots.size > 1) {
-    return `deployment identities cannot be proven to name the same model (${idSets.map((ids) => ids.join("|")).join(" vs ")})`
+    return {
+      status: "conflict",
+      reason: `deployment identities cannot be proven to name the same model (${idSets.map((ids) => ids.join("|")).join(" vs ")})`,
+    }
   }
-  return undefined
+  return { status: "known", identity: stableIdentity }
+}
+
+/**
+ * Compatibility wrapper over `groupIdentityEvidence`: any non-known
+ * state blocks trusted identity the same way. Prefer the evidence form
+ * when the unknown/conflict distinction matters.
+ */
+export function groupIdentityConflict(group: DeploymentGroup, catalog: unknown): string | undefined {
+  const evidence = groupIdentityEvidence(group, catalog)
+  return evidence.status === "known" ? undefined : evidence.reason
 }
 
 /**
@@ -563,10 +616,11 @@ export function groupIdentityConflict(group: DeploymentGroup, catalog: unknown):
  * step. Multiple remaining records stay `ambiguous` instead of collapsing
  * into an arbitrary reseller or a name-prefix provider.
  *
- * Group consistency: distinct explicit `models_dev_provider` values, or
- * distinct per-deployment candidate identities that metadata cannot prove
- * equivalent, make the whole group `ambiguous` — never first-deployment
- * wins.
+ * Group consistency: distinct explicit `models_dev_provider` values,
+ * deployment identities that metadata cannot prove equivalent, or any
+ * deployment with no positive identity evidence, make the whole group
+ * `ambiguous` — never first-deployment wins, and never a silent pass
+ * because no conflict was detected.
  */
 export function selectModelsDevRecordDetailed(
   group: DeploymentGroup,
@@ -575,8 +629,11 @@ export function selectModelsDevRecordDetailed(
   const candidates = candidateModelIDs(group)
   const allProviders = providers(catalog)
 
-  const identityConflict = groupIdentityConflict(group, catalog)
-  if (identityConflict) {
+  const identityEvidence = groupIdentityEvidence(group, catalog)
+  if (identityEvidence.status !== "known") {
+    // Identity-incomplete groups (`unknown`) and unprovable/conflicting
+    // groups both stay `ambiguous`: no detected conflict is not proof of
+    // identity, and never first-deployment wins.
     return {
       outcome: "ambiguous",
       selected: undefined,

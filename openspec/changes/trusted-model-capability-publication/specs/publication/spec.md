@@ -71,7 +71,7 @@ Core SHALL resolve reasoning support independently from reasoning levels; suppor
 - **THEN** Core never derives support from level presence alone in either direction
 
 ### Requirement: Deterministic source resolution and inheritance
-Core SHALL resolve metadata identity only through canonical identity, provider identity, alias, equivalent relations, or other verifiable deterministic relations with provenance, and SHALL keep ambiguous or unmatched identities observable instead of force-picking.
+Core SHALL resolve metadata identity only through canonical identity, provider identity, alias, equivalent relations, or other verifiable deterministic relations with provenance, and SHALL keep ambiguous or unmatched identities observable instead of force-picking. Group identity SHALL require positive evidence for every deployment: a deployment without route, base model, or deterministic provider proof makes the group identity-incomplete, and `model_name` never substitutes for per-deployment identity evidence.
 
 #### Scenario: Original provider wins
 - **WHEN** the canonical identity names an original provider whose record exists
@@ -112,6 +112,18 @@ Core SHALL resolve metadata identity only through canonical identity, provider i
 #### Scenario: Identity equivalence reconciliation is order-independent
 - **WHEN** a metadata relation (`canonical_model_id`, alias, equivalent, inherits) stored on only one of two identities proves they belong to the same identity component
 - **THEN** Core reaches the same resolved/ambiguous verdict for every deployment order; the graph decides by connectivity, and capability values never inherit through it
+
+#### Scenario: Group identity requires evidence for every deployment
+- **WHEN** one deployment declares a provider-qualified identity while another declares no route, no base model, and no deterministic provider proof
+- **THEN** Core reports the group blocked (`ambiguous`, not publishable) with a reason naming the missing deployment identity — the absence of a detected conflict is never treated as proof of identity consistency
+
+#### Scenario: All deployments identity-less stays blocked
+- **WHEN** every deployment in a multi-deployment group lacks identity evidence, or a deployment declares only `models_dev_provider` without any model id
+- **THEN** Core reports the group blocked; `model_name` (the aggregate route alias), family/name heuristics, and sibling deployments' identities never backfill a missing per-deployment identity
+
+#### Scenario: Deployment order cannot change identity completeness
+- **WHEN** a group mixes identified and identity-less deployments
+- **THEN** Core reports the same blocked verdict for every deployment order
 
 ### Requirement: Group-wide limit evidence
 Core SHALL treat context and output limits as group-wide evidence. Deployment values that agree are known; any partially-declared field stays unknown; disagreement between deployments, or between a full declaration set and contradicting model-level metadata, is a conflict that blocks normal publication. Missing values are never filtered, and minimum/maximum merging must never upgrade unknown or conflict into known.
@@ -193,7 +205,7 @@ Core SHALL allow ordinary degradation only for `discovered-incomplete` with a re
 - **THEN** Core rejects the acceptance and does not report success
 
 ### Requirement: LKG completeness revalidation
-Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, captured facts that do not match the stored `ModelSpec`, or conflicting live facts invalidate the entry. The entry stores the actual critical capability facts (tools/reasoning verdicts, resolved modality sets, context/input/output values) so any newly observed explicit live fact can be compared against them like-for-like: total context only against trusted total-context facts, input capacity only against input facts, output only against output facts, and every modality comparison across all deployments at once.
+Core SHALL revalidate a stored LKG entry against the current publication policy. A compatible schema version, positive limits, and adapter trust are not sufficient. Unknown tools, unknown reasoning, unknown modalities, illegal fields, identity drift, provider conflict, captured facts that do not match the stored `ModelSpec`, or conflicting live facts invalidate the entry. Identity validity SHALL be decided first from the live deployments' own provider-aware stable identity — the same evidence live publication uses — so it works with no enrichment source available; an unprovable or changed live group identity (provider namespace included) rejects the entry before weaker checks. The entry stores the actual critical capability facts (tools/reasoning verdicts, resolved modality sets, context/input/output values) so any newly observed explicit live fact can be compared against them like-for-like: total context only against trusted total-context facts, input capacity only against input facts, output only against output facts, and every modality comparison across all deployments at once.
 
 #### Scenario: Forged complete limits with unknown capabilities are rejected
 - **WHEN** an LKG entry has positive limits but captured tools, reasoning, or modalities are unknown
@@ -218,6 +230,18 @@ Core SHALL revalidate a stored LKG entry against the current publication policy.
 #### Scenario: Input capacity never contradicts total context
 - **WHEN** a live deployment declares a different `max_input_tokens` while no trusted live total-context fact exists
 - **THEN** Core never reports a context conflict from that fact; the input dimension decides via the captured input, and an equal input keeps the entry valid
+
+#### Scenario: LKG provider-qualified identity survives metadata outage
+- **WHEN** an entry was captured for `openai/foo` and the live group routes to `anthropic/foo` while the metadata source is unavailable and no record is selected
+- **THEN** Core rejects the entry from the deployments' own provider-aware stable identity alone; the `selected`-based provider check is only an additional cross-check when enrichment exists
+
+#### Scenario: LKG unqualified identity does not equal qualified identity without proof
+- **WHEN** an entry was captured for `openai/foo` and the live group routes to an unqualified `foo` with no deterministic provider proof
+- **THEN** Core rejects the entry; an explicit `models_dev_provider` that deterministically qualifies the live route to `openai/foo` is accepted instead
+
+#### Scenario: LKG restore requires a provable live group identity
+- **WHEN** the live group's own identity evidence is conflicting or incomplete (an identity-less deployment, or ids no metadata can reconcile)
+- **THEN** Core refuses the restore — the stored entry never proves what the live group cannot — and capture likewise refuses to store an entry without provable group identity
 
 #### Scenario: Same live fact does not invalidate
 - **WHEN** every explicit live fact agrees with the stored snapshot

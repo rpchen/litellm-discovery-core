@@ -111,15 +111,20 @@ Minimum/maximum merging never upgrades unknown into known. Limits use
 modalities aggregate per dimension with the models.dev `modalities`
 array as the only documented complete-set source.
 
-Group identity (`groupIdentityConflict`) works over an identity
-equivalence graph:
+Group identity (`groupIdentityEvidence`) works over an identity
+equivalence graph and is explicit about completeness:
 
+- Status is `known` / `unknown` / `conflict`. Every deployment must
+  carry positive identity evidence; an identity-less member yields
+  `unknown` (surfaced as `ambiguous`, never filtered out), and the
+  absence of a detected conflict is never proof of identity.
 - Identity nodes keep the provider namespace. `openai/foo`,
   `anthropic/foo`, and an unqualified `foo` are three distinct
   identities; an explicit `models_dev_provider` on a deployment is the
   deterministic namespace proof that qualifies its names. `base_model`
   follows the same rule — qualified names stay qualified, unqualified
-  names stay unqualified.
+  names stay unqualified. `model_name` is the aggregate route alias and
+  never substitutes for per-deployment evidence.
 - Edges come from deployment declarations (a deployment's own ids
   jointly identify it) and from catalog relations (`canonical_model_id`,
   `aliases`, `equivalent_to`, `equivalents`, `inherits`) with targets
@@ -127,6 +132,13 @@ equivalence graph:
   graph, which is symmetric: the verdict never depends on deployment
   array order or on which side stores the relation. The graph proves
   identity membership only; capability values never inherit through it.
+- When `known`, the evidence carries a deterministic `identity` (sorted
+  union of every deployment's ids, `|`-joined) — the LKG entry stores it
+  as `stableIdentity` (schema v4) and compares it against the live
+  group's evidence first, before the legacy route-stripped `canonicalID`
+  and before the enrichment-only provider cross-check. Capture refuses
+  groups whose identity is not provable, and restore refuses live groups
+  the same way, so LKG never proves what the live deployments cannot.
 
 Scalar limits are three distinct dimensions by design: `context` is
 total context (models.dev `limit.context`, with deployment
