@@ -79,8 +79,11 @@ function deploymentModalities(
   const fallback = new Set(modelsDevModalities(selected, direction))
   const mappings = direction === "input" ? INPUT_MODALITIES : OUTPUT_MODALITIES
   for (const [field, modality] of mappings) {
+    // A proven endpoint constraint (`litellm_params`) is the only LiteLLM
+    // declaration that can remove a modality the intrinsic record declares.
+    if (optionalBoolean(deployment.litellmParams[field]) === false) continue
     const value = optionalBoolean(deployment.modelInfo[field])
-    if (value === true || (value === undefined && fallback.has(modality))) result.add(modality)
+    if (value === true || fallback.has(modality)) result.add(modality)
   }
   return result
 }
@@ -135,9 +138,28 @@ export function mapCapabilities(
   contextTierCap: boolean,
 ): CapabilityResult {
   const mdTools = optionalBoolean(selected?.record.tool_call)
-  const tools = group.deployments.every(
-    (deployment) => optionalBoolean(deployment.modelInfo.supports_function_calling) ?? mdTools ?? true,
+  const declaredTools = group.deployments.map(
+    (deployment) =>
+      optionalBoolean(deployment.litellmParams.supports_function_calling) ??
+      optionalBoolean(deployment.modelInfo.supports_function_calling),
   )
+  // Two deployments that explicitly disagree keep the conservative answer:
+  // a model-level record cannot prove which route the host will use.
+  const toolDisagreement = declaredTools.some((value) => value === true) &&
+    declaredTools.some((value) => value === false)
+  const constrainedTools = group.deployments.some(
+    (deployment) => optionalBoolean(deployment.litellmParams.supports_function_calling) === false,
+  )
+  // Authoritative intrinsic tool support decides; a proven endpoint
+  // constraint (`litellm_params`) narrows it.
+  const tools = toolDisagreement
+    ? false
+    : selected !== undefined && mdTools !== undefined
+      ? mdTools && !constrainedTools
+      : group.deployments.every((deployment) =>
+        (optionalBoolean(deployment.litellmParams.supports_function_calling) ??
+          optionalBoolean(deployment.modelInfo.supports_function_calling)) ?? true
+      )
 
   const inputSets = group.deployments.map((deployment) => deploymentModalities(deployment, selected, "input"))
   const input = intersect(inputSets)
@@ -147,13 +169,25 @@ export function mapCapabilities(
 
   // models.dev distinguishes total context from maximum input. Preserve that
   // distinction when available; LiteLLM max_input_tokens is an input limit.
+  // The intrinsic value (models.dev limit.input, else total context) decides;
+  // proven deployment constraints narrow it and descriptive declarations
+  // only serve as a fallback when no intrinsic value exists.
   const mdContext = modelsDevLimit(selected, "context")
   const mdInput = modelsDevLimit(selected, "input")
-  const inputLimit = minimum(
+  const declaredInput = minimum(
     group.deployments.map(
-      (deployment) => positiveInteger(deployment.modelInfo.max_input_tokens) ?? mdInput ?? mdContext,
+      (deployment) =>
+        positiveInteger(deployment.modelInfo.max_input_tokens),
     ),
+    0,
   )
+  const constraintInput = minimum(
+    group.deployments.map((deployment) => positiveInteger(deployment.litellmParams.max_input_tokens)),
+    0,
+  )
+  let inputLimit = mdInput ?? mdContext ?? declaredInput
+  if (inputLimit === 0) inputLimit = constraintInput
+  else if (constraintInput > 0) inputLimit = Math.min(inputLimit, constraintInput)
   let context = mdContext ?? inputLimit
   let effectiveInput = inputLimit
   if (context > 0 && effectiveInput > 0) effectiveInput = Math.min(effectiveInput, context)
@@ -167,14 +201,29 @@ export function mapCapabilities(
   }
 
   const mdOutput = modelsDevLimit(selected, "output")
-  const outputLimit = minimum(
+  const declaredOutput = minimum(
     group.deployments.map(
       (deployment) =>
+        positiveInteger(deployment.litellmParams.max_tokens) ??
+        positiveInteger(deployment.litellmParams.max_output_tokens) ??
+        positiveInteger(deployment.litellmParams.max_completion_tokens) ??
         positiveInteger(deployment.modelInfo.max_output_tokens) ??
-        positiveInteger(deployment.modelInfo.max_tokens) ??
-        mdOutput,
+        positiveInteger(deployment.modelInfo.max_tokens),
     ),
+    0,
   )
+  const constraintOutput = minimum(
+    group.deployments.map(
+      (deployment) =>
+        positiveInteger(deployment.litellmParams.max_tokens) ??
+        positiveInteger(deployment.litellmParams.max_output_tokens) ??
+        positiveInteger(deployment.litellmParams.max_completion_tokens),
+    ),
+    0,
+  )
+  let outputLimit = mdOutput ?? declaredOutput
+  if (outputLimit === 0) outputLimit = constraintOutput
+  else if (constraintOutput > 0) outputLimit = Math.min(outputLimit, constraintOutput)
 
   return {
     capabilities: { tools, input, output },

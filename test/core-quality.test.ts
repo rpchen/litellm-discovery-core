@@ -118,14 +118,16 @@ describe("PR8 discovery quality", () => {
         },
       },
     }
-    const spec = buildModelSpecs({
+    // Descriptive LiteLLM metadata never overrides authoritative intrinsic
+    // metadata once the canonical identity is reliably resolved.
+    const descriptive = buildModelSpecs({
       data: [{
         model_name: "limit-model",
         litellm_params: { model: "openai/limit-model" },
         model_info: { mode: "chat", max_input_tokens: 800000, max_output_tokens: 64000 },
       }],
     }, catalog, options)[0]!
-    expect(spec.limit).toEqual({ context: 1000000, input: 800000, output: 64000 })
+    expect(descriptive.limit).toEqual({ context: 1000000, input: 900000, output: 128000 })
 
     const fallback = buildModelSpecs({
       data: [{
@@ -136,14 +138,28 @@ describe("PR8 discovery quality", () => {
     }, catalog, options)[0]!
     expect(fallback.limit).toEqual({ context: 1000000, input: 900000, output: 128000 })
 
-    const clamped = buildModelSpecs({
+    // A proven endpoint runtime constraint (`litellm_params`) still narrows
+    // the effective configuration. Total context stays the intrinsic window
+    // (a distinct dimension); the enforced input/output caps narrow.
+    const constrained = buildModelSpecs({
       data: [{
         model_name: "limit-model",
-        litellm_params: { model: "openai/limit-model" },
+        litellm_params: { model: "openai/limit-model", max_input_tokens: 250000, max_tokens: 32000 },
         model_info: { mode: "chat", max_input_tokens: 1200000 },
       }],
     }, catalog, options)[0]!
-    expect(clamped.limit).toEqual({ context: 1000000, input: 1000000, output: 128000 })
+    expect(constrained.limit).toEqual({ context: 1000000, input: 250000, output: 32000 })
+
+    // Without a trusted canonical record the descriptive declarations are
+    // the only evidence and the published limits fall back to them.
+    const liteLLMOnly = buildModelSpecs({
+      data: [{
+        model_name: "private-limit-model",
+        litellm_params: { model: "custom/private-limit-model" },
+        model_info: { mode: "chat", max_input_tokens: 1200000, max_output_tokens: 64000 },
+      }],
+    }, catalog, options)[0]!
+    expect(liteLLMOnly.limit).toEqual({ context: 1200000, input: 1200000, output: 64000 })
   })
 
   test("multi-deployment capabilities use conservative intersection and pricing uses highest LiteLLM declaration", () => {
