@@ -27,8 +27,14 @@ import {
   catalogDegradationFingerprint,
   catalogFromPublication,
   decideAcknowledgement,
+  nextPublishedBaseline,
+  parsePublicationMemory,
+  serializePublicationMemory,
   withheldModelFingerprint,
+  PUBLICATION_MEMORY_SCHEMA_VERSION,
+  type CatalogPublication,
   type DegradationAcknowledgement,
+  type PublicationMemory,
 } from "../src/core/catalog.ts"
 
 const options = { contextTierCap: false, protocolOverrides: {} } as const
@@ -459,13 +465,8 @@ describe("resilience: acknowledgement", () => {
   test("improvement stays quiet, full recovery clears state, new problems re-notify", () => {
     const two = buildCatalogPublication({ publishable: [], withheld: [withheld("a"), withheld("b")], discovered: 2 })
     const acknowledged = decideAcknowledgement(undefined, two, "2026-01-01T00:00:00.000Z")
-    const state = {
-      version: 1 as const,
-      fingerprint: two.fingerprint,
-      models: Object.fromEntries(two.withheld.map((entry) => [entry.id, entry.fingerprint])),
-      acknowledgedAt: "2026-01-01T00:00:00.000Z",
-    }
     void acknowledged
+    const state: DegradationAcknowledgement = acknowledged.next!
 
     const improved = buildCatalogPublication({ publishable: [{ id: "a", usingLKG: false }], withheld: [withheld("b")], discovered: 2 })
     expect(decideAcknowledgement(state, improved, "2026-01-02T00:00:00.000Z").notify).toBeFalse()
@@ -515,7 +516,7 @@ describe("resilience: acknowledgement", () => {
     // A stored acknowledgement is inert data: the publication partition above
     // still reports zero publishable models and the model stays withheld.
     const stored: DegradationAcknowledgement = decision.next!
-    expect(stored.version).toBe(1)
+    expect(stored.schemaVersion).toBe(1)
     expect(PUBLICATION_SCHEMA_VERSION).toBe(5)
   })
 })
@@ -661,5 +662,219 @@ describe("resilience: trusted LKG state machine", () => {
     })
     expect(outage.publishable).toEqual([])
     expect(outage.blocked[0]!.assessment.status).toBe("metadata-unavailable")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Acknowledgement persistence: restart stability
+// ---------------------------------------------------------------------------
+
+describe("resilience: acknowledgement persistence", () => {
+  function withheld(id: string, status: "discovered-incomplete" | "ambiguous" = "discovered-incomplete", code = "incomplete-metadata") {
+    return {
+      id,
+      status,
+      reasons: [{ code: code as never, message: "x", fields: ["limit.output"] }],
+      retryable: false,
+    }
+  }
+
+  /** One adapter-like lifecycle: decide, persist, "restart", restore. */
+  function restartCycle(
+    persisted: PublicationMemory | undefined,
+    catalog: CatalogPublication,
+    at: string,
+  ): { decision: ReturnType<typeof decideAcknowledgement>; memory: PublicationMemory } {
+    const decision = decideAcknowledgement(persisted?.acknowledgement, catalog, at)
+    const memory = parsePublicationMemory(serializePublicationMemory({
+      schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION,
+      acknowledgement: decision.next,
+      published: nextPublishedBaseline(
+        persisted?.published ?? [],
+        catalog.publishable,
+        catalog.withheld.map((entry) => entry.id),
+      ),
+    }))!
+    return { decision, memory }
+  }
+
+  test("a round trip preserves the suppression state", () => {
+    const catalog = buildCatalogPublication({ publishable: [], withheld: [withheld("a"), withheld("b")], discovered: 2 })
+    const first = restartCycle(undefined, catalog, "2026-01-01T00:00:00.000Z")
+    expect(first.decision.notify).toBeTrue()
+    const stored = serializePublicationMemory(first.memory) as Record<string, unknown>
+    const restored = parsePublicationMemory(JSON.stringify(stored))!
+    expect(restored.acknowledgement?.fingerprint).toBe(catalog.fingerprint)
+    expect(Object.keys(restored.acknowledgement!.models).sort()).toEqual(["a", "b"])
+    // Second process, identical problem set.
+    const second = restartCycle(restored, catalog, "2026-01-02T00:00:00.000Z")
+    expect(second.decision.notify).toBeFalse()
+    expect(second.decision.reason).toBe("unchanged")
+  })
+
+  test("improvement stays quiet across a restart and updates the baseline", () => {
+    const two = buildCatalogPublication({ publishable: [], withheld: [withheld("a"), withheld("b")], discovered: 2 })
+    const persisted = restartCycle(undefined, two, "2026-01-01T00:00:00.000Z").memory
+    const improved = buildCatalogPublication({ publishable: [{ id: "a", usingLKG: false }], withheld: [withheld("b")], discovered: 2 })
+    const after = restartCycle(persisted, improved, "2026-01-02T00:00:00.000Z")
+    expect(after.decision.notify).toBeFalse()
+    expect(after.decision.reason).toBe("improved")
+    expect(Object.keys(after.memory.acknowledgement!.models)).toEqual(["b"])
+  })
+
+  test("full recovery clears the acknowledgement across a restart", () => {
+    const two = buildCatalogPublication({ publishable: [], withheld: [withheld("a"), withheld("b")], discovered: 2 })
+    const persisted = restartCycle(undefined, two, "2026-01-01T00:00:00.000Z").memory
+    const recovered = buildCatalogPublication({ publishable: [{ id: "a", usingLKG: false }, { id: "b", usingLKG: false }], withheld: [], discovered: 2 })
+    const after = restartCycle(persisted, recovered, "2026-01-02T00:00:00.000Z")
+    expect(after.decision.reason).toBe("catalog-recovered")
+    expect(after.memory.acknowledgement).toBeUndefined()
+    expect([...after.memory.published].sort()).toEqual(["a", "b"])
+    // A brand new problem afterwards is a fresh observation, not a suppression
+    // inherited from the cleared record.
+    const fresh = buildCatalogPublication({ publishable: [], withheld: [withheld("c")], discovered: 1 })
+    const next = restartCycle(after.memory, fresh, "2026-01-03T00:00:00.000Z")
+    expect(next.decision.reason).toBe("catalog-unusable")
+    expect(next.decision.notify).toBeTrue()
+  })
+
+  test("a new problem after a restart is reported again", () => {
+    // The first observation was surfaced (unusable catalog) and therefore
+    // acknowledged and persisted.
+    const one = buildCatalogPublication({ publishable: [], withheld: [withheld("a")], discovered: 1 })
+    const first = restartCycle(undefined, one, "2026-01-01T00:00:00.000Z")
+    expect(first.decision.notify).toBeTrue()
+    expect(first.decision.reason).toBe("catalog-unusable")
+
+    const grew = buildCatalogPublication({ publishable: [], withheld: [withheld("a"), withheld("b")], discovered: 2 })
+    const after = restartCycle(first.memory, grew, "2026-01-02T00:00:00.000Z")
+    expect(after.decision.notify).toBeTrue()
+    expect(after.decision.reason).toBe("catalog-unusable")
+
+    // A non-interruptive first observation is deliberately not stored, and a
+    // newly discovered withheld model stays non-interruptive after a restart.
+    const quiet = buildCatalogPublication({ publishable: [{ id: "healthy", usingLKG: false }], withheld: [withheld("a")], discovered: 2 })
+    const quietMemory = restartCycle(undefined, quiet, "2026-01-01T00:00:00.000Z").memory
+    expect(quietMemory.acknowledgement).toBeUndefined()
+    const quietGrew = buildCatalogPublication({ publishable: [{ id: "healthy", usingLKG: false }], withheld: [withheld("a"), withheld("b")], discovered: 3 })
+    const quietAfter = restartCycle(quietMemory, quietGrew, "2026-01-02T00:00:00.000Z")
+    expect(quietAfter.decision.notify).toBeFalse()
+    expect(quietAfter.decision.reason).toBe("first-observation")
+  })
+
+  test("a materially different reason for the same model is a new problem after a restart", () => {
+    const before = buildCatalogPublication({ publishable: [], withheld: [withheld("a")], discovered: 1 })
+    const persisted = restartCycle(undefined, before, "2026-01-01T00:00:00.000Z").memory
+    expect(persisted.acknowledgement).toBeDefined()
+    const changed = buildCatalogPublication({
+      publishable: [],
+      withheld: [withheld("a", "ambiguous", "identity-ambiguous")],
+      discovered: 1,
+    })
+    const after = restartCycle(persisted, changed, "2026-01-02T00:00:00.000Z")
+    expect(after.decision.notify).toBeTrue()
+    expect(after.decision.reason).toBe("catalog-unusable")
+    // The new reason replaced the acknowledged one, so the next identical
+    // round is quiet again.
+    const repeat = restartCycle(after.memory, changed, "2026-01-03T00:00:00.000Z")
+    expect(repeat.decision.notify).toBeFalse()
+    expect(repeat.decision.reason).toBe("unchanged")
+  })
+
+  test("a previously published model becoming withheld is a regression after a restart", () => {
+    const published = buildCatalogPublication({ publishable: [{ id: "was-published", usingLKG: false }], withheld: [], discovered: 1 })
+    const memory = restartCycle(undefined, published, "2026-01-01T00:00:00.000Z").memory
+    expect(memory.published).toEqual(["was-published"])
+    expect(memory.acknowledgement).toBeUndefined()
+
+    // After the restart the restored baseline still knows the model was
+    // published, so its withdrawal is a regression, not a first-time gap.
+    const withdrawn = buildCatalogPublication({
+      publishable: [{ id: "healthy", usingLKG: false }],
+      withheld: [withheld("was-published")],
+      discovered: 2,
+      previouslyPublished: new Set(memory.published),
+    })
+    const after = restartCycle(memory, withdrawn, "2026-01-02T00:00:00.000Z")
+    expect(after.decision.notify).toBeTrue()
+    expect(after.decision.reason).toBe("regression")
+  })
+
+  test("the regression baseline keeps withheld models, drops removed ones, and stays bounded", () => {
+    // A model LiteLLM no longer returns is forgotten.
+    expect(nextPublishedBaseline(["gone", "still-there"], ["fresh"], ["still-there"])).toEqual(["fresh", "still-there"])
+    // A withheld model keeps its history so a repeat round is still a regression.
+    expect(nextPublishedBaseline(["withdrawn"], [], ["withdrawn"])).toEqual(["withdrawn"])
+  })
+
+  test("unreadable persisted memory only costs a repeated notification", () => {
+    expect(parsePublicationMemory(undefined)).toBeUndefined()
+    expect(parsePublicationMemory("not json")).toBeUndefined()
+    expect(parsePublicationMemory({ schemaVersion: 99, published: ["a"] })).toBeUndefined()
+    expect(parsePublicationMemory({ published: ["a"] })).toBeUndefined()
+    // Acknowledgement present but corrupt: dropped wholesale, never partially trusted.
+    const corrupt = parsePublicationMemory({
+      schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION,
+      acknowledgement: { schemaVersion: 1, fingerprint: "sha256:x", models: { a: "not-a-fingerprint" }, acknowledgedAt: "nope" },
+      published: ["a"],
+    })
+    expect(corrupt?.acknowledgement).toBeUndefined()
+    expect(corrupt?.published).toEqual(["a"])
+    // An older acknowledgement schema re-notifies instead of suppressing.
+    const older = parsePublicationMemory({
+      schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION,
+      acknowledgement: {
+        version: 1,
+        fingerprint: `sha256:${"a".repeat(32)}`,
+        models: { a: `sha256:${"b".repeat(32)}` },
+        acknowledgedAt: "2026-01-01T00:00:00.000Z",
+      },
+      published: [],
+    })
+    expect(older?.acknowledgement).toBeUndefined()
+  })
+})
+
+describe("resilience: acknowledgement never changes publication", () => {
+  const COMPLETE = {
+    max_input_tokens: 128_000,
+    max_output_tokens: 32_000,
+    supports_function_calling: true,
+    supports_reasoning: false,
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("identical snapshots produce identical partitions with and without acknowledgement", () => {
+    const response = {
+      data: [
+        { model_name: "gap-a", litellm_params: { model: "custom/gap-a" }, model_info: { mode: "chat" } },
+        { model_name: "gap-b", litellm_params: { model: "custom/gap-b" }, model_info: { mode: "chat" } },
+      ],
+    }
+    const first = buildPublicationResult(response, {}, options)
+    const facts = catalogFromPublication(first, { discovered: 2 })
+    expect(facts.unusable).toBeTrue()
+    // The acknowledgement state is derived, persisted, and restored...
+    const memory = {
+      schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION,
+      acknowledgement: decideAcknowledgement(undefined, facts, "2026-01-01T00:00:00.000Z").next,
+      published: nextPublishedBaseline([], facts.publishable, facts.withheld.map((entry) => entry.id)),
+    }
+    expect(parsePublicationMemory(serializePublicationMemory(memory))?.acknowledgement).toBeDefined()
+
+    // ...and a fresh, identical publication round is bit-identical because of it.
+    const again = buildPublicationResult(response, {}, options)
+    expect(again.publishable.map((entry) => entry.spec.id)).toEqual(first.publishable.map((entry) => entry.spec.id))
+    expect(again.blocked.map((entry) => entry.spec.id)).toEqual(first.blocked.map((entry) => entry.spec.id))
+    expect(again.publishable.map((entry) => entry.assessment.status)).toEqual(
+      first.publishable.map((entry) => entry.assessment.status),
+    )
+    expect(again.blocked.map((entry) => entry.assessment.status)).toEqual(
+      first.blocked.map((entry) => entry.assessment.status),
+    )
   })
 })

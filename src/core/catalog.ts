@@ -133,12 +133,22 @@ export function buildCatalogPublication(input: CatalogPublicationInput): Catalog
 // ---------------------------------------------------------------------------
 
 /**
+ * Bumped when the persisted publication memory changes shape or meaning.
+ * An unreadable or older record is dropped, which can only cause one
+ * repeated notification — never a publication change.
+ */
+export const PUBLICATION_MEMORY_SCHEMA_VERSION = 1 as const
+
+/** Versioned shape of the acknowledgement record itself. */
+export const ACKNOWLEDGEMENT_SCHEMA_VERSION = 1 as const
+
+/**
  * What the user has already been told about. Persisted across host
  * restarts so the same problem set is not reported twice. This state is
  * never consulted when deciding whether a model is publishable.
  */
 export interface DegradationAcknowledgement {
-  readonly version: 1
+  readonly schemaVersion: typeof ACKNOWLEDGEMENT_SCHEMA_VERSION
   /** Whole-set fingerprint at the moment the user reviewed the state. */
   readonly fingerprint: string
   /** Model id (case-insensitive) → per-model degradation fingerprint. */
@@ -163,6 +173,122 @@ export interface AcknowledgementDecision {
   readonly next: DegradationAcknowledgement | undefined
 }
 
+/**
+ * Everything an adapter must persist per endpoint to keep notification
+ * decisions stable across host restarts:
+ *
+ * - `acknowledgement` — the problem sets the user has already seen;
+ * - `published` — the regression baseline ("this model was published by the
+ *   applied catalog"), so a withdrawal is still a regression after a restart.
+ *
+ * Both fields are reporting state. Neither participates in publication.
+ */
+export interface PublicationMemory {
+  readonly schemaVersion: typeof PUBLICATION_MEMORY_SCHEMA_VERSION
+  readonly acknowledgement?: DegradationAcknowledgement
+  readonly published: readonly string[]
+}
+
+const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{32}$/
+
+function parseAcknowledgementRecord(value: unknown): DegradationAcknowledgement | undefined {
+  if (!isRecord(value)) return undefined
+  if (value.schemaVersion !== ACKNOWLEDGEMENT_SCHEMA_VERSION) return undefined
+  if (typeof value.fingerprint !== "string" || value.fingerprint.length === 0) return undefined
+  if (typeof value.acknowledgedAt !== "string" || !Number.isFinite(Date.parse(value.acknowledgedAt))) return undefined
+  if (!isRecord(value.models)) return undefined
+  const models: Record<string, string> = {}
+  for (const [key, fingerprint] of Object.entries(value.models)) {
+    const normalized = key.trim().toLowerCase()
+    if (normalized.length === 0) return undefined
+    if (typeof fingerprint !== "string" || !FINGERPRINT_PATTERN.test(fingerprint)) return undefined
+    models[normalized] = fingerprint
+  }
+  return {
+    schemaVersion: ACKNOWLEDGEMENT_SCHEMA_VERSION,
+    fingerprint: value.fingerprint,
+    models,
+    acknowledgedAt: value.acknowledgedAt,
+  }
+}
+
+/**
+ * Read persisted publication memory. A missing, corrupt, foreign, or
+ * older-schema record yields `undefined`, which at worst repeats a
+ * notification on the next round; it can never publish or withhold a model.
+ */
+export function parsePublicationMemory(value: unknown): PublicationMemory | undefined {
+  const candidate = typeof value === "string" ? safeJSON(value) : value
+  if (!isRecord(candidate)) return undefined
+  if (candidate.schemaVersion !== PUBLICATION_MEMORY_SCHEMA_VERSION) return undefined
+  const published = Array.isArray(candidate.published)
+    ? candidate.published.filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+    : []
+  const acknowledgement = candidate.acknowledgement === undefined || candidate.acknowledgement === null
+    ? undefined
+    : parseAcknowledgementRecord(candidate.acknowledgement)
+  // A record whose acknowledgement is present but unreadable is dropped as a
+  // whole: partially trusting it could wrongly suppress a real problem.
+  if (candidate.acknowledgement !== undefined && candidate.acknowledgement !== null && acknowledgement === undefined) {
+    return { schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION, published }
+  }
+  return {
+    schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION,
+    acknowledgement,
+    published: [...new Set(published)],
+  }
+}
+
+/** Stable, versioned payload an adapter stores verbatim. */
+export function serializePublicationMemory(memory: PublicationMemory): unknown {
+  const published = [...new Set(memory.published)].sort((left, right) => left.localeCompare(right, "en"))
+  const acknowledgement = memory.acknowledgement
+  return {
+    schemaVersion: PUBLICATION_MEMORY_SCHEMA_VERSION,
+    acknowledgement: acknowledgement === undefined
+      ? null
+      : {
+        schemaVersion: acknowledgement.schemaVersion,
+        fingerprint: acknowledgement.fingerprint,
+        models: Object.fromEntries(
+          Object.entries(acknowledgement.models).sort(([left], [right]) => left.localeCompare(right, "en")),
+        ),
+        acknowledgedAt: acknowledgement.acknowledgedAt,
+      },
+    published,
+  }
+}
+
+/**
+ * Next regression baseline: keep previously published models that the
+ * endpoint still serves (published or withheld), add the ones published now,
+ * and forget models LiteLLM no longer returns at all so the set stays bounded.
+ */
+export function nextPublishedBaseline(
+  previous: readonly string[],
+  currentPublishable: readonly string[],
+  currentWithheld: readonly string[],
+): string[] {
+  const known = new Set([...currentPublishable, ...currentWithheld])
+  const next = new Set(currentPublishable)
+  for (const id of previous) {
+    if (known.has(id)) next.add(id)
+  }
+  return [...next]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function safeJSON(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return undefined
+  }
+}
+
 function modelKey(id: string): string {
   return id.trim().toLowerCase()
 }
@@ -173,9 +299,18 @@ function modelFingerprintMap(withheld: readonly WithheldModelEntry[]): Record<st
   return map
 }
 
+function acknowledgementOf(
+  fingerprint: string,
+  models: Record<string, string>,
+  acknowledgedAt: string,
+): DegradationAcknowledgement {
+  return { schemaVersion: ACKNOWLEDGEMENT_SCHEMA_VERSION, fingerprint, models, acknowledgedAt }
+}
+
 /**
  * Decide whether this round may be surfaced, and what the next suppression
- * state should be.
+ * state should be. The returned state is what an adapter persists, so a
+ * restart re-observes the same problem set as `unchanged`.
  *
  * - full recovery clears the acknowledgement;
  * - a strict subset (a withheld model recovered, the rest unchanged) is an
@@ -187,6 +322,22 @@ function modelFingerprintMap(withheld: readonly WithheldModelEntry[]): Record<st
  * - `discovered > 0 && publishable = 0` is always surfaced: the endpoint is
  *   reachable but the catalog is currently unusable.
  */
+/**
+ * Decide whether this round may be surfaced, and what the next suppression
+ * state should be. The returned state is what an adapter persists, so after a
+ * restart the same problem set is recognised as .
+ *
+ * - a previously published model becoming withheld is a regression and is
+ *   always surfaced, even when the user acknowledged other problems;
+ * - an unusable catalog (discovered > 0, nothing publishable) is surfaced the
+ *   first time it is observed and whenever it materially grows; a continuing
+ *   identical state stays quiet and remains visible in diagnostics;
+ * - full recovery clears the acknowledgement;
+ * - a strict subset (a withheld model recovered, the rest unchanged) is an
+ *   improvement and stays quiet while updating the baseline;
+ * - a newly discovered model that cannot be published is visible in
+ *   diagnostics but is not interruptive on its own.
+ */
 export function decideAcknowledgement(
   previous: DegradationAcknowledgement | undefined,
   catalog: CatalogPublication,
@@ -196,90 +347,49 @@ export function decideAcknowledgement(
   const currentModels = modelFingerprintMap(catalog.withheld)
 
   if (catalog.withheld.length === 0) {
-    return {
-      notify: false,
-      reason: "catalog-recovered",
-      next: undefined,
-    }
-  }
-
-  if (catalog.unusable) {
-    return {
-      notify: true,
-      reason: "catalog-unusable",
-      next: {
-        version: 1,
-        fingerprint: currentFingerprint,
-        models: currentModels,
-        acknowledgedAt,
-      },
-    }
-  }
-
-  if (!previous || previous.version !== 1) {
-    const regression = catalog.regressions.length > 0
-    return {
-      notify: regression,
-      reason: regression ? "regression" : "first-observation",
-      next: regression
-        ? { version: 1, fingerprint: currentFingerprint, models: currentModels, acknowledgedAt }
-        : undefined,
-    }
-  }
-
-  const previousModels = previous.models ?? {}
-  const regressionUnacknowledged = catalog.regressions.some(
-    (entry) => previousModels[modelKey(entry.id)] !== entry.fingerprint,
-  )
-  if (regressionUnacknowledged) {
-    return {
-      notify: true,
-      reason: "regression",
-      next: {
-        version: 1,
-        fingerprint: currentFingerprint,
-        models: currentModels,
-        acknowledgedAt,
-      },
-    }
+    return { notify: false, reason: "catalog-recovered", next: undefined }
   }
 
   const currentKeys = Object.keys(currentModels)
+  const usablePrevious = previous?.schemaVersion === ACKNOWLEDGEMENT_SCHEMA_VERSION ? previous : undefined
+  const previousModels = usablePrevious?.models ?? {}
+  const regressionUnacknowledged = catalog.regressions.some(
+    (entry) => previousModels[modelKey(entry.id)] !== entry.fingerprint,
+  )
+
+  if (!usablePrevious) {
+    if (regressionUnacknowledged) {
+      return { notify: true, reason: "regression", next: acknowledgementOf(currentFingerprint, currentModels, acknowledgedAt) }
+    }
+    if (catalog.unusable) {
+      return { notify: true, reason: "catalog-unusable", next: acknowledgementOf(currentFingerprint, currentModels, acknowledgedAt) }
+    }
+    return { notify: false, reason: "first-observation", next: undefined }
+  }
+
+  if (regressionUnacknowledged) {
+    return { notify: true, reason: "regression", next: acknowledgementOf(currentFingerprint, currentModels, acknowledgedAt) }
+  }
+
   const isSubsetOrEqual = currentKeys.every((key) => previousModels[key] === currentModels[key])
   if (isSubsetOrEqual) {
     const unchanged = currentKeys.length === Object.keys(previousModels).length
     return {
       notify: false,
       reason: unchanged ? "unchanged" : "improved",
-      next: {
-        version: 1,
-        fingerprint: currentFingerprint,
-        models: currentModels,
-        acknowledgedAt: previous.acknowledgedAt,
-      },
+      next: acknowledgementOf(currentFingerprint, currentModels, usablePrevious.acknowledgedAt),
     }
   }
 
   return {
     notify: true,
-    reason: "new-issues",
-    next: {
-      version: 1,
-      fingerprint: currentFingerprint,
-      models: currentModels,
-      acknowledgedAt,
-    },
+    reason: catalog.unusable ? "catalog-unusable" : "new-issues",
+    next: acknowledgementOf(currentFingerprint, currentModels, acknowledgedAt),
   }
 }
 
 export function isDegradationAcknowledgement(value: unknown): value is DegradationAcknowledgement {
-  if (typeof value !== "object" || value === null) return false
-  const candidate = value as Record<string, unknown>
-  return candidate.version === 1 &&
-    typeof candidate.fingerprint === "string" &&
-    typeof candidate.acknowledgedAt === "string" &&
-    typeof candidate.models === "object" &&
-    candidate.models !== null
+  return parseAcknowledgementRecord(value) !== undefined
 }
 
 /**
