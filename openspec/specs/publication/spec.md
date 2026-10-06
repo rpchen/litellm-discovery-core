@@ -8,7 +8,7 @@ Defines the trustworthy model-capability publication loop: formal completeness a
 ### Requirement: Publication completeness policy
 Core SHALL define a formal, testable rule deciding whether a discovered model's metadata is reliable enough for normal publication, and SHALL report exactly which fields are missing, unknown, or illegal when it is not.
 
-The gate is never relaxed and has no user-override path. A model is publishable only as `configured` or `configured-lkg`; every other model is withheld with explicit reasons. No confirmation, acceptance, or override state participates in publication, and one model being withheld never gates another model of the same endpoint.
+The gate is never relaxed and has no user-override path. A model is publishable only as `configured` or `configured-lkg`; every other model is withheld with explicit reasons. No confirmation, acceptance, or override state participates in publication, and one model being withheld never gates another model of the same endpoint. Provider-scoped serving metadata selected through a fallback record ranks below LiteLLM declarations and cannot outrank them.
 
 #### Scenario: Complete trustworthy metadata is publishable
 - **WHEN** a model has positive context and output limits plus known tool-calling and reasoning states with a uniquely resolved identity
@@ -49,6 +49,10 @@ The gate is never relaxed and has no user-override path. A model is publishable 
 #### Scenario: Per-model isolation of failure
 - **WHEN** one model of an endpoint cannot prove trustworthy metadata
 - **THEN** every other model that does pass the gate is published normally in the same round
+
+#### Scenario: fallback conflict blocks publication
+- **WHEN** a fallback-selected provider record reports a value that conflicts with an equally ranked LiteLLM declaration
+- **THEN** Core reports the field as an unresolved conflict and withholds the model under the normal publication gate
 
 ### Requirement: False versus unknown
 Core SHALL distinguish confirmed-unsupported (`unsupported`) from unevidenced (`unknown`) for tool calling and reasoning, and SHALL never rewrite `unknown` to `false`, `0`, or `[]` on any path leading to normal publication.
@@ -331,6 +335,10 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 #### Scenario: Schema change invalidates LKG
 - **WHEN** the stored shape is incompatible with the current schema
 - **THEN** Core rejects the entry
+
+#### Scenario: LKG never restores a superseded fallback serving value
+- **WHEN** a stored LKG entry captured a reseller serving limit (for example 943718) that no longer matches the live assessment after precedence correction (for example 393216)
+- **THEN** LKG validation fails closed on the captured-facts and provider cross-checks and never restores the stale metadata
 
 ### Requirement: Configuration states and provenance
 Core SHALL expose per-model configuration states and per-field provenance answering where each key value came from, including live, fallback, canonical-inheritance, and LKG chains.
