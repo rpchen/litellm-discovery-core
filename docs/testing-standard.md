@@ -165,10 +165,20 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 
 长期不变量：
 
-- `unknown` 不得自动变成 `false`，也不得自动变成 `true`；多 deployment 聚合不得先丢弃缺失声明再得出 supported/unsupported。对同一宿主模型聚合多个 LiteLLM deployments 时，任何 publication-critical 字段（identity、limits、modalities、tools、reasoning）都必须具有 group-wide trustworthy evidence；不得通过过滤缺失值、选择首条 deployment、取最小/最大值或部分 sparse flags，将部分未知/冲突事实提升为 known。
-- modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only；sparse flag 只证明该维度，不证明整个 direction。
-- degradation 只允许已确认身份的 incomplete，以及 metadata source 失败且无有效 LKG 的 unavailable。`ambiguous`、`invalid-metadata`、单纯 `unmatched`、`configured` 与 `configured-lkg` 不得普通 accept。
-- LKG 必须由 Core 重新证明仍满足当前 publication policy，不能只检查正数 limits 或相信 adapter 当初存入的是 configured；任一新的明确 live capability fact 与 LKG snapshot 冲突时，整份 LKG fail closed，不得用旧 snapshot 覆盖新的可信事实。
+- **证据来源权威（source authority）**：`selectModelsDevRecordDetailed` 返回 `selected`（即 canonical identity 可靠解析）是 models.dev 对模型内禀事实具备高权威的**前置门禁**；identity 为 `ambiguous` 或缺少正面证据时，models.dev 不下发权威，字段回落到 LiteLLM 证据与 tri-state 语义。
+- **必须区分两类事实**：
+  - 模型内禀事实（context / output / input capacity / modalities / vision / audio / video / pdf / tools / reasoning）：canonical identity 可靠时以 models.dev 为高权威；LiteLLM `model_info` 中的同类字段是 descriptive secondary evidence；
+  - endpoint 运行约束：只有运维者自己的部署配置 `litellm_params` 中可证明 enforce 的键才可收窄 effective 值，且只能收窄同维度。字段名本身不构成 hard cap；描述性声明不得收窄或否决权威 intrinsic 值。
+- **resolved discrepancy 与 unresolved conflict 必须分开**：可裁决差异记录证据后继续 publication assessment，不得报告为 incomplete / invalid / blocked；无法按 authority 裁决的冲突才 withheld。`discrepancy ≠ conflict`、`resolved discrepancy ≠ incomplete`。
+- `unknown` 不得自动变成 `false`，也不得自动变成 `true`；多 deployment 聚合不得先丢弃缺失声明再得出 supported/unsupported。
+- **跨 deployment 的显式不一致始终是 unresolved conflict**（模型级记录无法证明宿主请求会落到哪条 route），即使存在 authoritative intrinsic 值；authority 只裁决「deployment 之间一致或沉默」与「模型级记录」之间的差异。不得通过过滤缺失值、选择首条 deployment、取最小/最大值或部分 sparse flags 把部分未知/冲突事实提升为 known。
+- modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only；sparse flag 只证明该维度，不证明整个 direction。有权威完整集合时该 direction 为 known，与之矛盾的描述性 flag 记为 resolved discrepancy。
+- **不存在 model-level degraded publication**：`publishable(model)` 只依赖证据，不依赖任何用户确认、acceptance、flag 或 option；Core 不得再提供 `degraded` 状态或 acceptance API，adapter 不得再提供 accept-degraded 命令/RPC。
+- withheld 必须给出完整 reason 列表（identity-ambiguous / identity-unmatched / metadata-unavailable / incomplete-metadata / authoritative-conflict / illegal-metadata），并且一个模型 withheld 不得影响同一 endpoint 的其他模型。
+- partial catalog（`discovered > 0` 且部分可发布）是正常结果：可发布的模型必须立即进入宿主，无需任何用户动作；`discovered > 0 && publishable = 0` 必须表达为 unusable catalog，adapter 必须让用户能明显看到 endpoint 已连接但 catalog 当前不可用，并提供已有 Retry/诊断入口，不得提供 accept/override。
+- previously published 模型变 withheld 必须作为 regression 呈现，且必须与「新模型首次 withheld」区分；withheld 模型恢复后必须自动发布，无需用户批准。
+- acknowledgement（若实现）只允许改变提醒状态：fingerprint 只能由 withheld 模型身份与实质原因组成（排除时间戳、retry counter、错误文本细节），完全恢复即清除；它不得参与 publication，也不得以独立 slash command 形式暴露。
+- LKG 必须由 Core 重新证明仍满足当前 publication policy：只有本轮完整通过 gate 的 `ModelSpec` 才可成为 LKG；live 冲突判定只接受 authoritative intrinsic 事实与 proven runtime constraint，低权威描述性差异不得使快照失效；proven constraint 与快照不一致、identity/provider/schema 变化、任何 live illegal limit 整份 fail closed；LKG 不得复活 LiteLLM 已不再提供的模型；不设固定 TTL，年龄只作为 diagnostics 信息。
 - Provider-qualified model identity MUST retain the provider namespace during trusted group reconciliation; identical unqualified model names under different providers are not the same identity without deterministic metadata proof, and relation reconciliation must be order-independent (connectivity, not directionality).
 - Trusted group identity requires positive evidence for every deployment. Absence of a detected conflict is not proof of identity consistency; identity-less deployments must keep the group unpublishable unless deterministic metadata proves their identity, and the aggregate route name (`model_name`) never substitutes for per-deployment evidence.
 - LKG identity validation must use the same provider-aware stable identity semantics as live publication and must remain valid even when enrichment sources are unavailable; the provider namespace must never be discarded during LKG matching, and an LKG entry may never prove identity for a live group that cannot prove it itself.

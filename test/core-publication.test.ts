@@ -13,17 +13,13 @@ import {
 } from "../src/core/modelsdev.ts"
 import { resolveProtocol } from "../src/core/protocol.ts"
 import {
-  acceptDegradedConfiguration,
   assessModelConfiguration,
   buildPublicationResult,
   capturedPublicationVerdict,
   classifyMetadataFailure,
   createLastKnownGoodEntry,
   createLastKnownGoodStore,
-  degradationEligibility,
-  isDegradationEligible,
   isNormallyPublishable,
-  isPublishableWithDegradedAcceptance,
   lastKnownGoodKey,
   metadataFailureFor,
   resolveConfigurationWithLKG,
@@ -862,10 +858,10 @@ describe("publication: network and LKG", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Explicit degradation
+// Publication gate is not user-overridable
 // ---------------------------------------------------------------------------
 
-describe("publication: explicit degradation", () => {
+describe("publication: no user override path", () => {
   test("no LKG plus fetch failure is never normally published", () => {
     const g = bareGroup("m", "openai/m")
     const live = assessModelConfiguration(g, {}, options, {
@@ -882,78 +878,6 @@ describe("publication: explicit degradation", () => {
     const result = assess("m", "openai/m", { max_input_tokens: 1000, supports_reasoning: false }, {})
     expect(result.publishable).toBeFalse()
     expect(isNormallyPublishable(result.status)).toBeFalse()
-  })
-
-  test("accepted degradation stays degraded", () => {
-    const g = group("m", "openai/m", { max_input_tokens: 1000, supports_reasoning: false })
-    const live = assessModelConfiguration(g, { openai: { models: { m: { id: "m", tool_call: true, reasoning: false } } } }, options, { catalogAvailable: true })
-    expect(live.publishable).toBeFalse()
-    const degraded = acceptDegradedConfiguration(live, { reason: "user accepted in TUI" })
-    expect(degraded.status).toBe("degraded")
-    expect(degraded.assessment.status).toBe("degraded")
-    expect(degraded.remainingGaps.length).toBeGreaterThan(0)
-    expect(isPublishableWithDegradedAcceptance("degraded")).toBeTrue()
-    expect(isNormallyPublishable("degraded")).toBeFalse()
-  })
-
-  test("degradation is allowed only for incomplete and unavailable states", () => {
-    const incomplete = assess("gap", "openai/gap", { max_input_tokens: 1000, max_output_tokens: 100 }, { openai: { models: { gap: { id: "gap" } } } })
-    expect(incomplete.status).toBe("discovered-incomplete")
-    expect(isDegradationEligible(incomplete)).toBeTrue()
-    expect(acceptDegradedConfiguration(incomplete, {}).status).toBe("degraded")
-
-    const unavailable = assessModelConfiguration(bareGroup("down"), {}, options, {
-      catalogAvailable: false,
-      failure: metadataFailureFor("timeout"),
-    })
-    expect(unavailable.status).toBe("metadata-unavailable")
-    expect(degradationEligibility(unavailable).eligible).toBeTrue()
-
-    const ambiguous = assessModelConfiguration(group("shared"), {
-      a: { models: { shared: { id: "shared" } } },
-      b: { models: { shared: { id: "shared" } } },
-    }, options)
-    expect(ambiguous.status).toBe("ambiguous")
-    expect(() => acceptDegradedConfiguration(ambiguous, {})).toThrow(/ambiguous/)
-
-    const invalid = assess("bad", "openai/bad", { max_input_tokens: 0, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false, supports_vision: false, supports_audio_output: false }, { openai: { models: { bad: { id: "bad" } } } })
-    expect(invalid.status).toBe("invalid-metadata")
-    expect(() => acceptDegradedConfiguration(invalid, {})).toThrow(/illegal/)
-
-    const sufficientPrivate = assess("private-complete", "custom/private-complete", {
-      ...COMPLETE_INFO,
-      supports_pdf_input: false,
-      supports_audio_input: false,
-      supports_video_input: false,
-    }, { openai: { models: { other: { id: "other" } } } })
-    expect(sufficientPrivate.status).toBe("configured")
-    const unmatched = assess("private", "custom/private", { max_input_tokens: 100, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false }, { openai: { models: { other: { id: "other" } } } })
-    expect(unmatched.status).toBe("discovered-incomplete")
-    expect(unmatched.identity.outcome).toBe("unmatched")
-    expect(isDegradationEligible(unmatched)).toBeFalse()
-    expect(() => acceptDegradedConfiguration(unmatched, {})).toThrow(/unmatched/)
-
-    const configured = assess("ok", "openai/ok", {
-      ...COMPLETE_INFO,
-      supports_pdf_input: false,
-      supports_audio_input: false,
-      supports_video_input: false,
-    }, {})
-    expect(configured.status).toBe("configured")
-    expect(() => acceptDegradedConfiguration(configured, {})).toThrow(/configured/)
-    const lkg = { ...configured, status: "configured-lkg" as const, publishable: true, usingLKG: true, identity: { ...configured.identity, outcome: "matched" as const } }
-    expect(() => acceptDegradedConfiguration(lkg, {})).toThrow(/configured/)
-    const already = acceptDegradedConfiguration(incomplete, {})
-    expect(() => acceptDegradedConfiguration(already.assessment, {})).toThrow(/already degraded/)
-  })
-
-  test("degraded is never mislabeled configured", () => {
-    const g = group("m", "openai/m", { max_input_tokens: 1000, supports_reasoning: false })
-    const live = assessModelConfiguration(g, { openai: { models: { m: { id: "m" } } } }, options, { catalogAvailable: true })
-    const degraded = acceptDegradedConfiguration(live, {})
-    expect(degraded.assessment.status).not.toBe("configured")
-    expect(degraded.assessment.status).not.toBe("configured-lkg")
-    expect(degraded.acceptance.acceptedFields.length).toBeGreaterThan(0)
   })
 })
 
@@ -1143,9 +1067,23 @@ describe("publication: tri-state deployment aggregation", () => {
     expect(filled.tools.provenance.source).toBe("models.dev")
     expect(filled.reasoning.state).toBe("supported")
 
-    const conflicted = assessModelConfiguration(two("partial", sameIdentity({ supports_function_calling: false }), sameIdentity({})), catalog, options)
+    // One deployment's descriptive `false` next to an undeclared sibling is
+    // lower-authority evidence: the trusted intrinsic verdict decides and the
+    // difference is retained as a resolved discrepancy.
+    const d = assessModelConfiguration(two("partial", sameIdentity({ supports_function_calling: false }), sameIdentity({})), catalog, options)
+    expect(d.tools.state).toBe("supported")
+    expect(d.discrepancies.map((item) => item.field)).toContain("capabilities.tools")
+    expect(d.conflicts).toEqual([])
+    // The authoritative record also fills the dimensions LiteLLM left
+    // undeclared, so the model is fully publishable.
+    expect(d.publishable).toBeTrue()
+    expect(d.status).toBe("configured")
+
+    // Two deployments that explicitly disagree stay a genuine conflict: a
+    // model-level record cannot prove which route the host will use.
+    const conflicted = assessModelConfiguration(two("partial", sameIdentity({ supports_function_calling: false }), sameIdentity({ supports_function_calling: true })), catalog, options)
     expect(conflicted.tools.state).toBe("unknown")
-    expect(conflicted.tools.provenance.detail).toContain("conflicts")
+    expect(conflicted.conflicts.map((item) => item.field)).toContain("capabilities.tools")
     expect(conflicted.publishable).toBeFalse()
   })
 })
@@ -1200,9 +1138,25 @@ describe("publication: modality multi-deployment", () => {
     expect(filled.inputModalities.known).toBeTrue()
     expect([...filled.inputModalities.values].sort()).toEqual(["image", "text"])
 
+    // Authoritative intrinsic modalities decide; the contradicting descriptive
+    // flag is a resolved discrepancy, never an automatic conflict.
     const disagrees = assessModelConfiguration(groupFor({ supports_vision: false }), imageSet, options)
-    expect(disagrees.inputModalities.known).toBeFalse()
-    expect(disagrees.publishable).toBeFalse()
+    expect(disagrees.inputModalities.known).toBeTrue()
+    expect([...disagrees.inputModalities.values].sort()).toEqual(["image", "text"])
+    expect(disagrees.discrepancies.map((item) => item.field)).toContain("capabilities.input")
+    expect(disagrees.conflicts).toEqual([])
+    expect(disagrees.missingFields).toEqual([])
+    expect(disagrees.unknownFields).toEqual([])
+
+    // But two deployments that explicitly disagree stay unresolved.
+    const crossDeployment = assessModelConfiguration(
+      two("mm", { ...base, model: "custom/mm", supports_vision: true }, { ...base, model: "custom/mm", supports_vision: false }),
+      imageSet,
+      options,
+    )
+    expect(crossDeployment.inputModalities.known).toBeFalse()
+    expect(crossDeployment.conflicts.map((item) => item.field)).toContain("capabilities.input")
+    expect(crossDeployment.publishable).toBeFalse()
   })
 })
 
@@ -1340,14 +1294,29 @@ describe("publication: group limit evidence", () => {
     expect(filled.output).toMatchObject({ value: 32000, valid: true })
     expect(filled.status).toBe("configured")
 
-    const conflicted = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 16000 }, { ...base, max_output_tokens: 16000 }), modelCatalog, options)
-    expect(conflicted.output).toMatchObject({ value: 0, conflict: true })
-    expect(conflicted.publishable).toBeFalse()
+    // Both deployments agree on a descriptive 16000 while the authoritative
+    // intrinsic record says 32000: authority selects 32000 and records the
+    // difference as a resolved discrepancy instead of blocking the model.
+    const differing = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 16000 }, { ...base, max_output_tokens: 16000 }), modelCatalog, options)
+    expect(differing.output).toMatchObject({ value: 32000, conflict: false, discrepancy: true })
+    expect(differing.status).toBe("configured")
+
+    // Deployments that disagree with each other are still a genuine conflict.
+    const crossDeployment = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 16000 }, { ...base, max_output_tokens: 8000 }), modelCatalog, options)
+    expect(crossDeployment.output).toMatchObject({ value: 0, conflict: true })
+    expect(crossDeployment.status).toBe("invalid-metadata")
   })
 
-  test("partial deployment evidence is not filled by model-level metadata", () => {
+  test("partial deployment evidence is only filled by an authoritative intrinsic record", () => {
     const modelCatalog = { vendor: { models: { lm: { id: "lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
-    const partial = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 32000 }, {}), modelCatalog, options)
+    // One deployment declares, one is silent, and the trusted record exists:
+    // the intrinsic value decides and the partial declaration is recorded.
+    const filled = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 16000 }, {}), modelCatalog, options)
+    expect(filled.output).toMatchObject({ value: 32000, conflict: false, discrepancy: true })
+    expect(filled.publishable).toBeTrue()
+
+    // Without authority the same partial declaration stays unknown.
+    const partial = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 32000 }, {}), {}, options)
     expect(partial.output).toMatchObject({ value: 0, unknown: true, conflict: false })
     expect(partial.publishable).toBeFalse()
   })
@@ -1362,13 +1331,21 @@ describe("publication: group limit evidence", () => {
 })
 
 describe("publication: LKG actual-value conflicts", () => {
+  /**
+   * `__params` is hoisted into the operator's own deployment configuration
+   * (`litellm_params`), the only LiteLLM evidence that proves an enforced
+   * endpoint runtime constraint.
+   */
   function two(modelName: string, deployments: Array<Record<string, unknown>>) {
     return groupLiteLLMDeployments({
-      data: deployments.map((modelInfo) => ({
-        model_name: modelName,
-        litellm_params: { model: "openai/m" },
-        model_info: { mode: "chat", ...modelInfo },
-      })),
+      data: deployments.map((modelInfo) => {
+        const { __params, ...info } = modelInfo as { __params?: Record<string, unknown> }
+        return {
+          model_name: modelName,
+          litellm_params: { model: "openai/m", ...__params },
+          model_info: { mode: "chat", ...info },
+        }
+      }),
     })[0]!
   }
 
@@ -1410,7 +1387,7 @@ describe("publication: LKG actual-value conflicts", () => {
 
   test("live input disagreement rejects the whole entry (input capacity is not total context)", () => {
     const store = capture(TRUSTED)
-    const group = two("m", [{ ...liveBase, max_input_tokens: 64000 }])
+    const group = two("m", [{ ...liveBase, __params: { max_input_tokens: 64000 } }])
     const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
     expect(resolved.lkg).toBeUndefined()
@@ -1435,7 +1412,9 @@ describe("publication: LKG actual-value conflicts", () => {
     const store = capture(PARTIAL, 1000, { ...base, max_input_tokens: 64000 })
     const entry = store.get(lastKnownGoodKey("m"))!
     expect(entry.captured.context).toBe(128000)
-    expect(entry.captured.input).toBe(64000)
+    // The captured input is the trusted intrinsic input capacity, not the
+    // lower-authority descriptive deployment declaration.
+    expect(entry.captured.input).toBe(128000)
 
     // Live: same 64000 input, and the trusted total-context fact is gone
     // (incomplete live metadata) — no fact contradicts the snapshot.
@@ -1490,9 +1469,21 @@ describe("publication: LKG actual-value conflicts", () => {
 
   test("live output disagreement rejects the whole entry", () => {
     const store = capture(TRUSTED)
-    const group = two("m", [{ ...liveBase, max_output_tokens: 16000 }])
+    const group = two("m", [{ ...liveBase, __params: { max_tokens: 16000 } }])
     const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("descriptive-only disagreement is a resolved discrepancy and never invalidates LKG", () => {
+    const store = capture(TRUSTED)
+    // LiteLLM `model_info` describes a different output/input than the
+    // authoritative snapshot. That is secondary evidence, not a new fact.
+    const group = two("m", [{ ...sparseLive, max_output_tokens: 16000, max_input_tokens: 64000 }])
+    const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(live.publishable).toBeFalse()
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.lkg).toBeDefined()
   })
 
   test("live output matching the captured output keeps LKG valid", () => {
@@ -1507,14 +1498,23 @@ describe("publication: LKG actual-value conflicts", () => {
   test("live vision=false rejects a captured image-capable snapshot and vice versa", () => {
     const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
     const imageStore = capture(IMAGE_TRUSTED, 1000, { ...base, supports_vision: true })
-    const noVision = two("m", [{ ...liveBase, supports_vision: false }])
+    // A proven endpoint constraint declares vision unsupported -> reject.
+    const noVision = two("m", [{ ...liveBase, __params: { supports_vision: false } }])
     const live1 = assessModelConfiguration(noVision, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     expect(resolveConfigurationWithLKG(live1, noVision, {}, options, imageStore, 2000).lkg).toBeUndefined()
 
     const textStore = capture(TRUSTED)
-    const withVision = two("m", [{ ...liveBase, supports_vision: true }])
+    // A declared `true` can never *add* a modality the snapshot lacks, so a
+    // text-only snapshot stays valid and conservative.
+    const withVision = two("m", [{ ...liveBase, __params: { supports_vision: true } }])
     const live2 = assessModelConfiguration(withVision, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
-    expect(resolveConfigurationWithLKG(live2, withVision, {}, options, textStore, 2000).lkg).toBeUndefined()
+    expect(resolveConfigurationWithLKG(live2, withVision, {}, options, textStore, 2000).assessment.status).toBe("configured-lkg")
+
+    // Descriptive `supports_vision=false` is secondary evidence and must not
+    // invalidate a trusted snapshot on its own.
+    const descriptiveNoVision = two("m", [{ ...liveBase, supports_vision: false }])
+    const live3 = assessModelConfiguration(descriptiveNoVision, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
+    expect(resolveConfigurationWithLKG(live3, descriptiveNoVision, {}, options, imageStore, 2000).assessment.status).toBe("configured-lkg")
   })
 
   function outage(groupBody: Record<string, unknown>[]) {
@@ -1534,10 +1534,10 @@ describe("publication: LKG actual-value conflicts", () => {
     // regardless of deployment array order. An undefined sibling never
     // masks the conflicting declaration.
     const capturedImageRejects: Array<Array<Record<string, unknown>>> = [
-      [{ ...flagless, supports_vision: true }, { ...flagless, supports_vision: false }],
-      [{ ...flagless, supports_vision: false }, { ...flagless, supports_vision: true }],
-      [{ ...flagless, supports_vision: false }, flagless],
-      [flagless, { ...flagless, supports_vision: false }],
+      [{ ...flagless, __params: { supports_vision: false } }, flagless],
+      [flagless, { ...flagless, __params: { supports_vision: false } }],
+      [{ ...flagless, __params: { supports_vision: false } }, { ...flagless, supports_vision: true }],
+      [{ ...flagless, supports_vision: true }, { ...flagless, __params: { supports_vision: false } }],
     ]
     for (const bodies of capturedImageRejects) {
       const { group, live } = outage(bodies)
@@ -1546,15 +1546,29 @@ describe("publication: LKG actual-value conflicts", () => {
 
     // Captured text-only: any explicit true among ANY deployment rejects,
     // regardless of deployment array order.
-    const capturedTextRejects: Array<Array<Record<string, unknown>>> = [
+    // Captured text-only: only a proven endpoint constraint could remove a
+    // modality, and a LiteLLM declaration can never *add* one, so a
+    // text-only snapshot simply stays valid and conservative.
+    const capturedTextAcceptsDescriptive: Array<Array<Record<string, unknown>>> = [
       [{ ...flagless, supports_vision: true }, { ...flagless, supports_vision: false }],
       [{ ...flagless, supports_vision: false }, { ...flagless, supports_vision: true }],
       [{ ...flagless, supports_vision: true }, flagless],
       [flagless, { ...flagless, supports_vision: true }],
     ]
-    for (const bodies of capturedTextRejects) {
+    for (const bodies of capturedTextAcceptsDescriptive) {
       const { group, live } = outage(bodies)
-      expect(resolveConfigurationWithLKG(live, group, {}, options, textStore, 2000).lkg).toBeUndefined()
+      expect(resolveConfigurationWithLKG(live, group, {}, options, textStore, 2000).assessment.status).toBe("configured-lkg")
+    }
+
+    // A proven constraint that declares image unsupported rejects the stored
+    // image-capable snapshot regardless of deployment order.
+    const capturedImageConstraintRejects: Array<Array<Record<string, unknown>>> = [
+      [{ ...flagless, __params: { supports_vision: false } }, flagless],
+      [flagless, { ...flagless, __params: { supports_vision: false } }],
+    ]
+    for (const bodies of capturedImageConstraintRejects) {
+      const { group, live } = outage(bodies)
+      expect(resolveConfigurationWithLKG(live, group, {}, options, imageStore, 2000).lkg).toBeUndefined()
     }
 
     // `undefined` is not a contradiction: agreement (or silence) on every
@@ -1563,6 +1577,9 @@ describe("publication: LKG actual-value conflicts", () => {
       [{ ...flagless, supports_vision: true }, { ...flagless, supports_vision: true }],
       [{ ...flagless, supports_vision: true }, flagless],
       [flagless, { ...flagless, supports_vision: true }],
+      // Descriptive `false` is secondary evidence: a resolved discrepancy,
+      // not a new fact, so the trusted snapshot stays valid.
+      [{ ...flagless, supports_vision: false }, flagless],
     ]
     for (const bodies of capturedImageAccepts) {
       const { group, live } = outage(bodies)
@@ -1572,6 +1589,8 @@ describe("publication: LKG actual-value conflicts", () => {
       [{ ...flagless, supports_vision: false }, { ...flagless, supports_vision: false }],
       [{ ...flagless, supports_vision: false }, flagless],
       [flagless, { ...flagless, supports_vision: false }],
+      // A declared `true` cannot add a modality the snapshot lacks.
+      [{ ...flagless, supports_vision: true }, flagless],
     ]
     for (const bodies of capturedTextAccepts) {
       const { group, live } = outage(bodies)
@@ -1582,7 +1601,7 @@ describe("publication: LKG actual-value conflicts", () => {
   test("live reasoning=false rejects a captured reasoning snapshot", () => {
     const REASONING_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] } } } } }
     const store = capture(REASONING_TRUSTED, 1000, { ...base, supports_reasoning: true })
-    const group = two("m", [{ ...liveBase, supports_reasoning: false }])
+    const group = two("m", [{ ...liveBase, __params: { supports_reasoning: false } }])
     const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
     expect(resolveConfigurationWithLKG(live, group, {}, options, store, 2000).lkg).toBeUndefined()
   })
@@ -1755,6 +1774,12 @@ describe("publication: LKG stable identity", () => {
   })
 })
 
+function publishedByID(result: ReturnType<typeof buildPublicationResult>, id: string) {
+  const entry = result.publishable.find((item) => item.spec.id === id)
+  expect(entry).toBeDefined()
+  return entry!
+}
+
 describe("publication: fixture regression", () => {
   test("fixture models keep their publishability verdicts", () => {
     const result = buildPublicationResult(litellmFixture, modelsDevFixture, options)
@@ -1762,10 +1787,15 @@ describe("publication: fixture regression", () => {
     const blockedByID = new Map(result.blocked.map((entry) => [entry.spec.id, entry]))
     expect(byID.get("kimi-k2.6")?.assessment.status).toBe("configured")
     expect(byID.get("kimi-k2.6")?.assessment.outputModalities.known).toBeTrue()
-    // gpt-6-sol: LiteLLM declares pdf=true but the trusted record's set
-    // [text,image] omits pdf — a real conflict, and audio stays undeclared
-    // on both sides, so the input direction cannot be named known.
-    expect(blockedByID.get("gpt-6-sol")?.assessment.unknownFields).toContain("capabilities.input")
+    // gpt-6-sol: LiteLLM describes pdf=true while the trusted record's set
+    // [text,image] omits pdf. models.dev is authoritative for the model's
+    // intrinsic modalities, so this is a resolved discrepancy: the direction
+    // is known, the descriptive difference is retained, and the model is
+    // publishable.
+    const gpt = publishedByID(result, "gpt-6-sol")
+    expect(gpt.assessment.inputModalities.known).toBeTrue()
+    expect(gpt.assessment.unknownFields).not.toContain("capabilities.input")
+    expect(gpt.assessment.discrepancies.map((item) => item.field)).toContain("capabilities.input")
     expect(blockedByID.get("qwen3.7-plus")?.assessment.unknownFields).toContain("reasoning")
     expect(blockedByID.get("qwen3.7-plus")?.assessment.identity.selected?.selectionSource).not.toBe("legacy-family-compatibility")
     // Every blocked model carries an explicit non-configured status.

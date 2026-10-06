@@ -19,6 +19,7 @@ import {
   type SelectedModelRecord,
 } from "./modelsdev.js"
 import { assessModelConfiguration } from "./publication.js"
+import type { FieldResolution } from "./evidence.js"
 import {
   resolveProtocolResolution,
   resolveProtocolSupport,
@@ -99,6 +100,17 @@ export interface ModelDiagnostic {
     readonly reasoningLevels: readonly string[]
     readonly inheritedFields: readonly string[]
     readonly inheritanceChain: readonly string[]
+    /** Recorded value differences that source authority already resolved. */
+    readonly discrepancies: readonly FieldResolution[]
+    /** Genuine conflicts that no authority can decide; these withhold the model. */
+    readonly conflicts: readonly FieldResolution[]
+    /** Proven endpoint runtime constraints that narrowed an effective value. */
+    readonly deploymentConstraints: readonly {
+      readonly field: string
+      readonly value: number
+    }[]
+    readonly usingLKG: boolean
+    readonly lkgDetail?: string
   }
   readonly provenance: {
     readonly protocol: FieldProvenance
@@ -480,6 +492,24 @@ function modelDiagnostic(
       message: `Deterministic inheritance for ${publication.inheritedFields.join(", ")}: ${publication.inheritanceChain.join("; ")}.`,
     })
   }
+  for (const conflict of publication.conflicts) {
+    issues.push({
+      severity: "warning",
+      stage: "publication",
+      code: "publication-conflict",
+      modelId: group.modelName,
+      message: `${conflict.field}: unresolved conflict from same-level evidence; ${conflict.resolution}`,
+    })
+  }
+  for (const discrepancy of publication.discrepancies) {
+    issues.push({
+      severity: "info",
+      stage: "publication",
+      code: "metadata-discrepancy",
+      modelId: group.modelName,
+      message: `${discrepancy.field}: resolved discrepancy; ${discrepancy.resolution}`,
+    })
+  }
   for (const conflict of conflicts) {
     issues.push({
       severity: "info",
@@ -546,6 +576,18 @@ function modelDiagnostic(
         reasoningLevels: [...publication.reasoning.levels],
         inheritedFields: [...publication.inheritedFields],
         inheritanceChain: [...publication.inheritanceChain],
+        discrepancies: publication.discrepancies.map((resolution) => ({ ...resolution })),
+        conflicts: publication.conflicts.map((resolution) => ({ ...resolution })),
+        deploymentConstraints: [
+          publication.context.deploymentConstraint !== undefined
+            ? { field: "limit.context", value: publication.context.deploymentConstraint }
+            : undefined,
+          publication.output.deploymentConstraint !== undefined
+            ? { field: "limit.output", value: publication.output.deploymentConstraint }
+            : undefined,
+        ].filter((item): item is { field: string; value: number } => item !== undefined),
+        usingLKG: publication.usingLKG,
+        lkgDetail: publication.lkgDetail,
       },
       provenance: {
         protocol: protocolProvenance(protocol.reason),

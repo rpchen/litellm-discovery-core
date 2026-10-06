@@ -1,9 +1,6 @@
 # publication Specification
 
-## Purpose
-Defines the trustworthy model-capability publication loop: formal completeness and publishability policy, false-vs-unknown semantics, decoupled reasoning/levels, deterministic inheritance, failure taxonomy, TTL-free Last Known Good, explicit degradation, configuration states, and field-level provenance. Core is the single business source of truth; adapters consume its verdicts without reimplementing policy.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Publication completeness policy
 Core SHALL define a formal, testable rule deciding whether a discovered model's metadata is reliable enough for normal publication, and SHALL report exactly which fields are missing, unknown, or illegal when it is not.
@@ -49,91 +46,6 @@ The gate is never relaxed and has no user-override path. A model is publishable 
 #### Scenario: Per-model isolation of failure
 - **WHEN** one model of an endpoint cannot prove trustworthy metadata
 - **THEN** every other model that does pass the gate is published normally in the same round
-
-### Requirement: False versus unknown
-Core SHALL distinguish confirmed-unsupported (`unsupported`) from unevidenced (`unknown`) for tool calling and reasoning, and SHALL never rewrite `unknown` to `false`, `0`, or `[]` on any path leading to normal publication.
-
-#### Scenario: Missing tool declaration stays unknown
-- **WHEN** neither LiteLLM nor models.dev declares tool-call support
-- **THEN** Core reports tool support `unknown`, not `unsupported`
-
-#### Scenario: Explicit negative evidence means unsupported
-- **WHEN** a trusted source explicitly declares no tool-call or reasoning support without contradiction
-- **THEN** Core reports `unsupported`
-
-### Requirement: Reasoning decoupled from levels
-Core SHALL resolve reasoning support independently from reasoning levels; support without selectable levels is legal, and missing levels never imply lack of support.
-
-#### Scenario: Reasoning without levels is legal
-- **WHEN** trusted metadata declares reasoning support but no selectable levels
-- **THEN** Core reports support with an empty level set and the model may still be publishable
-
-#### Scenario: Reasoning with levels
-- **WHEN** trusted metadata declares reasoning support with effort or budget options
-- **THEN** Core reports support with the parsed levels
-
-#### Scenario: No reasoning
-- **WHEN** trusted evidence confirms no reasoning support
-- **THEN** Core reports unsupported regardless of level data
-
-#### Scenario: Levels never flip support
-- **WHEN** level data is absent or present
-- **THEN** Core never derives support from level presence alone in either direction
-
-### Requirement: Deterministic source resolution and inheritance
-Core SHALL resolve metadata identity only through canonical identity, provider identity, alias, equivalent relations, or other verifiable deterministic relations with provenance, and SHALL keep ambiguous or unmatched identities observable instead of force-picking. Group identity SHALL require positive evidence for every deployment: a deployment without route, base model, or deterministic provider proof makes the group identity-incomplete, and `model_name` never substitutes for per-deployment identity evidence.
-
-#### Scenario: Original provider wins
-- **WHEN** the canonical identity names an original provider whose record exists
-- **THEN** Core selects that record with canonical-original provenance
-
-#### Scenario: Ordered capability fallback
-- **WHEN** the original record is unavailable
-- **THEN** Core prefers OpenRouter, then OpenCode, then a genuinely unique match, else stays unmatched
-
-#### Scenario: Ambiguity stays observable
-- **WHEN** multiple non-preferred providers match one identity
-- **THEN** Core reports `ambiguous` and does not publish normally
-
-#### Scenario: Deterministic inheritance carries provenance
-- **WHEN** metadata explicitly declares alias, equivalence, or canonical inheritance for a field
-- **THEN** Core inherits the field and records canonical-inheritance provenance naming the source
-
-#### Scenario: No heuristic guessing
-- **WHEN** only a model name, family substring, or neighbor-model values suggest a capability
-- **THEN** Core reports `unknown` and never fills limits, tools, reasoning, modalities, or levels from the guess
-
-#### Scenario: Family-name provider matches stay ambiguous
-- **WHEN** the same model id exists under a name-implied provider and another provider, with no canonical id, explicit provider, alias, equivalent, or inherits relation
-- **THEN** trusted publication reports `ambiguous` and does not select the name-implied provider
-
-#### Scenario: Deployment group identities must be consistent
-- **WHEN** one LiteLLM model name has deployments declaring different explicit providers, or routed/base identities that no alias, canonical, equivalent, or inherits relation proves to be the same model
-- **THEN** Core reports `ambiguous` for the group and never resolves by first-deployment order
-
-#### Scenario: Equivalent relations reconcile a group
-- **WHEN** deployments name different identities but trusted metadata declares those identities equivalent or canonically the same
-- **THEN** Core resolves the group deterministically with provenance
-
-#### Scenario: Provider-qualified routed identities keep their namespace
-- **WHEN** one group routes to `openai/foo` and `anthropic/foo`, or to `openai/foo` and an unqualified `foo` with no deterministic metadata proof
-- **THEN** Core keeps the identities distinct and reports `ambiguous`; an explicit `models_dev_provider` on the unqualified deployment is the deterministic proof that reconciles it
-
-#### Scenario: Identity equivalence reconciliation is order-independent
-- **WHEN** a metadata relation (`canonical_model_id`, alias, equivalent, inherits) stored on only one of two identities proves they belong to the same identity component
-- **THEN** Core reaches the same resolved/ambiguous verdict for every deployment order; the graph decides by connectivity, and capability values never inherit through it
-
-#### Scenario: Group identity requires evidence for every deployment
-- **WHEN** one deployment declares a provider-qualified identity while another declares no route, no base model, and no deterministic provider proof
-- **THEN** Core reports the group blocked (`ambiguous`, not publishable) with a reason naming the missing deployment identity — the absence of a detected conflict is never treated as proof of identity consistency
-
-#### Scenario: All deployments identity-less stays blocked
-- **WHEN** every deployment in a multi-deployment group lacks identity evidence, or a deployment declares only `models_dev_provider` without any model id
-- **THEN** Core reports the group blocked; `model_name` (the aggregate route alias), family/name heuristics, and sibling deployments' identities never backfill a missing per-deployment identity
-
-#### Scenario: Deployment order cannot change identity completeness
-- **WHEN** a group mixes identified and identity-less deployments
-- **THEN** Core reports the same blocked verdict for every deployment order
 
 ### Requirement: Group-wide limit evidence
 Core SHALL treat context and output limits as group-wide evidence. Deployment declarations that agree are known; any partially-declared field stays unknown unless an authoritative intrinsic value exists; disagreement *between deployments* is an unresolved conflict that withholds the model, because a model-level record cannot prove which route the host will use. When every deployment agrees or stays silent and canonical identity is reliably resolved, the trusted models.dev value is authoritative: a differing LiteLLM `model_info` declaration is retained as a resolved discrepancy, while a proven endpoint runtime constraint from the operator's own deployment configuration (`litellm_params`) narrows the effective value. Missing values are never filtered, and minimum/maximum merging must never upgrade unknown or conflict into known.
@@ -290,17 +202,6 @@ Core SHALL revalidate a stored LKG entry against the current publication policy.
 - **WHEN** a live declared limit is non-positive or otherwise illegal
 - **THEN** Core keeps `invalid-metadata` and does not restore the snapshot
 
-### Requirement: Failure taxonomy without pseudo-complete publication
-Core SHALL classify metadata failures and SHALL never emit a normally-published model from a failed fetch via defaults.
-
-#### Scenario: Network failure is observable
-- **WHEN** metadata retrieval times out, returns 5xx, or is unreachable
-- **THEN** Core reports `metadata-unavailable` with the classified kind and no normally-published model
-
-#### Scenario: Retry recovery restores publication
-- **WHEN** a retry after failure returns complete trustworthy metadata
-- **THEN** Core reports `configured` with a recovered-after-retry record
-
 ### Requirement: Last Known Good without TTL
 Core SHALL support reusing a previously complete metadata snapshot while live sources fail, with validity decided by identity, provider, canonical mapping, schema, and conflict evidence -- never by fixed age -- and SHALL expose source, fetch time, age, and selection reason. Only a `ModelSpec` that passed the current publication gate in the same round may be captured as LKG; a composition of facts from different periods is never a valid entry. LKG SHALL NOT resurrect a model the current LiteLLM directory no longer serves, and an incompatible stored schema SHALL fail safe as withheld rather than restore.
 
@@ -346,3 +247,10 @@ Core SHALL expose per-model configuration states and per-field provenance answer
 #### Scenario: Provenance explains key fields
 - **WHEN** provenance is requested for limits, modalities, tools, reasoning, levels, identity, or live/fallback/LKG choice
 - **THEN** Core names the source chain including provider, model, canonical-inheritance source, deployment-constraint origin, or LKG fetch time
+
+## REMOVED Requirements
+
+### Requirement: Degradation eligibility
+
+### Requirement: Explicit degradation
+

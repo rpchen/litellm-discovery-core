@@ -43,10 +43,13 @@ describe("能力映射", () => {
     expect(mapped("qwen3.7-plus").capabilities.input).toEqual(["text", "image", "video"])
   })
 
-  test("LiteLLM 显式模态声明优先于 models.dev", () => {
-    // mimo-v2.6-pro declares audio/video inputs itself → LiteLLM values are authoritative.
+  test("可信 models.dev 内禀模态集合决定 direction，描述性声明不能新增", () => {
+    // mimo-v2.6-pro declares audio/video itself while the trusted record only
+    // lists text/image/video: the authoritative intrinsic set decides and the
+    // descriptive declarations are retained as a resolved discrepancy by the
+    // publication assessment (never as a host capability).
     const result = mapped("mimo-v2.6-pro")
-    expect(result.capabilities.input).toEqual(["text", "image", "audio", "video"])
+    expect(result.capabilities.input).toEqual(["text", "image", "video"])
   })
 
   test("显式 false 覆盖 models.dev 模态", () => {
