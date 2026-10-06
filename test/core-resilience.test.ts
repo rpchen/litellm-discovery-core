@@ -329,7 +329,27 @@ describe("resilience: source authority", () => {
     expect(ambiguous.output.resolution.selectedSource).toBe("litellm")
   })
 
-  test("a unique trusted record decides the intrinsic value", () => {
+  test("a unique trusted record fills gaps but never outranks descriptive declarations", () => {
+    // Frozen policy (review finding 1): unique-match is a fallback source.
+    // Gap fill: LiteLLM declares no output limit -> fallback serving 64000.
+    const gapFill = groupOf("mm", {
+      max_input_tokens: 200_000,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      supports_vision: false,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+    })
+    const filled = assessModelConfiguration(gapFill, { vendor: { models: { mm: record } } }, options)
+    expect(filled.status).toBe("configured")
+    expect(filled.output.value).toBe(64_000)
+    expect(filled.output.resolution.selectedSource).toBe("models.dev")
+    expect(filled.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+
+    // Same-level conflict: conflicting descriptive metadata is never decided
+    // by the fallback-serving record (no authoritative override).
     const group = groupOf("mm", {
       max_input_tokens: 200_000,
       max_output_tokens: 32_000,
@@ -342,9 +362,9 @@ describe("resilience: source authority", () => {
       supports_audio_output: false,
     })
     const assessment = assessModelConfiguration(group, { vendor: { models: { mm: record } } }, options)
-    expect(assessment.status).toBe("configured")
-    expect(assessment.output.value).toBe(64_000)
-    expect(assessment.output.resolution.selectedSource).toBe("models.dev")
+    expect(assessment.status).toBe("invalid-metadata")
+    expect(assessment.publishable).toBeFalse()
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
   })
 
   test("a proven endpoint runtime constraint narrows the effective configuration", () => {
@@ -968,8 +988,12 @@ describe("resilience: authoritative modality sets reach the published spec", () 
     })[0]!
   }
 
+  // Review finding 2: explicit-provider records carry authoritative intrinsic
+  // authority only with a deterministic canonical relation proof. This fixture
+  // models the relation-proven shape.
   const record = {
     id: "mm",
+    canonical_model_id: "vendor/mm",
     tool_call: true,
     reasoning: false,
     modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] },
@@ -1259,5 +1283,218 @@ describe("canonical selection: representative models keep their original provide
     expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
     expect(entry!.spec.limit.output).toBe(512_000)
     expect(entry!.spec.limit.context).toBe(1_000_000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Runtime constraints never conflict with serving metadata
+// (review finding 3)
+// ---------------------------------------------------------------------------
+
+describe("constraints narrow, never conflict (review finding 3)", () => {
+  const modalitySides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("fallback serving output narrowed by litellm_params.max_tokens publishes the cap", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      // No descriptive output limit anywhere; the endpoint enforces a cap.
+    }, { max_tokens: 100_000 })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    // unique-match → fallback-serving intrinsic 500000; the proven runtime
+    // constraint narrows the effective value to 100000. Never a conflict.
+    expect(assessment.status).toBe("configured")
+    expect(assessment.output.value).toBe(100_000)
+    expect(assessment.output.deploymentConstraint).toBe(100_000)
+    expect(assessment.output.conflict).toBeFalse()
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.output.resolution.resolution).toContain("narrowed by a proven endpoint runtime constraint")
+  })
+
+  test("fallback tools=true narrowed by litellm_params.supports_function_calling=false is unsupported, not a conflict", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_reasoning: false,
+    }, { supports_function_calling: false })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 100_000, output: 10_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.tools.state).toBe("unsupported")
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.publishable).toBeTrue()
+  })
+
+  test("fallback image modalities narrowed by litellm_params.supports_vision=false drop image, not conflict", () => {
+    const group = groupOf("vendor-foo", {
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    }, { supports_vision: false })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] }, limit: { context: 100_000, output: 10_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.inputModalities.known).toBeTrue()
+    expect(assessment.inputModalities.values).toEqual(["text"])
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.publishable).toBeTrue()
+  })
+
+  test("fallback serving vs DESCRIPTIVE disagreement stays an unresolved conflict", () => {
+    // No canonical relation anywhere (provider `vendor` is not the deployment
+    // namespace, the record carries no relation): the sole provider wins as
+    // unique-match → fallback-serving. Its 500000 conflicts with the
+    // endpoint's own descriptive 16000 at the same level → withheld.
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      max_output_tokens: 16_000,
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("unique-match")
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
+    expect(assessment.status).toBe("invalid-metadata")
+  })
+
+  test("two deployments' constraints that disagree stay an unresolved conflict", () => {
+    const group = groupLiteLLMDeployments({
+      data: [
+        { model_name: "vendor-foo", litellm_params: { model: "custom/vendor-foo", max_tokens: 100_000 }, model_info: { mode: "chat", ...modalitySides, supports_function_calling: true, supports_reasoning: false } },
+        { model_name: "vendor-foo", litellm_params: { model: "custom/vendor-foo", max_tokens: 200_000 }, model_info: { mode: "chat", ...modalitySides, supports_function_calling: true, supports_reasoning: false } },
+      ],
+    })[0]!
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
+    expect(assessment.publishable).toBeFalse()
+  })
+})
+
+describe("explicit-provider without relation proof is fallback-serving (review finding 2)", () => {
+  const modalitySides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("conflicting descriptive metadata stays an unresolved conflict (no authority upgrade)", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      max_output_tokens: 16_000,
+      models_dev_provider: "vendor",
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    // No canonical relation on the record: explicit proves the serving choice
+    // only. 500000 vs descriptive 16000 = same-level conflict, not authority.
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
+    expect(assessment.status).toBe("invalid-metadata")
+  })
+
+  test("gap fill still works with fallback-serving provenance", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      models_dev_provider: "vendor",
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    // Pricing gate: an explicit-provider record WITHOUT a canonical relation
+    // proof cannot donate its price either.
+    expect(assessment.output.provenance.source).toBe("models.dev")
+  })
+
+  test("the same explicit-provider WITH a canonical relation proof keeps authoritative authority", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      max_output_tokens: 16_000,
+      models_dev_provider: "vendor",
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    // Relation proof -> authoritative intrinsic: the descriptive difference
+    // is a recorded resolved discrepancy and the intrinsic value publishes.
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.status).toBe("resolved-discrepancy")
+  })
+})
+
+describe("fallback-serving evidence origin is exact (review finding 5)", () => {
+  test("modality gap fill carries the fallback-serving origin, never authoritative", () => {
+    const group = groupOf("vendor-foo-image", {
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo-image": { id: "vendor-foo-image", tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] }, limit: { context: 100_000, output: 10_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.inputModalities.known).toBeTrue()
+    expect(assessment.inputModalities.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    expect(assessment.inputModalities.resolution.evidence.some((item) => item.origin === "authoritative-intrinsic")).toBe(false)
+  })
+
+  test("numeric gap fill carries the fallback-serving origin", () => {
+    const group = groupOf("vendor-foo-limits", {
+      ...{
+        supports_vision: false,
+        supports_pdf_input: false,
+        supports_audio_input: false,
+        supports_video_input: false,
+        supports_audio_output: false,
+      },
+      supports_function_calling: true,
+      supports_reasoning: false,
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo-limits": { id: "vendor-foo-limits", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    expect(assessment.context.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
   })
 })

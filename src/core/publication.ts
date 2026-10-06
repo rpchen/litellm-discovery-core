@@ -331,13 +331,19 @@ function isAuthoritativeIntrinsic(
   if (!selected) return false
   // Undefined selectionSource keeps the legacy hand-built-record behavior.
   if (selected.selectionSource === undefined) return true
-  // Fallback records are reseller serving metadata; they never outrank the
-  // endpoint's own declarations. Canonical-original, unique trusted matches,
-  // and explicit provider proofs are the trusted identity-resolved sources.
-  if (selected.selectionSource === "opencode-fallback") return false
-  if (selected.selectionSource === "openrouter-fallback") return false
-  if (selected.selectionSource === "legacy-family-compatibility") return false
-  return true
+  // Authoritative intrinsic authority requires a proven canonical relation:
+  // canonical-original, or an explicit-provider record whose own metadata
+  // carries the deterministic canonical relation. Unique trusted matches and
+  // reseller fallback records only serve that provider's offering -- they
+  // fill gaps but never outrank the endpoint's own declarations (frozen
+  // design: unique-match and legacy-family-compatibility are fallback
+  // sources; explicit-provider without a canonical relation proof proves the
+  // serving provider choice only).
+  if (selected.selectionSource === "canonical-original") return true
+  if (selected.selectionSource === "explicit-provider") {
+    return selected.recordCanonicalID !== undefined
+  }
+  return false
 }
 
 function toolProvenance(
@@ -586,6 +592,7 @@ export function assessModelConfiguration(
   const toolResolved = resolveBooleanField({
     field: "capabilities.tools",
     descriptiveKey: "supports_function_calling",
+    constraintKey: "supports_function_calling",
     group,
     intrinsic: toolIntrinsic,
     intrinsicDetail: `tool_call -> provider ${effectiveSelected?.providerID ?? "unknown-provider"} -> model ${effectiveSelected?.modelID ?? "unknown-model"}`,
@@ -599,6 +606,7 @@ export function assessModelConfiguration(
   const reasoningResolved = resolveBooleanField({
     field: "reasoning",
     descriptiveKey: "supports_reasoning",
+    constraintKey: "supports_reasoning",
     group,
     intrinsic: modelsDevReasoning(effectiveSelected),
     intrinsicDetail: `reasoning -> provider ${effectiveSelected?.providerID ?? "unknown-provider"} -> model ${effectiveSelected?.modelID ?? "unknown-model"}`,
@@ -1230,7 +1238,7 @@ export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntr
  */
 function isFallbackSelectionSource(value: unknown): boolean {
   return value === "opencode-fallback" || value === "openrouter-fallback" ||
-    value === "legacy-family-compatibility"
+    value === "unique-match" || value === "legacy-family-compatibility"
 }
 
 /** In-memory LKG store. Persistence belongs to adapters; validity belongs here. */

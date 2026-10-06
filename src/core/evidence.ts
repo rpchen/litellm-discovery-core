@@ -298,22 +298,31 @@ export function resolveNumericField(input: NumericFieldInput): NumericFieldResol
     }
   }
 
-  // One effective declaration per deployment: a proven runtime constraint
-  // supersedes that deployment's descriptive metadata (the constraint is
-  // what the endpoint enforces). Cross-deployment disagreement among the
-  // remaining declarations is a real group-level conflict.
-  const perDeployment = input.group.deployments.map((deployment) => deploymentNumericValue(deployment, descriptor))
-  const declaredValues = perDeployment.flatMap((item) => (item ? [item.value] : []))
-  const partiallyDeclared = declaredValues.length > 0 && declaredValues.length < perDeployment.length
+  // Descriptive declarations and proven runtime constraints are separate
+  // evidence classes and are judged separately:
+  // - cross-deployment disagreement among descriptive declarations is a
+  //   real group-level conflict (no authority can pick a route);
+  // - a proven runtime constraint (`litellm_params`) narrows the effective
+  //   value and never participates in same-level conflict judgment --
+  //   including against a fallback-serving intrinsic value (finding 3).
+  const descriptiveValues = input.group.deployments
+    .map((deployment) => {
+      for (const key of descriptor.descriptiveKeys) {
+        const value = optionalNumber(deployment.modelInfo[key])
+        if (value !== undefined) return value
+      }
+      return undefined
+    })
+    .filter((value): value is number => value !== undefined)
+  const declaredValues = descriptiveValues
+  const partiallyDeclared = declaredValues.length > 0 && declaredValues.length < input.group.deployments.length
   const disagreeing = new Set(declaredValues).size > 1
 
-  const constraints = declaredValues.length > 0
-    ? input.group.deployments.flatMap((deployment) =>
-      descriptor.constraintKeys.flatMap((key) => {
-        const value = optionalNumber(deployment.litellmParams[key])
-        return value !== undefined && value > 0 ? [value] : []
-      }))
-    : []
+  const constraints = input.group.deployments.flatMap((deployment) =>
+    descriptor.constraintKeys.flatMap((key) => {
+      const value = optionalNumber(deployment.litellmParams[key])
+      return value !== undefined && value > 0 ? [value] : []
+    }))
   const constraint = constraints.length > 0 ? Math.min(...constraints) : undefined
 
   const bounds = (input.bounds ?? []).filter((value) => value > 0)
@@ -395,15 +404,39 @@ export function resolveNumericField(input: NumericFieldInput): NumericFieldResol
   }
 
   const isAuthoritative = intrinsicOrigin === "authoritative-intrinsic"
-  // Same-level declared evidence that contradicts a fallback-serving value
-  // cannot be decided by authority: that stays an unresolved conflict, and
-  // the field never reaches the host as the reseller's serving number.
+  // Same-level descriptive evidence that contradicts a fallback-serving
+  // value cannot be decided by authority: that stays an unresolved conflict,
+  // and the field never reaches the host as the reseller's serving number.
+  // Proven runtime constraints are NOT part of this judgment -- they narrow
+  // instead (see the per-class split above).
   const sameLevelConflict = !isAuthoritative &&
     intrinsic !== undefined &&
     declaredValues.some((value) => value !== intrinsic)
+  // Proven constraints that disagree with EACH OTHER are a genuine
+  // deployment conflict (no route provability); a single consistent
+  // constraint only narrows and is never a discrepancy (review finding 3).
+  const crossDeploymentConstraintConflict = constraints.length > 1 && new Set(constraints).size > 1
+  if (crossDeploymentConstraintConflict) {
+    return {
+      resolution: {
+        field: descriptor.field,
+        status: "unresolved-conflict",
+        selectedSource: "litellm",
+        resolution: "deployments enforce different runtime constraints for the same host model; a model-level record cannot prove which route the host will use, so the field stays unresolved",
+        evidence: all,
+      },
+      value: undefined,
+      known: false,
+      missing: false,
+      unknown: false,
+      illegal: false,
+      conflict: true,
+      discrepancy: false,
+    }
+  }
   const lowerAuthorityDiffer = isAuthoritative &&
     all.some((item) =>
-      item.origin !== "authoritative-intrinsic" &&
+      item.origin === "descriptive-metadata" &&
       typeof item.value === "number" &&
       intrinsic !== undefined &&
       item.value !== intrinsic,
@@ -420,7 +453,7 @@ export function resolveNumericField(input: NumericFieldInput): NumericFieldResol
       field: descriptor.field,
       status: "unresolved-conflict",
       selectedSource: "litellm",
-      resolution: "fallback serving metadata and LiteLLM declarations disagree at the same authority level; no authority can decide",
+      resolution: "fallback serving metadata and LiteLLM descriptive declarations disagree at the same authority level; no authority can decide",
       evidence: all,
     }
     : {
@@ -432,8 +465,12 @@ export function resolveNumericField(input: NumericFieldInput): NumericFieldResol
         ? lowerAuthorityDiffer
           ? "authoritative intrinsic metadata decides; lower-authority LiteLLM declarations are retained as a resolved discrepancy"
           : constraintNarrowed
-            ? "authoritative intrinsic metadata narrowed by a proven endpoint runtime constraint"
-            : "authoritative intrinsic metadata decides"
+            ? isAuthoritative
+              ? "authoritative intrinsic metadata narrowed by a proven endpoint runtime constraint"
+              : "fallback serving metadata narrowed by a proven endpoint runtime constraint"
+            : isAuthoritative
+              ? "authoritative intrinsic metadata decides"
+              : "fallback serving metadata fills the gap; LiteLLM declares nothing for this dimension"
         : constraintNarrowed
           ? "no authoritative intrinsic source; the declared value narrowed by a proven endpoint runtime constraint"
           : "no authoritative intrinsic source; the declared deployment value decides",
@@ -527,17 +564,18 @@ export function resolveBooleanField(input: BooleanFieldInput): BooleanFieldResol
     // genuine deployment-level conflict: a model-level record cannot prove
     // which route the host will use, so the dimension stays unresolved.
     const isAuthoritative = input.intrinsicAuthority !== "fallback-serving"
-    // Deployment-level evidence only: with fallback-serving authority the
-    // descriptive declarations are same-level evidence, so a plain
-    // disagreement with the serving verdict stays unresolved. Never include
-    // the intrinsic verdict itself in this deployment disagreement check.
-    const declared = evidence
-      .filter((item) => item.origin !== "authoritative-intrinsic" && item.origin !== "fallback-serving")
+    // Deployment-level evidence only: descriptive declarations are the
+    // same-level class for a fallback-serving verdict, so a plain
+    // disagreement with the serving verdict stays unresolved. Runtime
+    // constraints are a separate class -- they narrow the verdict below and
+    // never participate in conflict judgment (review finding 3). Never
+    // include the intrinsic verdict itself in this disagreement check.
+    const descriptive = evidence
+      .filter((item) => item.origin === "descriptive-metadata")
       .map((item) => item.value)
-    // Same-host-model deployment declarations that explicitly disagree are a
-    // genuine conflict regardless of authority.
-    const deploymentDisagreement = declared.some((value) => value === true) && declared.some((value) => value === false)
-      || (!isAuthoritative && declared.includes(!input.intrinsic))
+    const deploymentDisagreement =
+      descriptive.some((value) => value === true) && descriptive.some((value) => value === false)
+      || (!isAuthoritative && descriptive.includes(!input.intrinsic))
     if (deploymentDisagreement) {
       return {
         resolution: {
@@ -545,8 +583,9 @@ export function resolveBooleanField(input: BooleanFieldInput): BooleanFieldResol
           status: "unresolved-conflict",
           value: undefined,
           selectedSource: "litellm",
-          resolution:
-            "deployments explicitly disagree about this capability; unresolved until the endpoint is made consistent",
+          resolution: !isAuthoritative
+            ? "fallback serving metadata and LiteLLM descriptive declarations disagree at the same authority level; no authority can decide"
+            : "deployments explicitly disagree about this capability; unresolved until the endpoint is made consistent",
           evidence,
         },
         state: "unknown",
@@ -555,11 +594,9 @@ export function resolveBooleanField(input: BooleanFieldInput): BooleanFieldResol
       }
     }
 
-    // An explicit deployment constraint (`false`) narrows a supported verdict.
-    // A fallback-serving verdict never outranks LiteLLM declarations; when a
-    // descriptive declaration disagrees the field above already turned into
-    // an unresolved conflict, so the state here only matters when LiteLLM
-    // stays silent or agrees.
+    // An explicit deployment constraint (`false`) narrows a supported verdict
+    // for authoritative AND fallback-serving intrinsic values alike: a proven
+    // `litellm_params` constraint is what the endpoint enforces.
     const constraints = evidence.filter((item) => item.origin === "deployment-constraint")
     const narrowed = constraints.some((item) => item.value === false)
     const state = input.intrinsic && !narrowed ? "supported" : "unsupported"
@@ -573,9 +610,15 @@ export function resolveBooleanField(input: BooleanFieldInput): BooleanFieldResol
         status: discrepancy ? "resolved-discrepancy" : "selected",
         value: state === "supported",
         selectedSource: "models.dev",
-        resolution: discrepancy
-          ? "authoritative intrinsic metadata decides; lower-authority LiteLLM declarations are retained as a resolved discrepancy"
-          : "authoritative intrinsic metadata decides",
+        resolution: !isAuthoritative
+          ? narrowed
+            ? "fallback serving metadata narrowed by a proven endpoint runtime constraint"
+            : descriptive.some((value) => value !== undefined)
+              ? "fallback serving metadata fills the gap; LiteLLM descriptive declarations agree"
+              : "fallback serving metadata fills the gap; LiteLLM declares nothing for this dimension"
+          : discrepancy
+            ? "authoritative intrinsic metadata decides; lower-authority LiteLLM declarations are retained as a resolved discrepancy"
+            : "authoritative intrinsic metadata decides",
         evidence,
       },
       state,
@@ -701,7 +744,7 @@ export function resolveModalityField(input: ModalityFieldInput): ModalityFieldRe
   if (input.intrinsic !== undefined) {
     evidence.push({
       source: "models.dev",
-      origin: "authoritative-intrinsic",
+      origin: input.intrinsicAuthority === "fallback-serving" ? "fallback-serving" : "authoritative-intrinsic",
       value: input.intrinsic,
       detail: input.intrinsicDetail ?? `modalities.${input.direction}`,
     })
@@ -712,16 +755,21 @@ export function resolveModalityField(input: ModalityFieldInput): ModalityFieldRe
     const isAuthoritative = input.intrinsicAuthority !== "fallback-serving"
     const removed = new Set<string>()
     for (const dimension of dimensions) {
+      // Descriptive declarations only: runtime constraints are a separate
+      // evidence class that narrows below and never joins this same-level
+      // conflict judgment (review finding 3).
       const declared = evidence
         .filter((item) =>
           item.detail?.includes(`(${dimension.modality})`) &&
-          item.origin !== "authoritative-intrinsic" && item.origin !== "fallback-serving")
+          item.origin === "descriptive-metadata")
         .map((item) => item.value)
       // Explicit deployment-level disagreement (one says supported, another
       // says not) is a genuine conflict a model-level record cannot decide.
       // Without intrinsic authority a descriptive flag that contradicts the
       // serving metadata is equally undecidable.
-      const deploymentDisagreement = declared.some((value) => value === true) && declared.some((value) => value === false)
+      const deploymentDisagreement =
+        declared.some((value) => value === true) && declared.some((value) => value === false)
+        || (!isAuthoritative && declared.some((value) => value !== undefined && value !== intrinsicSet.has(dimension.modality)))
       if (deploymentDisagreement) {
         return {
           resolution: {
@@ -729,34 +777,15 @@ export function resolveModalityField(input: ModalityFieldInput): ModalityFieldRe
             status: "unresolved-conflict",
             value: undefined,
             selectedSource: "litellm",
-            resolution:
-              "deployments explicitly disagree about a modality; unresolved until the endpoint is made consistent",
+            resolution: !isAuthoritative && !(declared.some((value) => value === true) && declared.some((value) => value === false))
+              ? "fallback serving metadata and LiteLLM descriptive declarations disagree at the same authority level; no authority can decide"
+              : "deployments explicitly disagree about a modality; unresolved until the endpoint is made consistent",
             evidence,
           },
           values: [],
           known: false,
           discrepancy: false,
           conflict: true,
-        }
-      }
-      if (!isAuthoritative) {
-        const declaredSome = declared.filter((value) => typeof value === "boolean")
-        if (declaredSome.some((value) => value !== intrinsicSet.has(dimension.modality))) {
-          return {
-            resolution: {
-              field: `capabilities.${input.direction}`,
-              status: "unresolved-conflict",
-              value: undefined,
-              selectedSource: "litellm",
-              resolution:
-                "fallback serving metadata and LiteLLM declarations disagree at the same authority level; no authority can decide",
-              evidence,
-            },
-            values: [],
-            known: false,
-            discrepancy: false,
-            conflict: true,
-          }
         }
       }
       if (!intrinsicSet.has(dimension.modality)) continue
@@ -782,6 +811,7 @@ export function resolveModalityField(input: ModalityFieldInput): ModalityFieldRe
         if (item.value === false && !expected) return false
         return item.value !== expected
       })
+    const constraintRemoved = removed.size > 0
     return {
       resolution: {
         field: `capabilities.${input.direction}`,
@@ -790,9 +820,13 @@ export function resolveModalityField(input: ModalityFieldInput): ModalityFieldRe
         selectedSource: "models.dev",
         resolution: discrepancy
           ? "authoritative intrinsic modalities decide; lower-authority LiteLLM flags are retained as a resolved discrepancy"
-          : isAuthoritative
-            ? "authoritative intrinsic modalities decide"
-            : "fallback serving modality metadata fills gaps but never outranks LiteLLM declarations",
+          : !isAuthoritative
+            ? constraintRemoved
+              ? "fallback serving modality metadata narrowed by a proven endpoint runtime constraint"
+              : "fallback serving modality metadata fills gaps but never outranks LiteLLM declarations"
+            : isAuthoritative
+              ? "authoritative intrinsic modalities decide"
+              : "fallback serving modality metadata fills gaps but never outranks LiteLLM declarations",
         evidence,
       },
       values: selectedValues,

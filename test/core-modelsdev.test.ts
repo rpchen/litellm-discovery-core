@@ -531,3 +531,145 @@ describe("relation semantics: base_model and canonical_model_id are one relation
     expect(detailed.selected?.selectionSource).toBe("canonical-original")
   })
 })
+
+
+// ---------------------------------------------------------------------------
+// Review-finding regressions (PR #29 review):
+// F4 record-level order independence, F6 adversarial original proof.
+// ---------------------------------------------------------------------------
+
+describe("record-level order independence (finding 4)", () => {
+  const identity = { tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+
+  test("OpenCode fallback with multiple equivalent records ignores record order", () => {
+    // Two OpenCode records relation-pointing at the same canonical identity
+    // with identical publication-critical facts: equivalent enrichment
+    // sources, so the deterministic tie must not depend on object order.
+    const base = {
+      opencode: {
+        models: {
+          "sku-a": { id: "sku-a", canonical_model_id: "tencent/m1", limit: { context: 2000, output: 200 }, ...identity },
+          "sku-b": { id: "sku-b", canonical_model_id: "tencent/m1", limit: { context: 2000, output: 200 }, ...identity },
+        },
+      },
+    }
+    const reordered = { opencode: { models: { "sku-b": base.opencode.models["sku-b"], "sku-a": base.opencode.models["sku-a"] } } }
+    const first = selectModelsDevRecord(one("m1", "openai/m1"), base)
+    const second = selectModelsDevRecord(one("m1", "openai/m1"), reordered)
+    expect(first?.providerID).toBe("opencode")
+    expect(second?.providerID).toBe("opencode")
+    // Equivalent records must resolve to the same deterministic pick.
+    expect(second?.modelID).toBe(first?.modelID)
+    expect(second?.selectionSource).toBe(first?.selectionSource)
+  })
+
+  test("explicit provider with materially different records stays ambiguous (never first record)", () => {
+    // models_dev_provider points at `vendorx`; its two records both match the
+    // candidate but declare materially different serving limits.
+    const group = groupLiteLLMDeployments({
+      data: [{ model_name: "m2", litellm_params: { model: "openai/m2" }, model_info: { mode: "chat", models_dev_provider: "vendorx" } }],
+    })[0]!
+    const catalog = {
+      vendorx: {
+        models: {
+          "offer-a": { id: "offer-a", canonical_model_id: "vendorx/m2", limit: { context: 1000, output: 100 }, ...identity },
+          "offer-b": { id: "offer-b", canonical_model_id: "vendorx/m2", limit: { context: 999_000, output: 500 } },
+        },
+      },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    expect(detailed.outcome).toBe("ambiguous")
+    expect(detailed.ambiguousProviders).toEqual(["vendorx"])
+
+    // Reversed record order: still ambiguous, never a different record.
+    const reversed = { vendorx: { models: { "offer-b": catalog.vendorx.models["offer-b"], "offer-a": catalog.vendorx.models["offer-a"] } } }
+    expect(selectModelsDevRecordDetailed(group, reversed).outcome).toBe("ambiguous")
+  })
+
+  test("unique provider with materially different records fails closed regardless of order", () => {
+    // No relation and no namespace proof: the provider would win as the
+    // unique match — but its two matching records materially disagree on
+    // serving limits with no rule to rank them, so the set fails closed.
+    const group = one("m3", "openai/m3")
+    const catalog = {
+      solo: {
+        models: {
+          "rec-a": { id: "rec-a", aliases: ["m3"], limit: { context: 1000, output: 100 }, ...identity },
+          "rec-b": { id: "rec-b", aliases: ["m3"], limit: { context: 500_000, output: 42_000 }, ...identity },
+        },
+      },
+    }
+    expect(selectModelsDevRecordDetailed(group, catalog).outcome).toBe("ambiguous")
+    const reversed = { solo: { models: { "rec-b": catalog.solo.models["rec-b"], "rec-a": catalog.solo.models["rec-a"] } } }
+    expect(selectModelsDevRecordDetailed(group, reversed).outcome).toBe("ambiguous")
+  })
+
+  test("openrouter fallback with materially different records fails closed regardless of order", () => {
+    const group = one("m4", "openai/m4")
+    const catalog = {
+      openrouter: {
+        models: {
+          "x-a": { id: "x-a", canonical_model_id: "tencent/m4", limit: { context: 3000, output: 300 }, ...identity },
+          "x-b": { id: "x-b", canonical_model_id: "tencent/m4", limit: { context: 30_000, output: 3_000 }, ...identity },
+        },
+      },
+    }
+    expect(selectModelsDevRecordDetailed(group, catalog).outcome).toBe("ambiguous")
+    const reversed = { openrouter: { models: { "x-b": catalog.openrouter.models["x-b"], "x-a": catalog.openrouter.models["x-a"] } } }
+    expect(selectModelsDevRecordDetailed(group, reversed).outcome).toBe("ambiguous")
+  })
+})
+
+describe("adversarial canonical-original proof (finding 6)", () => {
+  test("a reseller relation never upgrades a relation-less same-namespace record", () => {
+    // `acme/sku-a` matches directly and carries no canonical relation; the
+    // reseller's `canonical_model_id: acme/sku-a` proves only what the
+    // reseller serves. The reseller relation must not dress the acme record
+    // up as canonical-original: no relation of its own, no deployment-
+    // qualified namespace (route `openai/sku-a` is unqualified for `acme`).
+    const group = one("sku-a", "openai/sku-a")
+    const catalog = {
+      acme: { models: { "sku-a": { id: "sku-a", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+      resellerinc: { models: { "mirror": { id: "mirror", canonical_model_id: "acme/sku-a", limit: { context: 5000, output: 500 } } } },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    // Neither provider proves original status: stays unresolved, never a
+    // silent upgrade attributable to the reseller's relation.
+    expect(detailed.outcome).toBe("ambiguous")
+    expect(detailed.ambiguousProviders).toEqual(["acme", "resellerinc"])
+    expect(detailed.selected?.selectionSource).toBeUndefined()
+  })
+
+  test("a deployment-qualified namespace lets a relation-less direct record be the original", () => {
+    // The deployment route itself names the namespace (`acme/sku-a`): the
+    // operator's own qualified identity plus the same-namespace direct
+    // record is a positive original proof, regardless of the reseller.
+    const group = one("sku-a", "acme/sku-a")
+    const catalog = {
+      acme: { models: { "sku-a": { id: "sku-a", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+      resellerinc: { models: { "mirror": { id: "mirror", canonical_model_id: "acme/sku-a", limit: { context: 5000, output: 500 } } } },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    expect(detailed.outcome).toBe("matched")
+    expect(detailed.selected?.providerID).toBe("acme")
+    expect(detailed.selected?.selectionSource).toBe("canonical-original")
+  })
+
+  test("explicit models_dev_provider qualifies the namespace for a relation-less record", () => {
+    // The operator's explicit provider declaration deterministically proves
+    // the namespace for the unqualified route (frozen deploymentIdentityIDs
+    // semantics), so the same-namespace direct record is the original.
+    const group = groupLiteLLMDeployments({
+      data: [{ model_name: "sku-b", litellm_params: { model: "openai/sku-b" }, model_info: { mode: "chat", models_dev_provider: "acme" } }],
+    })[0]!
+    const catalog = {
+      acme: { models: { "sku-b": { id: "sku-b", limit: { context: 1000, output: 100 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+      resellerinc: { models: { "mirror-b": { id: "mirror-b", canonical_model_id: "acme/sku-b", limit: { context: 5000, output: 500 } } } },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    expect(detailed.outcome).toBe("matched")
+    expect(detailed.selected?.providerID).toBe("acme")
+    expect(detailed.selected?.selectionSource).toBe("explicit-provider")
+    // Explicit without relation proof: serving-provider selection only.
+  })
+})

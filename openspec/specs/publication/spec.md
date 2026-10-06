@@ -340,6 +340,10 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 - **WHEN** a stored LKG entry captured a reseller serving limit (for example 943718) that no longer matches the live assessment after precedence correction (for example 393216)
 - **THEN** LKG validation fails closed on the captured-facts and provider cross-checks and never restores the stale metadata
 
+#### Scenario: Unique-match-sourced LKG never substitutes for lost live metadata
+- **WHEN** an LKG entry was captured from a unique-match (fallback-serving) record and the metadata source becomes unavailable
+- **THEN** Core fails the restore closed: fallback-serving facts must be re-proven by a live selection in the same round, never served from memory
+
 ### Requirement: Configuration states and provenance
 Core SHALL expose per-model configuration states and per-field provenance answering where each key value came from, including live, fallback, canonical-inheritance, and LKG chains.
 
