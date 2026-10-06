@@ -878,3 +878,90 @@ describe("resilience: acknowledgement never changes publication", () => {
     )
   })
 })
+
+describe("resilience: authoritative modality sets reach the published spec", () => {
+  function group(modelInfo: Record<string, unknown>, params: Record<string, unknown> = {}) {
+    return groupLiteLLMDeployments({
+      data: [{
+        model_name: "mm",
+        litellm_params: { model: params.model ?? "custom/mm", ...params },
+        model_info: { mode: "chat", ...modelInfo },
+      }],
+    })[0]!
+  }
+
+  const record = {
+    id: "mm",
+    tool_call: true,
+    reasoning: false,
+    modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] },
+    limit: { context: 1_000_000, output: 131_072 },
+  }
+
+  test("a descriptive true cannot add a modality the trusted record omits", () => {
+    const withAudio = group({
+      models_dev_provider: "vendor",
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 131_072,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      supports_vision: true,
+      supports_pdf_input: true,
+      supports_audio_input: true,
+      supports_video_input: true,
+      supports_audio_output: false,
+    })
+    const catalog = { vendor: { models: { mm: record } } }
+    const assessment = assessModelConfiguration(withAudio, catalog, options)
+    expect(assessment.status).toBe("configured")
+    expect([...assessment.inputModalities.values].sort()).toEqual(["image", "pdf", "text", "video"])
+    expect(assessment.discrepancies.map((item) => item.field)).toContain("capabilities.input")
+
+    // The published spec must agree with the assessment: no audio.
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "mm", litellm_params: { model: "custom/mm" }, model_info: { mode: "chat", models_dev_provider: "vendor", max_input_tokens: 1_000_000, max_output_tokens: 131_072, supports_function_calling: true, supports_reasoning: false, supports_vision: true, supports_pdf_input: true, supports_audio_input: true, supports_video_input: true, supports_audio_output: false } }] },
+      catalog,
+      options,
+    )[0]!
+    expect([...spec.capabilities.input].sort()).toEqual(["image", "pdf", "text", "video"])
+
+    // A proven endpoint constraint may still remove a declared modality.
+    const constrained = group({
+      models_dev_provider: "vendor",
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 131_072,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      supports_vision: true,
+      supports_pdf_input: true,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+    }, { supports_video_input: false })
+    expect([...assessModelConfiguration(constrained, catalog, options).inputModalities.values].sort()).toEqual([
+      "image",
+      "pdf",
+      "text",
+    ])
+  })
+
+  test("without a trusted record the descriptive flags still decide", () => {
+    const sparse = group({
+      max_input_tokens: 100,
+      max_output_tokens: 10,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: true,
+      supports_video_input: false,
+      supports_audio_output: false,
+    })
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "mm", litellm_params: { model: "custom/mm" }, model_info: { mode: "chat", max_input_tokens: 100, max_output_tokens: 10, supports_function_calling: true, supports_reasoning: false, supports_vision: true, supports_pdf_input: false, supports_audio_input: true, supports_video_input: false, supports_audio_output: false } }] },
+      {},
+      options,
+    )[0]!
+    expect([...spec.capabilities.input].sort()).toEqual(["audio", "image", "text"])
+  })
+})
