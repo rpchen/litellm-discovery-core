@@ -214,7 +214,7 @@ describe("PR8 discovery quality", () => {
     expect(deploymentProtocol(unknown.deployments[0]!)).toBe("chat")
   })
 
-  test("hy4-preview uses OpenRouter capabilities when original provider is absent, without losing LiteLLM price", () => {
+  test("hy4-preview uses the OpenCode fallback record when the original provider is absent, without losing LiteLLM price", () => {
     const litellm = {
       data: [{
         model_name: "hy4-preview",
@@ -246,14 +246,19 @@ describe("PR8 discovery quality", () => {
           "hy4-preview": {
             id: "hy4-preview",
             canonical_model_id: "tencent/hy4-preview",
+            reasoning: true,
+            tool_call: true,
+            modalities: { input: ["text"], output: ["text"] },
             limit: { context: 1000000, output: 32000 },
           },
         },
       },
     }
 
+    // OpenCode ranks before OpenRouter; its record supplies the intrinsic
+    // gaps (LiteLLM declares neither limits nor capability facts).
     const spec = buildModelSpecs(litellm, catalog, options)[0]!
-    expect(spec.limit).toEqual({ context: 1024000, input: 1024000, output: 64000 })
+    expect(spec.limit).toEqual({ context: 1000000, input: 1000000, output: 32000 })
     expect(spec.cost.input).toBeCloseTo(0.834)
     expect(spec.cost.output).toBeCloseTo(2.501)
     expect(spec.cost.cacheRead).toBeCloseTo(0.042)
@@ -263,7 +268,7 @@ describe("PR8 discovery quality", () => {
     expect(diagnosed.diagnostics.stats.modelsDevMatched).toBe(1)
     expect(diagnosed.diagnostics.models[0]!.modelsDev).toMatchObject({
       matched: true,
-      providerID: "openrouter",
+      providerID: "opencode",
       modelID: "hy4-preview",
     })
     expect(diagnosed.diagnostics.issues.some((issue) => issue.code === "models-dev-unmatched")).toBeFalse()
@@ -299,7 +304,7 @@ describe("PR8 discovery quality", () => {
       },
     }, options)[0]!
 
-    expect(spec.limit).toEqual({ context: 1024000, input: 1024000, output: 64000 })
+    expect(spec.limit).toEqual({ context: 1000000, input: 1000000, output: 32000 })
     expect(spec.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
 
     const diagnosed = diagnoseModelSpecs({

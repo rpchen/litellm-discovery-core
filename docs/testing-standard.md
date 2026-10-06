@@ -154,12 +154,13 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 可信 publication 的 identity resolution 只使用可验证关系：
 
 1. LiteLLM 显式 `models_dev_provider`；
-2. models.dev `canonical_model_id` 可识别且原厂 provider 记录存在时的原厂记录；
-3. 明确 alias、`equivalent_to` / `equivalents`、`inherits` 或其他 metadata 中确定可追踪的 identity relation；
-4. OpenRouter；
-5. OpenCode；
-6. 全局唯一剩余记录；
-7. 仍有多个无法消歧的记录时保持 `ambiguous`，不得强行选择。
+2. canonical/original provider 记录：确定性 canonical relation（`canonical_model_id` / `base_model` 等）指向 canonical identity，且 provider namespace 与 canonical namespace 一致——转售商即使 relation 指向同一 canonical model 也不是原厂；
+3. OpenCode fallback；
+4. OpenRouter fallback；
+5. 明确 alias、`equivalent_to` / `equivalents`、`inherits` 或其他 metadata 中确定可追踪的 identity relation 消歧后的全局唯一剩余记录；
+6. 仍有多个无法消歧的记录时保持 `ambiguous`，不得强行选择。
+
+**Canonical Model Identity 与 Metadata Provider Selection 是两个概念**：identity 由 deployment 证据与 identity relation graph 决定；provider selection 只决定用哪个 provider-scoped record 做 enrichment。fallback record（尤其是 OpenRouter/OpenCode 的 serving limits）不得改写 canonical identity，也不得作为模型内禀事实的高权威来源——它们只能补缺，与 LiteLLM descriptive 同级冲突时保持 unresolved conflict（canonical-original 记录仍是高权威）。
 
 模型名字、family substring、邻近型号和经验规则不得参与可信 publication identity resolution，也不得据此推断 tools、reasoning、modalities 或 limits。若历史非发布兼容 API 仍保留 family-name helper，它必须与 `selectModelsDevRecord` / `selectModelsDevRecordDetailed` / `assessModelConfiguration` / `buildPublicationResult` 隔离，且不得影响 `configured` 判定。
 

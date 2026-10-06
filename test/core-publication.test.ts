@@ -104,9 +104,15 @@ describe("publication: normal match", () => {
       openrouter: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 262144, output: 65536 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, reasoning_options: [{ type: "effort", values: ["low", "high"] }] } } },
       opencode: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 1, output: 1 } } } },
     }
+    // OpenCode ranks before OpenRouter in the corrected fallback precedence.
     const detailed = selectModelsDevRecordDetailed(group("kimi-k2.6", "openrouter/kimi-k2.6"), catalog)
-    expect(detailed.selected?.providerID).toBe("openrouter")
-    expect(detailed.selected?.selectionSource).toBe("openrouter-fallback")
+    expect(detailed.selected?.providerID).toBe("opencode")
+    expect(detailed.selected?.selectionSource).toBe("opencode-fallback")
+
+    const withoutOpenCode = { openrouter: catalog.openrouter }
+    const openRouterOnly = selectModelsDevRecordDetailed(group("kimi-k2.6", "openrouter/kimi-k2.6"), withoutOpenCode)
+    expect(openRouterOnly.selected?.providerID).toBe("openrouter")
+    expect(openRouterOnly.selected?.selectionSource).toBe("openrouter-fallback")
   })
 
   test("canonical identity resolves", () => {

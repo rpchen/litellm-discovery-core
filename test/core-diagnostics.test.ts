@@ -77,6 +77,7 @@ describe("discovery diagnostics", () => {
       matched: true,
       providerID: "openai",
       modelID: "gpt-diagnostic",
+      selectionSource: "unique-match",
     })
     expect(diagnostic.protocol).toMatchObject({
       value: "responses",
@@ -200,5 +201,90 @@ describe("discovery diagnostics", () => {
         pending: item.source === "none",
       })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Canonical identity / metadata provider / selection source visibility
+// (fix-canonical-provider-selection-precedence)
+// ---------------------------------------------------------------------------
+import { DEEPSEEK_V4_1_FLASH_CATALOG } from "./fixtures/models-dev-catalog-fixtures.ts"
+
+describe("selection diagnostics", () => {
+  const optionsNoTier = { contextTierCap: false, protocolOverrides: {} } as const
+
+  test("canonical original selection reports identity, provider, and source separately", () => {
+    const litellm = {
+      data: [{
+        model_name: "deepseek-v4.1-flash",
+        litellm_params: { model: "deepseek-v4.1-flash" },
+        model_info: { mode: "responses", base_model: "deepseek-v4.1-flash" },
+      }],
+    }
+    const diagnosed = diagnoseModelSpecs(litellm, DEEPSEEK_V4_1_FLASH_CATALOG, optionsNoTier)
+    const model = diagnosed.diagnostics.models.find((item) => item.id === "deepseek-v4.1-flash")!
+    expect(model.modelsDev).toMatchObject({
+      matched: true,
+      providerID: "deepseek",
+      selectionSource: "canonical-original",
+    })
+    // The record that served the identity carries its own canonical_model_id
+    // relation, so the identity provenance names the provider relation.
+    expect(model.quality.identity.identityProvenance).toBe("provider-relation")
+  })
+
+  test("fallback selection keeps the canonical identity intact in diagnostics", () => {
+    const litellm = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "openai/vendor-foo" },
+        model_info: { mode: "chat" },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", limit: { context: 1, output: 1 } } } },
+      opencode: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", limit: { context: 1, output: 1 } } } },
+      "other-reseller": { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", limit: { context: 1, output: 1 } } } },
+    }
+    const diagnosed = diagnoseModelSpecs(litellm, { opencode: catalog.opencode, "other-reseller": catalog["other-reseller"], vendorfoo: { models: { "unused": { id: "unused" } } } } as never, optionsNoTier)
+    const model = diagnosed.diagnostics.models.find((item) => item.id === "vendor-foo")!
+    expect(model.modelsDev).toMatchObject({
+      matched: true,
+      providerID: "opencode",
+      selectionSource: "opencode-fallback",
+    })
+    // The canonical identity candidate list stays the deployment's own names:
+    // the fallback provider never renames it.
+    expect(model.candidates).toContain("vendor-foo")
+    expect(model.quality.identity.canonicalCandidates).toContain("vendor-foo")
+  })
+
+  test("provider-relation identity provenance is reported for relation-matched records", () => {
+    const litellm = {
+      data: [{
+        model_name: "rel-model",
+        litellm_params: { model: "canonicalvendor/rel-model" },
+        model_info: { mode: "chat" },
+      }],
+    }
+    const catalog = {
+      canonicalvendor: {
+        models: {
+          "rel-model": {
+            id: "rel-model",
+            canonical_model_id: "canonicalvendor/rel-model",
+            limit: { context: 50_000, output: 5_000 },
+            tool_call: true,
+            reasoning: false,
+            modalities: { input: ["text"], output: ["text"] },
+          },
+        },
+      },
+    }
+    const diagnosed = diagnoseModelSpecs(litellm, catalog, optionsNoTier)
+    const model = diagnosed.diagnostics.models.find((item) => item.id === "rel-model")!
+    expect(model.modelsDev).toMatchObject({ providerID: "canonicalvendor", selectionSource: "canonical-original" })
+    // The direct-id match upgrades to the record's relation proof context.
+    expect(model.quality.identity.matchKind).toBe("relation")
   })
 })

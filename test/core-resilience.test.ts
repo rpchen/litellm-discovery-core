@@ -23,6 +23,9 @@ import {
   type PublicationResult,
 } from "../src/core/publication.ts"
 import {
+  DEEPSEEK_V4_1_FLASH_CATALOG,
+} from "./fixtures/models-dev-catalog-fixtures.ts"
+import {
   buildCatalogPublication,
   catalogDegradationFingerprint,
   catalogFromPublication,
@@ -64,9 +67,16 @@ function publicationOf(groups: DeploymentGroup[], catalog: unknown): Publication
 // ---------------------------------------------------------------------------
 
 /**
- * Observed evidence: LiteLLM `model_info` describes an output cap while the
- * trusted models.dev record for the same canonical identity declares a
- * different intrinsic maximum output.
+ * Observed evidence (sanitized copies of the real models.dev catalog):
+ *
+ * - deepseek-v4.1-flash: the official provider publishes serving-SKU records
+ *   (`deepseek-v4-flash`, `deepseek-flash`) whose `canonical_model_id`
+ *   relation points at `deepseek/deepseek-v4.1-flash`; OpenRouter also
+ *   relation-points at the same canonical identity with a reseller serving
+ *   limit (943718). The original provider record (393216) must win.
+ * - glm-5.3-flash: LiteLLM `model_info` describes an output cap while the
+ *   trusted original-provider record declares a different intrinsic
+ *   maximum output / modality facts.
  */
 const LIVE_REGRESSIONS = [
   {
@@ -81,16 +91,55 @@ const LIVE_REGRESSIONS = [
       supports_function_calling: true,
       supports_reasoning: true,
     },
-    provider: "openrouter",
-    recordID: "deepseek/deepseek-v4.1-flash",
+    // Real catalog shape: the official provider publishes SKU records that
+    // relation-point at the canonical identity; OpenRouter resells it.
+    providers: {
+      deepseek: {
+        models: {
+          "deepseek-v4-flash": {
+            id: "deepseek-v4-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1_000_000, output: 393_216 },
+            canonical_model_id: "deepseek/deepseek-v4.1-flash",
+          },
+          "deepseek-flash": {
+            id: "deepseek-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1_000_000, output: 393_216 },
+            canonical_model_id: "deepseek/deepseek-v4.1-flash",
+          },
+        },
+      },
+      openrouter: {
+        models: {
+          "deepseek/deepseek-v4.1-flash": {
+            id: "deepseek/deepseek-v4.1-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1_048_576, output: 943_718 },
+            canonical_model_id: "deepseek/deepseek-v4.1-flash",
+          },
+        },
+      },
+    },
+    selectedProvider: "deepseek",
+    selectedModelID: "deepseek-flash",
+    selectionSource: "canonical-original",
+    recordID: "deepseek-v4-flash",
     record: {
-      id: "deepseek/deepseek-v4.1-flash",
+      id: "deepseek-v4-flash",
       tool_call: true,
       reasoning: true,
       modalities: { input: ["text", "image"], output: ["text"] },
-      limit: { context: 1_048_576, output: 943_718 },
+      limit: { context: 1_000_000, output: 393_216 },
+      canonical_model_id: "deepseek/deepseek-v4.1-flash",
     },
-    expectedIntrinsicOutput: 943_718,
+    expectedIntrinsicOutput: 393_216,
   },
   {
     id: "glm-5.3-flash",
@@ -104,7 +153,23 @@ const LIVE_REGRESSIONS = [
       supports_function_calling: true,
       supports_reasoning: true,
     },
-    provider: "zhipuai",
+    providers: {
+      zhipuai: {
+        models: {
+          "glm-5.3-flash": {
+            id: "glm-5.3-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] },
+            limit: { context: 1_000_000, output: 131_072 },
+            canonical_model_id: "zhipuai/glm-5.3-flash",
+          },
+        },
+      },
+    },
+    selectedProvider: "zhipuai",
+    selectedModelID: "glm-5.3-flash",
+    selectionSource: "canonical-original",
     recordID: "glm-5.3-flash",
     record: {
       id: "glm-5.3-flash",
@@ -129,7 +194,23 @@ const LIVE_REGRESSIONS = [
       supports_reasoning: true,
       input_cost_per_token_above_512k_tokens: 6e-7,
     },
-    provider: "minimax",
+    providers: {
+      minimax: {
+        models: {
+          "MiniMax-M3": {
+            id: "MiniMax-M3",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image", "video"], output: ["text"] },
+            limit: { context: 1_000_000, output: 512_000 },
+            canonical_model_id: "minimax/MiniMax-M3",
+          },
+        },
+      },
+    },
+    selectedProvider: "minimax",
+    selectedModelID: "MiniMax-M3",
+    selectionSource: "canonical-original",
     recordID: "MiniMax-M3",
     record: {
       id: "MiniMax-M3",
@@ -146,8 +227,7 @@ describe("resilience: live model regressions", () => {
   for (const fixture of LIVE_REGRESSIONS) {
     test(`${fixture.id}: descriptive LiteLLM metadata never blocks a trusted intrinsic record`, () => {
       const group = groupOf(fixture.id, fixture.litellm as Record<string, unknown>)
-      const catalog = { [fixture.provider]: { models: { [fixture.recordID]: fixture.record } } }
-      const result = publicationOf([group], catalog)
+      const result = publicationOf([group], fixture.providers)
       const entry = result.publishable.find((item) => item.spec.id === fixture.id)
 
       expect(result.blocked).toEqual([])
@@ -171,8 +251,7 @@ describe("resilience: live model regressions", () => {
   test("descriptive output difference is recorded and never invalidates a trusted snapshot", () => {
     const fixture = LIVE_REGRESSIONS[0]
     const group = groupOf(fixture.id, fixture.litellm as Record<string, unknown>)
-    const catalog = { [fixture.provider]: { models: { [fixture.recordID]: fixture.record } } }
-    const assessment = assessModelConfiguration(group, catalog, options)
+    const assessment = assessModelConfiguration(group, fixture.providers, options)
     expect(assessment.output.resolution.status).toBe("resolved-discrepancy")
     expect(assessment.discrepancies.map((item) => item.field)).toContain("limit.output")
 
@@ -180,7 +259,7 @@ describe("resilience: live model regressions", () => {
     // though the descriptive declaration still disagrees.
     const spec = buildModelSpecs(
       { data: [{ model_name: fixture.id, litellm_params: { model: "custom/" + fixture.id }, model_info: { mode: "chat", ...fixture.litellm } }] },
-      catalog,
+      fixture.providers,
       options,
     ).find((item) => item.id === fixture.id)!
     const store = createLastKnownGoodStore()
@@ -202,8 +281,7 @@ describe("resilience: live model regressions", () => {
   test("glm-5.3-flash: intrinsic audio input is unsupported and the direction stays known", () => {
     const fixture = LIVE_REGRESSIONS[1]
     const group = groupOf(fixture.id, fixture.litellm as Record<string, unknown>)
-    const catalog = { [fixture.provider]: { models: { [fixture.recordID]: fixture.record } } }
-    const assessment = assessModelConfiguration(group, catalog, options)
+    const assessment = assessModelConfiguration(group, fixture.providers, options)
     expect(assessment.inputModalities.known).toBeTrue()
     expect(assessment.inputModalities.values).not.toContain("audio")
     expect(assessment.inputModalities.values).toEqual(["text", "image", "pdf", "video"])
@@ -517,7 +595,7 @@ describe("resilience: acknowledgement", () => {
     // still reports zero publishable models and the model stays withheld.
     const stored: DegradationAcknowledgement = decision.next!
     expect(stored.schemaVersion).toBe(1)
-    expect(PUBLICATION_SCHEMA_VERSION).toBe(5)
+    expect(PUBLICATION_SCHEMA_VERSION).toBe(6)
   })
 })
 
@@ -963,5 +1041,223 @@ describe("resilience: authoritative modality sets reach the published spec", () 
       options,
     )[0]!
     expect([...spec.capabilities.input].sort()).toEqual(["audio", "image", "text"])
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// Canonical provider selection + fallback authority (fix-canonical-provider-selection-precedence)
+// ---------------------------------------------------------------------------
+
+describe("canonical selection: DeepSeek end-to-end publication", () => {
+  test("official provider limit reaches the published spec; reseller limit never does", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const result = publicationOf([group], DEEPSEEK_V4_1_FLASH_CATALOG)
+    const entry = result.publishable.find((item) => item.spec.id === "deepseek-v4.1-flash")
+    expect(result.blocked).toEqual([])
+    expect(entry).toBeDefined()
+    expect(entry!.assessment.status).toBe("configured")
+    expect(entry!.assessment.conflicts).toEqual([])
+    // The published spec carries the official serving limit, not the reseller's.
+    expect(entry!.spec.limit.output).toBe(393_216)
+    expect(entry!.spec.limit.output).not.toBe(943_718)
+    expect(entry!.spec.limit.context).toBe(1_000_000)
+    expect(entry!.assessment.identity.selected?.providerID).toBe("deepseek")
+    expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
+    // Pricing stays LiteLLM's: the canonical-original record's provider price is
+    // not silently merged over the deployment price when LiteLLM declares one.
+    expect(entry!.assessment.output.resolution.selectedSource).toBe("models.dev")
+  })
+
+  test("fallback-only catalog conflicts with descriptive declarations instead of publishing the reseller limit", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const openRouterOnly = { openrouter: DEEPSEEK_V4_1_FLASH_CATALOG.openrouter }
+    const result = publicationOf([group], openRouterOnly)
+    const blocked = result.blocked.find((item) => item.spec.id === "deepseek-v4.1-flash")
+    expect(blocked).toBeDefined()
+    // OpenRouter's 943718 conflicts with the endpoint's own 384000
+    // declarations at the same (non-authoritative) evidence level:
+    // withheld, never published.
+    expect(blocked!.assessment.conflicts.map((item) => item.field)).toContain("limit.output")
+    expect(result.publishable).toEqual([])
+  })
+
+  test("fallback record supplies missing intrinsic facts as fallback-serving provenance", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      // No LiteLLM limit declarations at all; modality/reasoning flags agree
+      // with the serving record so nothing conflicts at the same level.
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+      input_cost_per_token: 0.0000033,
+      output_cost_per_token: 0.0000033,
+    })
+    const openRouterOnly = { openrouter: DEEPSEEK_V4_1_FLASH_CATALOG.openrouter }
+    const result = publicationOf([group], openRouterOnly)
+    const entry = result.publishable.find((item) => item.spec.id === "deepseek-v4.1-flash")
+    expect(entry).toBeDefined()
+    // Fallback serving metadata fills the gaps (no higher authority exists).
+    expect(entry!.spec.limit.output).toBe(943_718)
+    expect(entry!.assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    expect(entry!.assessment.output.provenance.detail).toContain("provider openrouter")
+  })
+})
+
+describe("canonical selection: LKG never resurrects a superseded serving limit", () => {
+  test("a stored 943718 entry fails closed once the live assessment proves 393216", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    // Snapshot the historical (wrong) publication state: OpenRouter-only catalog.
+    const historicalCatalog = { openrouter: DEEPSEEK_V4_1_FLASH_CATALOG.openrouter }
+    const historical = assessModelConfiguration(group, historicalCatalog, options)
+    // Under the fallback-only catalog the historical assessment withheld the model.
+    expect(historical.publishable).toBeFalse()
+
+    // A hypothetical stored LKG entry forged with the reseller limit and the
+    // OpenRouter provider id must not restore now that the official record wins.
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "deepseek-v4.1-flash", litellm_params: { model: "custom/deepseek-v4.1-flash" }, model_info: { mode: "chat", max_input_tokens: 1_000_000, max_output_tokens: 384_000, max_tokens: 384_000 } }] },
+      historicalCatalog,
+      options,
+    ).find((item) => item.id === "deepseek-v4.1-flash")!
+    const forgedSpec = { ...spec, limit: { ...spec.limit, output: 943_718, context: 1_048_576 } }
+    const store = createLastKnownGoodStore()
+    // Capture refuses a snapshot that fails current policy; so a hand-built
+    // capture with matching captured facts is the only way a 943718 entry
+    // could ever exist — and it must fail validation against the live group.
+    const forgedCaptured = {
+      tools: "supported",
+      reasoning: "supported",
+      inputModalitiesKnown: true,
+      outputModalitiesKnown: true,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      context: 1_048_576,
+      input: forgedSpec.limit.input,
+      output: 943_718,
+    } as const
+    store.set(lastKnownGoodKey("deepseek-v4.1-flash"), createLastKnownGoodEntry(
+      group,
+      historical.identity.selected,
+      forgedSpec,
+      1000,
+      forgedCaptured,
+    ))
+    // Live metadata unavailable: LKG is the only path — but the stored provider
+    // (openrouter) disagrees with the provable official provider (deepseek).
+    const live = assessModelConfiguration(group, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.publishable).toBeFalse()
+    expect(resolved.assessment.usingLKG ?? false).toBeFalse()
+  })
+
+  test("a valid official-provider LKG still restores across a metadata outage", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const assessment = assessModelConfiguration(group, DEEPSEEK_V4_1_FLASH_CATALOG, options)
+    expect(assessment.publishable).toBeTrue()
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "deepseek-v4.1-flash", litellm_params: { model: "custom/deepseek-v4.1-flash" }, model_info: { mode: "chat", ...group.deployments[0]!.modelInfo } }] },
+      DEEPSEEK_V4_1_FLASH_CATALOG,
+      options,
+    ).find((item) => item.id === "deepseek-v4.1-flash")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("deepseek-v4.1-flash"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    const live = assessModelConfiguration(group, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.lkg?.spec.limit.output).toBe(393_216)
+  })
+})
+
+describe("canonical selection: representative models keep their original provider", () => {
+  test("glm-5.3-flash keeps the zhipuai original with corrected precedence", () => {
+    const group = groupOf("glm-5.3-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 131_072,
+      max_tokens: 131_072,
+      supports_vision: true,
+      supports_pdf_input: true,
+      supports_audio_input: true,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const result = publicationOf([group], {
+      zhipuai: { models: { "glm-5.3-flash": { id: "glm-5.3-flash", tool_call: true, reasoning: true, modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] }, limit: { context: 1_000_000, output: 131_072 }, canonical_model_id: "zhipuai/glm-5.3-flash" } } },
+    })
+    const entry = result.publishable.find((item) => item.spec.id === "glm-5.3-flash")
+    expect(entry!.assessment.identity.selected?.providerID).toBe("zhipuai")
+    expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
+    expect(entry!.spec.limit.output).toBe(131_072)
+  })
+
+  test("minimax-m3 keeps the minimax original with corrected precedence", () => {
+    const group = groupOf("minimax-m3", {
+      base_model: "minimax-m3",
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 131_072,
+      max_tokens: 131_072,
+      supports_vision: true,
+      supports_function_calling: true,
+      supports_reasoning: true,
+      input_cost_per_token_above_512k_tokens: 6e-7,
+    })
+    const result = publicationOf([group], {
+      minimax: { models: { "MiniMax-M3": { id: "MiniMax-M3", tool_call: true, reasoning: true, modalities: { input: ["text", "image", "video"], output: ["text"] }, limit: { context: 1_000_000, output: 512_000 }, canonical_model_id: "minimax/MiniMax-M3" } } },
+      openrouter: { models: { "minimax-m3": { id: "minimax-m3", tool_call: true, reasoning: true, limit: { context: 2_000_000, output: 1_000_000 }, canonical_model_id: "minimax/MiniMax-M3" } } },
+    })
+    const entry = result.publishable.find((item) => item.spec.id === "minimax-m3")
+    expect(entry!.assessment.identity.selected?.providerID).toBe("minimax")
+    expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
+    expect(entry!.spec.limit.output).toBe(512_000)
+    expect(entry!.spec.limit.context).toBe(1_000_000)
   })
 })

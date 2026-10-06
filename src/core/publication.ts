@@ -314,6 +314,32 @@ export interface CompletenessAssessment {
   readonly lkgDetail?: string
 }
 
+/**
+ * Whether the selected models.dev record carries authoritative intrinsic
+ * authority.
+ *
+ * Canonical-original records (and explicit-provider records proved by their
+ * own canonical relation) do; fallback records (OpenCode, OpenRouter,
+ * unique leftover) only serve descriptive metadata for a reseller's
+ * offering, which fills gaps but never outranks the endpoint's own
+ * declarations. This implements §13: canonical/original evidence and
+ * fallback provider serving metadata stay distinguishable.
+ */
+function isAuthoritativeIntrinsic(
+  selected: SelectedModelRecord | undefined,
+): boolean {
+  if (!selected) return false
+  // Undefined selectionSource keeps the legacy hand-built-record behavior.
+  if (selected.selectionSource === undefined) return true
+  // Fallback records are reseller serving metadata; they never outrank the
+  // endpoint's own declarations. Canonical-original, unique trusted matches,
+  // and explicit provider proofs are the trusted identity-resolved sources.
+  if (selected.selectionSource === "opencode-fallback") return false
+  if (selected.selectionSource === "openrouter-fallback") return false
+  if (selected.selectionSource === "legacy-family-compatibility") return false
+  return true
+}
+
 function toolProvenance(
   group: DeploymentGroup,
   selected: SelectedModelRecord | undefined,
@@ -413,6 +439,7 @@ function assessLimit(
     intrinsic,
     intrinsicDetail: `limit.${field} -> provider ${selected?.providerID ?? "unknown-provider"} -> model ${selected?.modelID ?? "unknown-model"}`,
     bounds,
+    intrinsicAuthority: isAuthoritativeIntrinsic(selected) ? "authoritative" : "fallback-serving",
   })
   const resolution: FieldResolution = illegalIntrinsic
     ? {
@@ -492,6 +519,7 @@ function assessModalities(
     group,
     intrinsic,
     intrinsicDetail: `modalities.${direction} -> provider ${selected?.providerID ?? "unknown-provider"} -> model ${selected?.modelID ?? "unknown-model"}`,
+    intrinsicAuthority: isAuthoritativeIntrinsic(selected) ? "authoritative" : "fallback-serving",
   })
   if (!resolved.known) {
     return {
@@ -561,6 +589,7 @@ export function assessModelConfiguration(
     group,
     intrinsic: toolIntrinsic,
     intrinsicDetail: `tool_call -> provider ${effectiveSelected?.providerID ?? "unknown-provider"} -> model ${effectiveSelected?.modelID ?? "unknown-model"}`,
+    intrinsicAuthority: isAuthoritativeIntrinsic(effectiveSelected) ? "authoritative" : "fallback-serving",
     fallbackState: toolAggregation.state,
     fallbackConflict: toolAggregation.conflict,
   })
@@ -573,6 +602,7 @@ export function assessModelConfiguration(
     group,
     intrinsic: modelsDevReasoning(effectiveSelected),
     intrinsicDetail: `reasoning -> provider ${effectiveSelected?.providerID ?? "unknown-provider"} -> model ${effectiveSelected?.modelID ?? "unknown-model"}`,
+    intrinsicAuthority: isAuthoritativeIntrinsic(effectiveSelected) ? "authoritative" : "fallback-serving",
     fallbackState: reasoningState.state,
     fallbackConflict: reasoningState.conflict,
   })
@@ -704,7 +734,7 @@ export function isNormallyPublishable(status: ModelConfigurationStatus): boolean
  * entry with unknown capabilities, inconsistent facts, or a route-stripped
  * identity still fails closed.
  */
-export const PUBLICATION_SCHEMA_VERSION = 5 as const
+export const PUBLICATION_SCHEMA_VERSION = 6 as const
 
 export interface LastKnownGoodCapabilityVerdict {
   readonly tools: CapabilityState
@@ -742,6 +772,13 @@ export interface LastKnownGoodEntry {
   readonly canonicalID: string
   readonly providerID: string
   readonly matchKind?: string
+  /**
+   * Selection source provenance captured with the snapshot. Entries captured
+   * from fallback records (reseller serving metadata) never restore across a
+   * metadata outage: their values are not authoritative and must be
+   * re-proven live instead of resurrected from memory.
+   */
+  readonly selectionSource?: string
   readonly fetchedAt: string
   readonly fetchedAtEpochMs: number
   readonly spec: ModelSpec
@@ -825,6 +862,7 @@ export function createLastKnownGoodEntry(
     canonicalID: canonicals[0] ?? group.modelName.toLowerCase(),
     providerID: selected?.providerID ?? "litellm-only",
     matchKind: selected?.matchKind,
+    selectionSource: selected?.selectionSource,
     fetchedAt: new Date(now).toISOString(),
     fetchedAtEpochMs: now,
     spec: structuredClone(spec),
@@ -959,6 +997,18 @@ export function validateLastKnownGood(
   const currentCanonical = canonicals[0] ?? group.modelName.toLowerCase()
   if (currentCanonical.toLowerCase() !== entry.canonicalID.toLowerCase()) {
     return { valid: false, reason: `canonical identity changed (${entry.canonicalID} != ${currentCanonical})`, ageMs }
+  }
+  // Fallback-sourced entries capture reseller serving metadata, not
+  // authoritative intrinsic facts. They are valid only while the same
+  // fallback selection is provable live; during a metadata outage they
+  // fail closed (nothing live can re-prove the reseller's numbers) instead
+  // of resurrecting stale serving limits the next real refresh would
+  // immediately reject.
+  if (isFallbackSelectionSource(entry.selectionSource)) {
+    const currentSource = selected?.selectionSource
+    if (currentSource === undefined || currentSource !== entry.selectionSource) {
+      return { valid: false, reason: `LKG captured from a fallback provider record (${entry.selectionSource ?? "unknown"}); it must be re-proven live`, ageMs }
+    }
   }
   // Additional cross-check only: when the live catalog is unavailable
   // there is no current provider mapping to compare against; the stored
@@ -1171,6 +1221,16 @@ export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntr
     typeof value.fetchedAt === "string" &&
     typeof value.fetchedAtEpochMs === "number" &&
     isCapturedVerdict(value.captured)
+}
+
+/**
+ * Fallback-sourced LKG entries capture reseller serving metadata. They stay
+ * readable (schema-compatible) but are only valid while the same live
+ * fallback selection remains provable — never as outage insurance.
+ */
+function isFallbackSelectionSource(value: unknown): boolean {
+  return value === "opencode-fallback" || value === "openrouter-fallback" ||
+    value === "legacy-family-compatibility"
 }
 
 /** In-memory LKG store. Persistence belongs to adapters; validity belongs here. */
