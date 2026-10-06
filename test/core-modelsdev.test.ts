@@ -673,3 +673,56 @@ describe("adversarial canonical-original proof (finding 6)", () => {
     // Explicit without relation proof: serving-provider selection only.
   })
 })
+
+
+// ---------------------------------------------------------------------------
+// Blocker 2: canonical-original multi-record equivalence ruling
+// ---------------------------------------------------------------------------
+
+describe("canonical-original multi-record equivalence (blocker 2)", () => {
+  const identity = { tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+
+  function originalCatalog(outputB: number) {
+    return {
+      deepseek: {
+        models: {
+          "sku-a": { id: "sku-a", canonical_model_id: "deepseek/m", limit: { context: 1_000_000, output: 393_216 }, ...identity },
+          "sku-b": { id: "sku-b", canonical_model_id: "deepseek/m", limit: { context: 1_000_000, output: outputB }, ...identity },
+        },
+      },
+      openrouter: {
+        models: { "m": { id: "m", canonical_model_id: "deepseek/m", limit: { context: 1_048_576, output: 943_718 } } },
+      },
+    }
+  }
+
+  test("materially different original serving facts -> ambiguous on every record order", () => {
+    const group = one("m", "openai/m")
+    const first = selectModelsDevRecordDetailed(group, originalCatalog(100_000))
+    expect(first.outcome).toBe("ambiguous")
+    const reversedCatalog = {
+      deepseek: { models: { "sku-b": originalCatalog(100_000).deepseek.models["sku-b"], "sku-a": originalCatalog(100_000).deepseek.models["sku-a"] } },
+      openrouter: originalCatalog(100_000).openrouter,
+    }
+    const second = selectModelsDevRecordDetailed(group, reversedCatalog)
+    expect(second.outcome).toBe("ambiguous")
+    // No selection may hide behind the tie-break when serving facts differ.
+    expect(first.selected).toBeUndefined()
+    expect(second.selected).toBeUndefined()
+  })
+
+  test("equivalent original records -> deterministic same record regardless of order", () => {
+    const group = one("m", "openai/m")
+    const catalog = originalCatalog(393_216)
+    const first = selectModelsDevRecordDetailed(group, catalog)
+    const reversed = {
+      deepseek: { models: { "sku-b": catalog.deepseek.models["sku-b"], "sku-a": catalog.deepseek.models["sku-a"] } },
+      openrouter: catalog.openrouter,
+    }
+    const second = selectModelsDevRecordDetailed(group, reversed)
+    expect(first.outcome).toBe("matched")
+    expect(first.selected?.providerID).toBe("deepseek")
+    expect(first.selected?.selectionSource).toBe("canonical-original")
+    expect(second.selected?.modelID).toBe(first.selected?.modelID)
+  })
+})

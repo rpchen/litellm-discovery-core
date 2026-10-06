@@ -851,6 +851,12 @@ function selectTrustedRecord(group: DeploymentGroup, candidate: string, matches:
   // 2. Canonical/original provider: deterministic relation pointing at the
   // canonical identity plus provider namespace == canonical namespace.
   const original = canonicalOriginalRecord(candidate, matches, deploymentQualifiedNamespaces(group))
+  if (original === "conflict") {
+    // Original-provider candidates exist but their publication-critical
+    // facts conflict with no rule to rank them: fail closed for this
+    // candidate instead of letting a lower-precedence reseller record win.
+    return { outcome: "ambiguous", ambiguousProviders: [canonicalNamespaceFor(candidate, matches) ?? "canonical-original"] }
+  }
   if (original) {
     return { outcome: "matched", selection: toSelected(original, "canonical-original") }
   }
@@ -998,7 +1004,7 @@ function canonicalOriginalRecord(
   candidate: string,
   matches: CandidateMatch[],
   deploymentQualifiedNamespaces: ReadonlySet<string>,
-): CandidateMatch | undefined {
+): CandidateMatch | undefined | "conflict" {
   const canonicalNamespace = canonicalNamespaceFor(candidate, matches)
   if (!canonicalNamespace) return undefined
   // A relation-less record qualifies as the original only when the canonical
@@ -1009,6 +1015,16 @@ function canonicalOriginalRecord(
     match.providerID.toLowerCase() === canonicalNamespace &&
     (match.recordCanonicalID !== undefined || deploymentQualifiedNamespaces.has(canonicalNamespace)),
   )
+  // Same provider + multiple matching records follows the frozen rule for
+  // every selection path: publication-critical facts provably equivalent ->
+  // deterministic tie-break (deprecated count -> modelID length ->
+  // localeCompare); materially different serving facts -> fail closed
+  // (review blocker 2). The tie-break below runs on equivalent records only,
+  // so catalog object order never decides between different serving facts.
+  const equivalents = originals.filter((match) =>
+    originals.every((other) => publicationEquivalent(match, other)),
+  )
+  if (equivalents.length !== originals.length) return "conflict"
   const [best] = originals
     .map((match, index) => ({
       match,

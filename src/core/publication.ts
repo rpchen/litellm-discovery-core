@@ -729,6 +729,27 @@ export function isNormallyPublishable(status: ModelConfigurationStatus): boolean
   return status === "configured" || status === "configured-lkg"
 }
 
+/** The persisted grading of a captured snapshot's evidence authority. */
+export type PublicationEvidenceAuthority = "authoritative-intrinsic" | "fallback-serving"
+
+/**
+ * Grade the evidence of a selection. Live assessment, LKG capture, price
+ * fallback eligibility, and diagnostics all read this single gate, so no
+ * caller can drift into re-deriving the authority table.
+ */
+export function evidenceAuthorityOf(
+  selected: SelectedModelRecord | undefined,
+): PublicationEvidenceAuthority {
+  // No selected record means the snapshot's facts came from the endpoint's
+  // own LiteLLM declarations (provider id `litellm-only`): the operator's
+  // own previously-proven configuration, exactly what LKG exists to carry
+  // across outages. Fallback-serving grading applies to snapshots whose
+  // facts came from a selected models.dev record without authoritative
+  // intrinsic authority.
+  if (selected === undefined) return "authoritative-intrinsic"
+  return isAuthoritativeIntrinsic(selected) ? "authoritative-intrinsic" : "fallback-serving"
+}
+
 // ---------------------------------------------------------------------------
 // Last Known Good (no fixed TTL)
 // ---------------------------------------------------------------------------
@@ -742,7 +763,7 @@ export function isNormallyPublishable(status: ModelConfigurationStatus): boolean
  * entry with unknown capabilities, inconsistent facts, or a route-stripped
  * identity still fails closed.
  */
-export const PUBLICATION_SCHEMA_VERSION = 6 as const
+export const PUBLICATION_SCHEMA_VERSION = 7 as const
 
 export interface LastKnownGoodCapabilityVerdict {
   readonly tools: CapabilityState
@@ -780,13 +801,18 @@ export interface LastKnownGoodEntry {
   readonly canonicalID: string
   readonly providerID: string
   readonly matchKind?: string
-  /**
-   * Selection source provenance captured with the snapshot. Entries captured
-   * from fallback records (reseller serving metadata) never restore across a
-   * metadata outage: their values are not authoritative and must be
-   * re-proven live instead of resurrected from memory.
-   */
+  /** Selection source provenance captured with the snapshot. */
   readonly selectionSource?: string
+  /**
+   * The evidence authority the captured facts carried, graded by the same
+   * helper as the live assessment (`isAuthoritativeIntrinsic`). Entries
+   * whose facts are only `fallback-serving` (OpenCode/OpenRouter fallback,
+   * unique-match, legacy compatibility, or an explicit provider record
+   * without a canonical relation proof) never restore across a metadata
+   * outage: they must be re-proven by a live selection in the same round
+   * instead of resurrected from memory.
+   */
+  readonly evidenceAuthority: PublicationEvidenceAuthority
   readonly fetchedAt: string
   readonly fetchedAtEpochMs: number
   readonly spec: ModelSpec
@@ -871,6 +897,7 @@ export function createLastKnownGoodEntry(
     providerID: selected?.providerID ?? "litellm-only",
     matchKind: selected?.matchKind,
     selectionSource: selected?.selectionSource,
+    evidenceAuthority: evidenceAuthorityOf(selected),
     fetchedAt: new Date(now).toISOString(),
     fetchedAtEpochMs: now,
     spec: structuredClone(spec),
@@ -1006,15 +1033,19 @@ export function validateLastKnownGood(
   if (currentCanonical.toLowerCase() !== entry.canonicalID.toLowerCase()) {
     return { valid: false, reason: `canonical identity changed (${entry.canonicalID} != ${currentCanonical})`, ageMs }
   }
-  // Fallback-sourced entries capture reseller serving metadata, not
-  // authoritative intrinsic facts. They are valid only while the same
-  // fallback selection is provable live; during a metadata outage they
-  // fail closed (nothing live can re-prove the reseller's numbers) instead
-  // of resurrecting stale serving limits the next real refresh would
-  // immediately reject.
-  if (isFallbackSelectionSource(entry.selectionSource)) {
-    const currentSource = selected?.selectionSource
-    if (currentSource === undefined || currentSource !== entry.selectionSource) {
+  // Authority is graded on the entry itself (persisted at capture from the
+  // same helper as the live assessment). A fallback-serving snapshot --
+  // reseller serving metadata or an explicit provider record without a
+  // canonical relation proof -- restores only while the same live selection
+  // is provable; during a metadata outage nothing live re-proves those
+  // numbers, so it fails closed instead of resurrecting stale serving
+  // limits the next real refresh would immediately reject.
+  if (entry.evidenceAuthority === "fallback-serving") {
+    if (selected === undefined || selected.selectionSource === undefined) {
+      return { valid: false, reason: "LKG captured with fallback-serving evidence authority; it must be re-proven by a live selection, not restored from memory", ageMs }
+    }
+    const currentSource = selected.selectionSource
+    if (currentSource !== entry.selectionSource) {
       return { valid: false, reason: `LKG captured from a fallback provider record (${entry.selectionSource ?? "unknown"}); it must be re-proven live`, ageMs }
     }
   }
@@ -1229,16 +1260,6 @@ export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntr
     typeof value.fetchedAt === "string" &&
     typeof value.fetchedAtEpochMs === "number" &&
     isCapturedVerdict(value.captured)
-}
-
-/**
- * Fallback-sourced LKG entries capture reseller serving metadata. They stay
- * readable (schema-compatible) but are only valid while the same live
- * fallback selection remains provable — never as outage insurance.
- */
-function isFallbackSelectionSource(value: unknown): boolean {
-  return value === "opencode-fallback" || value === "openrouter-fallback" ||
-    value === "unique-match" || value === "legacy-family-compatibility"
 }
 
 /** In-memory LKG store. Persistence belongs to adapters; validity belongs here. */

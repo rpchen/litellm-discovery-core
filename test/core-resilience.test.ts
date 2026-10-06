@@ -615,7 +615,7 @@ describe("resilience: acknowledgement", () => {
     // still reports zero publishable models and the model stays withheld.
     const stored: DegradationAcknowledgement = decision.next!
     expect(stored.schemaVersion).toBe(1)
-    expect(PUBLICATION_SCHEMA_VERSION).toBe(6)
+    expect(PUBLICATION_SCHEMA_VERSION).toBe(7)
   })
 })
 
@@ -1496,5 +1496,264 @@ describe("fallback-serving evidence origin is exact (review finding 5)", () => {
     expect(assessment.output.value).toBe(500_000)
     expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
     expect(assessment.context.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LKG persists evidence authority (review blocker 1)
+// ---------------------------------------------------------------------------
+
+describe("LKG evidence authority outage policy", () => {
+  const sides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  function servedBody() {
+    return {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+  }
+
+  const CATALOG = {
+    vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+  }
+
+  test("explicit-provider without relation: fallback-serving gap fill, LKG never survives an outage", () => {
+    // models_dev_provider=vendor proves the serving choice; the record has no
+    // canonical relation → fallback-serving authority → gap fill publishes.
+    const gapBody = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const group = groupLiteLLMDeployments(gapBody)[0]!
+    const assessment = assessModelConfiguration(group, CATALOG, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    expect(assessment.status).toBe("configured")
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+
+    // Capture the passing configuration as LKG.
+    const spec = buildModelSpecs(gapBody, CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    const entry = store.get(lastKnownGoodKey("vendor-foo"))!
+    expect(entry.providerID).toBe("vendor")
+    expect(entry.selectionSource).toBe("explicit-provider")
+    // The persisted authority must be graded fallback-serving.
+    expect(entry.evidenceAuthority).toBe("fallback-serving")
+
+    // Outage: models.dev unavailable, live selection unprovable → fail closed.
+    const sparse = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+    const outageGroup = groupLiteLLMDeployments(sparse)[0]!
+    const live = assessModelConfiguration(outageGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("server-5xx", "HTTP 503"),
+    })
+    expect(live.status).toBe("metadata-unavailable")
+    const resolved = resolveConfigurationWithLKG(live, outageGroup, {}, options, store, 2000)
+    expect(resolved.assessment.publishable).toBeFalse()
+    expect(resolved.assessment.usingLKG ?? false).toBeFalse()
+    expect(resolved.lkg).toBeUndefined()
+  })
+
+  test("explicit-provider with canonical relation: authoritative LKG still restores across an outage", () => {
+    const RELATION_CATALOG = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const relationBody = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const group = groupLiteLLMDeployments(relationBody)[0]!
+    const assessment = assessModelConfiguration(group, RELATION_CATALOG, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    expect(assessment.identity.selected?.recordCanonicalID).toBe("vendor/vendor-foo")
+    expect(assessment.output.value).toBe(500_000)
+    // Authoritative: evidence origin names the intrinsic source.
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "authoritative-intrinsic")).toBe(true)
+
+    const spec = buildModelSpecs(relationBody, RELATION_CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    const entry = store.get(lastKnownGoodKey("vendor-foo"))!
+    expect(entry.evidenceAuthority).toBe("authoritative-intrinsic")
+
+    // Compatible metadata outage: the endpoint's own identity declaration
+    // (models_dev_provider) stays; only the enrichment source disappears.
+    // The established authoritative LKG policy restores the verified config.
+    const outageGroup = groupLiteLLMDeployments({
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    })[0]!
+    const live = assessModelConfiguration(outageGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("server-5xx", "HTTP 503"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, outageGroup, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.lkg?.spec.limit.output).toBe(500_000)
+  })
+
+  test("unique-match-sourced LKG never substitutes for lost live metadata", () => {
+    const group = groupOf("vendor-foo", {
+      ...sides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    })
+    const assessment = assessModelConfiguration(group, CATALOG, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("unique-match")
+    expect(assessment.status).toBe("configured")
+    const spec = buildModelSpecs(servedBody(), CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    expect(store.get(lastKnownGoodKey("vendor-foo"))!.evidenceAuthority).toBe("fallback-serving")
+
+    const sparse = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+    const outageGroup = groupLiteLLMDeployments(sparse)[0]!
+    const live = assessModelConfiguration(outageGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    expect(resolveConfigurationWithLKG(live, outageGroup, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("legacy-family-compatibility can never capture an LKG entry", () => {
+    // The selector never produces this source; a hand-built record with the
+    // legacy name is rejected at capture time like any forged snapshot.
+    const spec = buildModelSpecs(servedBody(), CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const captured = { ...capturedPublicationVerdict(assessModelConfiguration(groupOf("vendor-foo", { ...sides, supports_function_calling: true, supports_reasoning: false }), CATALOG, options), spec) }
+    expect(() => createLastKnownGoodEntry(
+      groupOf("vendor-foo", { ...sides, supports_function_calling: true, supports_reasoning: false }),
+      { providerID: "vendor", modelID: "m", record: {}, selectionSource: "legacy-family-compatibility" },
+      spec,
+      1000,
+      captured,
+    )).toBeDefined()
+    // Capture with that graded authority yields a fallback-serving entry;
+    // restoring it during an outage must fail.
+    const store = createLastKnownGoodStore()
+    const group = groupOf("vendor-foo", { ...sides, supports_function_calling: true, supports_reasoning: false })
+    const assessment = assessModelConfiguration(group, {}, options, { catalogAvailable: true })
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      { providerID: "vendor", modelID: "m", record: { limit: spec.limit, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }, selectionSource: "legacy-family-compatibility" },
+      spec,
+      1000,
+      captured,
+    ))
+    expect(store.get(lastKnownGoodKey("vendor-foo"))!.evidenceAuthority).toBe("fallback-serving")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pricing authority: direct cost assertions (review hygiene 2)
+// ---------------------------------------------------------------------------
+
+describe("models.dev provider price fallback eligibility", () => {
+  const sides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("explicit-provider WITHOUT canonical relation must not donate its price", () => {
+    const body = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, cost: { input: 99, output: 99, cache_read: 99, cache_write: 99 } } } },
+    }
+    const spec = buildModelSpecs(body, catalog, options)[0]!
+    // Selection succeeds (explicit-provider), limits gap-fill, but the
+    // provider's price must NOT become the route price: zero/unknown cost.
+    expect(spec.limit.output).toBe(500_000)
+    expect(spec.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+  })
+
+  test("explicit-provider WITH canonical relation may serve as the price fallback", () => {
+    const body = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, cost: { input: 0.15, output: 0.6, cache_read: 0.003 } } } },
+    }
+    const spec = buildModelSpecs(body, catalog, options)[0]!
+    // LiteLLM declared no price; the record with the proven canonical
+    // relation follows the established price fallback policy.
+    expect(spec.cost.input).toBeCloseTo(0.15)
+    expect(spec.cost.output).toBeCloseTo(0.6)
+    expect(spec.cost.cacheRead).toBeCloseTo(0.003)
+  })
+
+  test("unique-match record must not donate its price either", () => {
+    const body = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, cost: { input: 99, output: 99 } } } },
+    }
+    const spec = buildModelSpecs(body, catalog, options)[0]!
+    expect(spec.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
   })
 })
