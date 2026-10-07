@@ -855,7 +855,7 @@ function selectTrustedRecord(group: DeploymentGroup, candidate: string, matches:
     // Original-provider candidates exist but their publication-critical
     // facts conflict with no rule to rank them: fail closed for this
     // candidate instead of letting a lower-precedence reseller record win.
-    return { outcome: "ambiguous", ambiguousProviders: [canonicalNamespaceFor(candidate, matches) ?? "canonical-original"] }
+    return { outcome: "ambiguous", ambiguousProviders: [canonicalNamespaceFor(candidate, matches, deploymentQualifiedNamespaces(group)) ?? "canonical-original"] }
   }
   if (original) {
     return { outcome: "matched", selection: toSelected(original, "canonical-original") }
@@ -1005,7 +1005,7 @@ function canonicalOriginalRecord(
   matches: CandidateMatch[],
   deploymentQualifiedNamespaces: ReadonlySet<string>,
 ): CandidateMatch | undefined | "conflict" {
-  const canonicalNamespace = canonicalNamespaceFor(candidate, matches)
+  const canonicalNamespace = canonicalNamespaceFor(candidate, matches, deploymentQualifiedNamespaces)
   if (!canonicalNamespace) return undefined
   // A relation-less record qualifies as the original only when the canonical
   // namespace is proven by the deployment's own evidence, never from another
@@ -1052,7 +1052,11 @@ function canonicalOriginalRecord(
  * (e.g. routed `deepseek/deepseek-v4.1-flash`); otherwise from the
  * declared relation values when they agree on a single namespace.
  */
-function canonicalNamespaceFor(candidate: string, matches: readonly CandidateMatch[]): string | undefined {
+function canonicalNamespaceFor(
+  candidate: string,
+  matches: readonly CandidateMatch[],
+  deploymentQualifiedNamespaces: ReadonlySet<string>,
+): string | undefined {
   const slash = candidate.indexOf("/")
   if (slash > 0) {
     const namespace = identityNodeID(candidate.slice(0, slash))
@@ -1064,7 +1068,21 @@ function canonicalNamespaceFor(candidate: string, matches: readonly CandidateMat
     const declared = match.recordCanonicalID.indexOf("/")
     if (declared > 0) declaredNamespaces.add(identityNodeID(match.recordCanonicalID.slice(0, declared)))
   }
-  return declaredNamespaces.size === 1 ? [...declaredNamespaces][0] : undefined
+  if (declaredNamespaces.size === 1) return [...declaredNamespaces][0]
+  // Rule B fallback (frozen design): the candidate id stripped its route,
+  // so the deployment's own qualified identity declarations must prove the
+  // namespace. One single agreed namespace across every deployment is a
+  // positive deployment proof; disagreement or silence proves nothing.
+  // The reseller fallback namespaces never qualify as a canonical namespace:
+  // routing `openrouter/...` or `opencode/...` states the serving choice
+  // (that record then reaches this selector through the explicit fallback
+  // precedence steps as a fallback-serving source), never that the reseller
+  // is the model's origin.
+  if (deploymentQualifiedNamespaces.size === 1) {
+    const [single] = deploymentQualifiedNamespaces
+    if (single !== "openrouter" && single !== "opencode") return single
+  }
+  return undefined
 }
 
 /**

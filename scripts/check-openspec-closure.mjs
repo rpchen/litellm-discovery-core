@@ -590,7 +590,15 @@ function resolveArchiveChronology(archiveNames) {
     if (commit) commitByArchive.set(name, commit)
   }
 
-  const fixtureRaw = process.env.OPENSPEC_CLOSURE_ORDER_JSON
+  // Chronology fixture: env (test injection) first, then the committed repo
+  // fixture. A committed fixture exists for squash-merged archives where git
+  // ancestry cannot prove the (well known to the authors) introduction
+  // order: it is reviewed like code and must not order archives whose git
+  // introduction is already provable except as declared here.
+  const fixtureRaw = process.env.OPENSPEC_CLOSURE_ORDER_JSON ??
+    (existsSync(path.join(openspecRoot, "openspec-chronology.json"))
+      ? readFileSync(path.join(openspecRoot, "openspec-chronology.json"), "utf8")
+      : undefined)
   const fixture = fixtureRaw ? parseChronologyFixture(fixtureRaw) : null
 
   const relation = (left, right) => {

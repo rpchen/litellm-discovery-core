@@ -77,7 +77,9 @@ describe("discovery diagnostics", () => {
       matched: true,
       providerID: "openai",
       modelID: "gpt-diagnostic",
-      selectionSource: "unique-match",
+      // The deployment routes openai/gpt-diagnostic: the qualified namespace
+      // plus the same-namespace direct record proves canonical-original.
+      selectionSource: "canonical-original",
     })
     expect(diagnostic.protocol).toMatchObject({
       value: "responses",
@@ -95,10 +97,13 @@ describe("discovery diagnostics", () => {
       context: { source: "models.dev", detail: "limit.context" },
       outputLimit: { source: "litellm" },
       pricing: {
+        // The record is canonical-original (rule B); LiteLLM prices still win
+        // where declared, and the undeclared cache dimensions keep their
+        // documented fallback/ignored wording relative to each key's policy.
         input: { source: "litellm" },
         output: { source: "litellm" },
-        cacheRead: { source: "default", detail: "models.dev unique-match price ignored; capability fallback is not deployment pricing" },
-        cacheWrite: { source: "default", detail: "models.dev unique-match price ignored; capability fallback is not deployment pricing" },
+        cacheRead: { source: "models.dev" },
+        cacheWrite: { source: "models.dev" },
       },
       release: { source: "models.dev" },
     })

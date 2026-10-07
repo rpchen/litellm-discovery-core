@@ -726,3 +726,64 @@ describe("canonical-original multi-record equivalence (blocker 2)", () => {
     expect(second.selected?.modelID).toBe(first.selected?.modelID)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Rule B wiring: route-qualified namespace proves a relation-less record
+// (follow-up to fix-canonical-provider-selection-precedence)
+// ---------------------------------------------------------------------------
+
+describe("route-qualified canonical namespace (rule B)", () => {
+  const identity = { tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+
+  test("a same-namespace direct record under a qualified route is the original", () => {
+    const group = one("gpt-6-sol", "openai/gpt-6-sol")
+    const catalog = {
+      openai: { models: { "gpt-6-sol": { id: "gpt-6-sol", limit: { context: 100_000, output: 10_000 }, ...identity } } },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    expect(detailed.outcome).toBe("matched")
+    expect(detailed.selected?.providerID).toBe("openai")
+    expect(detailed.selected?.selectionSource).toBe("canonical-original")
+    expect(detailed.selected?.matchKind).toBe("exact")
+  })
+
+  test("routing a reseller namespace never upgrades the reseller record", () => {
+    const group = one("kimi-k2.6", "openrouter/kimi-k2.6")
+    const catalog = {
+      openrouter: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 262_144, output: 65_536 }, ...identity } } },
+      opencode: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 1, output: 1 } } } },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    // Routing openrouter/... states the serving choice; the OpenCode record
+    // is still the higher-precedence fallback, and the openrouter record
+    // stays a fallback-serving source.
+    expect(detailed.selected?.providerID).toBe("opencode")
+    expect(detailed.selected?.selectionSource).toBe("opencode-fallback")
+  })
+
+  test("a solo reseller route keeps fallback-serving authority", () => {
+    const group = one("kimi-k2.6", "openrouter/kimi-k2.6")
+    const catalog = {
+      openrouter: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 262_144, output: 65_536 }, ...identity } } },
+    }
+    const detailed = selectModelsDevRecordDetailed(group, catalog)
+    expect(detailed.selected?.providerID).toBe("openrouter")
+    expect(detailed.selected?.selectionSource).toBe("openrouter-fallback")
+  })
+
+  test("disagreement between deployment namespaces proves nothing (rule B stays silent)", () => {
+    const group = groupLiteLLMDeployments({
+      data: [
+        { model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat" } },
+        { model_name: "m", litellm_params: { model: "anthropic/m" }, model_info: { mode: "chat" } },
+      ],
+    })[0]!
+    const catalog = {
+      openai: { models: { "m": { id: "m", limit: { context: 1, output: 1 }, ...identity } } },
+      anthropic: { models: { "m": { id: "m", limit: { context: 2, output: 2 }, ...identity } } },
+    }
+    // Distinct qualified identities without an equivalence relation conflict
+    // at the group identity level: the whole group stays ambiguous.
+    expect(selectModelsDevRecordDetailed(group, catalog).outcome).toBe("ambiguous")
+  })
+})
