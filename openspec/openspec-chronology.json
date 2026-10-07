@@ -1,76 +1,16 @@
 {
-  "groups": [
+  "edges": [
     [
-      "2026-09-29-add-discovery-core"
-    ],
-    [
-      "2026-09-29-pr4-cross-repo-verification"
-    ],
-    [
-      "2026-09-29-pr5-refresh-coordinator"
-    ],
-    [
-      "2026-09-29-pr6-endpoint-snapshot"
-    ],
-    [
-      "2026-09-29-pr7-diagnostics"
-    ],
-    [
-      "2026-09-29-pr8-discovery-quality"
-    ],
-    [
-      "2026-09-29-modelsdev-capability-fallback"
-    ],
-    [
-      "2026-09-29-session-retrospective-hardening"
-    ],
-    [
-      "2026-09-29-pr9-multi-endpoint-identity"
-    ],
-    [
-      "2026-09-30-harden-openspec-closure-gate"
-    ],
-    [
-      "2026-10-02-release-codebase-memory"
-    ],
-    [
-      "2026-10-02-codebase-memory-review-hardening"
-    ],
-    [
-      "2026-10-02-sync-merged-codebase-index"
-    ],
-    [
-      "2026-10-02-harden-main-index-sync"
-    ],
-    [
-      "2026-10-03-synchronize-queued-index-preparation"
-    ],
-    [
-      "2026-10-03-harden-async-preparation-lifecycle"
-    ],
-    [
-      "2026-10-04-trusted-model-capability-publication"
-    ],
-    [
-      "2026-10-05-discovery-resilience-and-trusted-publication"
-    ],
-    [
-      "2026-10-05-add-persisted-publication-memory"
-    ],
-    [
-      "2026-10-06-fix-canonical-provider-selection-precedence"
-    ],
-    [
+      "2026-10-06-fix-canonical-provider-selection-precedence",
       "2026-10-06-refine-provider-selection-review-findings"
     ],
     [
+      "2026-10-06-refine-provider-selection-review-findings",
       "2026-10-06-persist-lkg-evidence-authority"
     ],
     [
+      "2026-10-06-persist-lkg-evidence-authority",
       "2026-10-07-guard-lkg-evidence-authority-field"
-    ],
-    [
-      "2026-10-07-qualify-original-namespace-from-route"
     ]
   ]
 }
