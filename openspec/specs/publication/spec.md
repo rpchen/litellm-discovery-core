@@ -8,7 +8,7 @@ Defines the trustworthy model-capability publication loop: formal completeness a
 ### Requirement: Publication completeness policy
 Core SHALL define a formal, testable rule deciding whether a discovered model's metadata is reliable enough for normal publication, and SHALL report exactly which fields are missing, unknown, or illegal when it is not.
 
-The gate is never relaxed and has no user-override path. A model is publishable only as `configured` or `configured-lkg`; every other model is withheld with explicit reasons. No confirmation, acceptance, or override state participates in publication, and one model being withheld never gates another model of the same endpoint.
+The gate is never relaxed and has no user-override path. A model is publishable only as `configured` or `configured-lkg`; every other model is withheld with explicit reasons. No confirmation, acceptance, or override state participates in publication, and one model being withheld never gates another model of the same endpoint. Provider-scoped serving metadata selected through a fallback record ranks below LiteLLM declarations and cannot outrank them.
 
 #### Scenario: Complete trustworthy metadata is publishable
 - **WHEN** a model has positive context and output limits plus known tool-calling and reasoning states with a uniquely resolved identity
@@ -49,6 +49,10 @@ The gate is never relaxed and has no user-override path. A model is publishable 
 #### Scenario: Per-model isolation of failure
 - **WHEN** one model of an endpoint cannot prove trustworthy metadata
 - **THEN** every other model that does pass the gate is published normally in the same round
+
+#### Scenario: fallback conflict blocks publication
+- **WHEN** a fallback-selected provider record reports a value that conflicts with an equally ranked LiteLLM declaration
+- **THEN** Core reports the field as an unresolved conflict and withholds the model under the normal publication gate
 
 ### Requirement: False versus unknown
 Core SHALL distinguish confirmed-unsupported (`unsupported`) from unevidenced (`unknown`) for tool calling and reasoning, and SHALL never rewrite `unknown` to `false`, `0`, or `[]` on any path leading to normal publication.
@@ -302,7 +306,7 @@ Core SHALL classify metadata failures and SHALL never emit a normally-published 
 - **THEN** Core reports `configured` with a recovered-after-retry record
 
 ### Requirement: Last Known Good without TTL
-Core SHALL support reusing a previously complete metadata snapshot while live sources fail, with validity decided by identity, provider, canonical mapping, schema, and conflict evidence -- never by fixed age -- and SHALL expose source, fetch time, age, and selection reason. Only a `ModelSpec` that passed the current publication gate in the same round may be captured as LKG; a composition of facts from different periods is never a valid entry. LKG SHALL NOT resurrect a model the current LiteLLM directory no longer serves, and an incompatible stored schema SHALL fail safe as withheld rather than restore.
+Core SHALL support reusing a previously complete metadata snapshot while live sources fail, with validity decided by identity, provider, canonical mapping, schema, and conflict evidence -- never by fixed age -- and SHALL expose source, fetch time, age, and selection reason. Only a `ModelSpec` that passed the current publication gate in the same round may be captured as LKG; a composition of facts from different periods is never a valid entry. LKG SHALL NOT resurrect a model the current LiteLLM directory no longer serves, and an incompatible stored schema SHALL fail safe as withheld rather than restore. Every entry persists the evidence authority its captured facts carried, graded by the same helper as the live assessment; authority graded `fallback-serving` never substitutes for lost live metadata.
 
 #### Scenario: Valid LKG keeps publication
 - **WHEN** live metadata fails but a stored snapshot with matching identity and compatible schema exists
@@ -331,6 +335,26 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 #### Scenario: Schema change invalidates LKG
 - **WHEN** the stored shape is incompatible with the current schema
 - **THEN** Core rejects the entry
+
+#### Scenario: LKG never restores a superseded fallback serving value
+- **WHEN** a stored LKG entry captured a reseller serving limit (for example 943718) that no longer matches the live assessment after precedence correction (for example 393216)
+- **THEN** LKG validation fails closed on the captured-facts and provider cross-checks and never restores the stale metadata
+
+#### Scenario: Unique-match-sourced LKG never substitutes for lost live metadata
+- **WHEN** an LKG entry was captured from a unique-match (fallback-serving) record and the metadata source becomes unavailable
+- **THEN** Core fails the restore closed: fallback-serving facts must be re-proven by a live selection in the same round, never served from memory
+
+#### Scenario: Persisted authority grades an explicit provider without a canonical relation as fallback-serving
+- **WHEN** an LKG entry is captured while the live selection source is `explicit-provider` and the selected record carries no deterministic canonical relation, and the metadata source later becomes unavailable
+- **THEN** the entry persists `evidenceAuthority: fallback-serving`, the restore fails closed, and the model stays withheld until live metadata proves it again
+
+#### Scenario: Persisted authority keeps authoritative entries restorable
+- **WHEN** an LKG entry is captured from a canonical-original record or an explicit-provider record with a proven canonical relation (or from LiteLLM-only endpoint declarations), and a compatible metadata outage follows
+- **THEN** the entry persists `evidenceAuthority: authoritative-intrinsic` and restores under the established authoritative LKG policy
+
+#### Scenario: Persisted evidence authority is validated as schema-critical
+- **WHEN** a stored entry claims the current schema version but its `evidenceAuthority` field is missing or not one of `authoritative-intrinsic` / `fallback-serving`
+- **THEN** both the compatibility guard and the defensive validation reject the entry fail-closed, and a corrupted authoritied snapshot is never restored as `configured-lkg`
 
 ### Requirement: Configuration states and provenance
 Core SHALL expose per-model configuration states and per-field provenance answering where each key value came from, including live, fallback, canonical-inheritance, and LKG chains.

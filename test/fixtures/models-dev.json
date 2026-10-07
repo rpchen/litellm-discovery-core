@@ -18,6 +18,7 @@
         "id": "gpt-6-sol",
         "name": "GPT-6 Sol",
         "release_date": "2026-05-01",
+        "canonical_model_id": "openai/gpt-6-sol",
         "modalities": { "input": ["text", "image"], "output": ["text"] },
         "limit": { "context": 922000, "output": 128000 },
         "reasoning_options": [

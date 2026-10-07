@@ -19,7 +19,9 @@ import {
   classifyMetadataFailure,
   createLastKnownGoodEntry,
   createLastKnownGoodStore,
+  isLKGEntryCompatible,
   isNormallyPublishable,
+  isPublicationEvidenceAuthority,
   lastKnownGoodKey,
   metadataFailureFor,
   resolveConfigurationWithLKG,
@@ -104,9 +106,15 @@ describe("publication: normal match", () => {
       openrouter: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 262144, output: 65536 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, reasoning_options: [{ type: "effort", values: ["low", "high"] }] } } },
       opencode: { models: { "kimi-k2.6": { id: "kimi-k2.6", limit: { context: 1, output: 1 } } } },
     }
+    // OpenCode ranks before OpenRouter in the corrected fallback precedence.
     const detailed = selectModelsDevRecordDetailed(group("kimi-k2.6", "openrouter/kimi-k2.6"), catalog)
-    expect(detailed.selected?.providerID).toBe("openrouter")
-    expect(detailed.selected?.selectionSource).toBe("openrouter-fallback")
+    expect(detailed.selected?.providerID).toBe("opencode")
+    expect(detailed.selected?.selectionSource).toBe("opencode-fallback")
+
+    const withoutOpenCode = { openrouter: catalog.openrouter }
+    const openRouterOnly = selectModelsDevRecordDetailed(group("kimi-k2.6", "openrouter/kimi-k2.6"), withoutOpenCode)
+    expect(openRouterOnly.selected?.providerID).toBe("openrouter")
+    expect(openRouterOnly.selected?.selectionSource).toBe("openrouter-fallback")
   })
 
   test("canonical identity resolves", () => {
@@ -743,12 +751,17 @@ describe("publication: network and LKG", () => {
   }
 
   const GOOD_CATALOG = {
-    openai: { models: { m: { id: "m", limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    openai: { models: { m: { id: "m", limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, canonical_model_id: "openai/m" } } },
   }
 
   function seedLKG(store: ReturnType<typeof createLastKnownGoodStore>, atMs: number) {
-    const captureGroup = group("m", "openai/m", { ...COMPLETE_INFO })
-    const catalog = { openai: { models: { m: { id: "m", limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    // Review findings 1/2: intrinsic authority requires a canonical relation
+    // proof. The capture group declares the explicit provider and the record
+    // carries the canonical relation, so the captured values are the
+    // authoritative intrinsic ones (context 1000 vs descriptive 200k stays a
+    // recorded resolved discrepancy, never a conflict).
+    const captureGroup = group("m", "openai/m", { ...COMPLETE_INFO, models_dev_provider: "openai" })
+    const catalog = { openai: { models: { m: { id: "m", limit: { context: 1000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, canonical_model_id: "openai/m" } } } }
     store.set(lastKnownGoodKey("m"), createLastKnownGoodEntry(
       captureGroup,
       { providerID: "openai", modelID: "m", record: {} },
@@ -801,6 +814,7 @@ describe("publication: network and LKG", () => {
       stableIdentity: "openai/m",
       canonicalID: "other-model",
       providerID: "openai",
+      evidenceAuthority: "authoritative-intrinsic",
       fetchedAt: new Date(1000).toISOString(),
       fetchedAtEpochMs: 1000,
       spec,
@@ -1059,7 +1073,7 @@ describe("publication: tri-state deployment aggregation", () => {
   }
 
   test("trusted model-level evidence fills an entirely unevidenced group and records conflicts", () => {
-    const catalog = { vendor: { models: { partial: { id: "partial", tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, limit: { context: 100, output: 10 } } } } }
+    const catalog = { vendor: { models: { partial: { id: "partial", canonical_model_id: "vendor/partial", tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] }, limit: { context: 100, output: 10 } } } } }
     // Same routed identity on both deployments, so group identity is provable.
     const sameIdentity = (extra: Record<string, unknown>) => ({ model: "custom/partial", ...extra })
     const filled = assessModelConfiguration(two("partial", sameIdentity({ max_input_tokens: 100 }), sameIdentity({ max_output_tokens: 10 })), catalog, options)
@@ -1132,7 +1146,7 @@ describe("publication: modality multi-deployment", () => {
   })
 
   test("models.dev complete set fills undeclared dimensions and conflicts with disagreeing flags", () => {
-    const imageSet = { vendor: { models: { mm: { id: "mm", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
+    const imageSet = { vendor: { models: { mm: { id: "mm", canonical_model_id: "vendor/mm", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
     const groupFor = (extra: Record<string, unknown>) => two("mm", { ...base, model: "custom/mm", ...extra }, { ...base, model: "custom/mm" })
     const filled = assessModelConfiguration(groupFor({}), imageSet, options)
     expect(filled.inputModalities.known).toBeTrue()
@@ -1179,6 +1193,7 @@ describe("publication: forged LKG", () => {
       stableIdentity: "openai/m",
       canonicalID: "m",
       providerID: "openai",
+      evidenceAuthority: "authoritative-intrinsic",
       fetchedAt: new Date(1000).toISOString(),
       fetchedAtEpochMs: 1000,
       spec,
@@ -1288,7 +1303,7 @@ describe("publication: group limit evidence", () => {
   })
 
   test("all deployments unknown fall back to trusted model-level, and disagreeing model-level conflicts", () => {
-    const modelCatalog = { vendor: { models: { lm: { id: "lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const modelCatalog = { vendor: { models: { lm: { id: "lm", canonical_model_id: "vendor/lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
     const filled = assessModelConfiguration(two("lm", { ...base }, { ...base }), modelCatalog, options)
     expect(filled.context).toMatchObject({ value: 128000, valid: true })
     expect(filled.output).toMatchObject({ value: 32000, valid: true })
@@ -1308,7 +1323,7 @@ describe("publication: group limit evidence", () => {
   })
 
   test("partial deployment evidence is only filled by an authoritative intrinsic record", () => {
-    const modelCatalog = { vendor: { models: { lm: { id: "lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+    const modelCatalog = { vendor: { models: { lm: { id: "lm", canonical_model_id: "vendor/lm", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
     // One deployment declares, one is silent, and the trusted record exists:
     // the intrinsic value decides and the partial declaration is recorded.
     const filled = assessModelConfiguration(two("lm", { ...base, max_output_tokens: 16000 }, {}), modelCatalog, options)
@@ -1376,7 +1391,7 @@ describe("publication: LKG actual-value conflicts", () => {
     return store
   }
 
-  const TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
+  const TRUSTED = { openai: { models: { m: { id: "m", canonical_model_id: "openai/m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } } }
 
   test("same live fact is not a conflict and LKG still applies", () => {
     const store = capture(TRUSTED)
@@ -1407,7 +1422,7 @@ describe("publication: LKG actual-value conflicts", () => {
   test("live input capacity matching the captured input is not a conflict even without a total-context fact", () => {
     // Capture: trusted total context 128000 with a 64000 deployment input.
     const PARTIAL = {
-      openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+      openai: { models: { m: { id: "m", canonical_model_id: "openai/m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
     }
     const store = capture(PARTIAL, 1000, { ...base, max_input_tokens: 64000 })
     const entry = store.get(lastKnownGoodKey("m"))!
@@ -1496,7 +1511,7 @@ describe("publication: LKG actual-value conflicts", () => {
   })
 
   test("live vision=false rejects a captured image-capable snapshot and vice versa", () => {
-    const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
+    const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", canonical_model_id: "openai/m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
     const imageStore = capture(IMAGE_TRUSTED, 1000, { ...base, supports_vision: true })
     // A proven endpoint constraint declares vision unsupported -> reject.
     const noVision = two("m", [{ ...liveBase, __params: { supports_vision: false } }])
@@ -1524,7 +1539,7 @@ describe("publication: LKG actual-value conflicts", () => {
   }
 
   test("LKG modality conflict checks every deployment and ignores deployment order", () => {
-    const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
+    const IMAGE_TRUSTED = { openai: { models: { m: { id: "m", canonical_model_id: "openai/m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] } } } } }
     const imageStore = capture(IMAGE_TRUSTED, 1000, { ...base, supports_vision: true })
     const textStore = capture(TRUSTED)
     // Body without a vision flag: `undefined` on that dimension only.
@@ -1599,7 +1614,7 @@ describe("publication: LKG actual-value conflicts", () => {
   })
 
   test("live reasoning=false rejects a captured reasoning snapshot", () => {
-    const REASONING_TRUSTED = { openai: { models: { m: { id: "m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] } } } } }
+    const REASONING_TRUSTED = { openai: { models: { m: { id: "m", canonical_model_id: "openai/m", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: true, modalities: { input: ["text"], output: ["text"] } } } } }
     const store = capture(REASONING_TRUSTED, 1000, { ...base, supports_reasoning: true })
     const group = two("m", [{ ...liveBase, __params: { supports_reasoning: false } }])
     const live = assessModelConfiguration(group, {}, options, { catalogAvailable: false, failure: metadataFailureFor("timeout") })
@@ -1618,7 +1633,7 @@ describe("publication: LKG actual-value conflicts", () => {
 
 describe("publication: LKG stable identity", () => {
   const FOO_CATALOG = {
-    openai: { models: { foo: { id: "foo", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    openai: { models: { foo: { id: "foo", canonical_model_id: "openai/foo", limit: { context: 128000, output: 32000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
   }
   const CAPTURE_INFO = {
     max_input_tokens: 128000,
@@ -1803,5 +1818,85 @@ describe("publication: fixture regression", () => {
       expect(blocked.assessment.publishable).toBeFalse()
       expect(isNormallyPublishable(blocked.assessment.status)).toBeFalse()
     }
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// Schema-7 runtime guard for persisted evidence authority (review blocker)
+// ---------------------------------------------------------------------------
+
+describe("LKG evidence authority runtime guard", () => {
+  function localSpec() {
+    return buildModelSpecs(
+      { data: [{ model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat", ...COMPLETE_INFO } }] },
+      {},
+      options,
+    )[0]!
+  }
+
+  function forgedAuthority(evidenceAuthority: unknown, overrides: Record<string, unknown> = {}) {
+    const spec = localSpec()
+    const base = {
+      schemaVersion: PUBLICATION_SCHEMA_VERSION,
+      modelName: "m",
+      stableIdentity: "openai/m",
+      canonicalID: "m",
+      providerID: "openai",
+      fetchedAt: new Date(1000).toISOString(),
+      fetchedAtEpochMs: 1000,
+      spec,
+      captured: {
+        tools: "supported",
+        reasoning: "unsupported",
+        inputModalitiesKnown: true,
+        outputModalitiesKnown: true,
+        inputModalities: [...spec.capabilities.input],
+        outputModalities: [...spec.capabilities.output],
+        context: spec.limit.context,
+        input: spec.limit.input,
+        output: spec.limit.output,
+      },
+      provenanceDetail: "forged",
+    }
+    return { ...base, evidenceAuthority, ...overrides } as unknown as LastKnownGoodEntry
+  }
+
+  test("schemaVersion=7 + missing evidenceAuthority is incompatible", () => {
+    const entry = forgedAuthority(undefined)
+    expect(isLKGEntryCompatible(entry)).toBeFalse()
+    expect(validateLastKnownGood(entry, bareGroup("m", "openai/m"), undefined, 2000, options, {}).valid).toBeFalse()
+  })
+
+  test("schemaVersion=7 + invalid evidenceAuthority is incompatible", () => {
+    for (const invalid of ["authoritative", "fallback", "", 1, null, "FALLBACK-SERVING"]) {
+      const entry = forgedAuthority(invalid)
+      expect(isLKGEntryCompatible(entry)).toBeFalse()
+      const validation = validateLastKnownGood(entry, bareGroup("m", "openai/m"), undefined, 2000, options, {})
+      expect(validation.valid).toBeFalse()
+      // Missing/unknown authority never defaults to authoritative: the
+      // store path (compatibility guard) and the defensive validation both
+      // reject it.
+      expect(validation.reason).toContain("authority")
+    }
+  })
+
+  test("corrupted authority LKG is never configured-lkg through the outage path", () => {
+    const store = createLastKnownGoodStore()
+    // Persist a well-formed-looking entry whose authority field was corrupted.
+    store.set(lastKnownGoodKey("m"), forgedAuthority(undefined) as never)
+    const live = assessModelConfiguration(bareGroup("m", "openai/m"), {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, bareGroup("m", "openai/m"), {}, options, store, 2000)
+    expect(resolved.assessment.usingLKG ?? false).toBeFalse()
+    expect(resolved.assessment.publishable).toBeFalse()
+    expect(resolved.lkg).toBeUndefined()
+  })
+
+  test("well-formed authorities still pass the guard", () => {
+    expect(isLKGEntryCompatible(forgedAuthority("authoritative-intrinsic"))).toBeTrue()
+    expect(isLKGEntryCompatible(forgedAuthority("fallback-serving"))).toBeTrue()
   })
 })

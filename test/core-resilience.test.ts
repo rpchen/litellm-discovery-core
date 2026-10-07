@@ -23,6 +23,9 @@ import {
   type PublicationResult,
 } from "../src/core/publication.ts"
 import {
+  DEEPSEEK_V4_1_FLASH_CATALOG,
+} from "./fixtures/models-dev-catalog-fixtures.ts"
+import {
   buildCatalogPublication,
   catalogDegradationFingerprint,
   catalogFromPublication,
@@ -64,9 +67,16 @@ function publicationOf(groups: DeploymentGroup[], catalog: unknown): Publication
 // ---------------------------------------------------------------------------
 
 /**
- * Observed evidence: LiteLLM `model_info` describes an output cap while the
- * trusted models.dev record for the same canonical identity declares a
- * different intrinsic maximum output.
+ * Observed evidence (sanitized copies of the real models.dev catalog):
+ *
+ * - deepseek-v4.1-flash: the official provider publishes serving-SKU records
+ *   (`deepseek-v4-flash`, `deepseek-flash`) whose `canonical_model_id`
+ *   relation points at `deepseek/deepseek-v4.1-flash`; OpenRouter also
+ *   relation-points at the same canonical identity with a reseller serving
+ *   limit (943718). The original provider record (393216) must win.
+ * - glm-5.3-flash: LiteLLM `model_info` describes an output cap while the
+ *   trusted original-provider record declares a different intrinsic
+ *   maximum output / modality facts.
  */
 const LIVE_REGRESSIONS = [
   {
@@ -81,16 +91,55 @@ const LIVE_REGRESSIONS = [
       supports_function_calling: true,
       supports_reasoning: true,
     },
-    provider: "openrouter",
-    recordID: "deepseek/deepseek-v4.1-flash",
+    // Real catalog shape: the official provider publishes SKU records that
+    // relation-point at the canonical identity; OpenRouter resells it.
+    providers: {
+      deepseek: {
+        models: {
+          "deepseek-v4-flash": {
+            id: "deepseek-v4-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1_000_000, output: 393_216 },
+            canonical_model_id: "deepseek/deepseek-v4.1-flash",
+          },
+          "deepseek-flash": {
+            id: "deepseek-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1_000_000, output: 393_216 },
+            canonical_model_id: "deepseek/deepseek-v4.1-flash",
+          },
+        },
+      },
+      openrouter: {
+        models: {
+          "deepseek/deepseek-v4.1-flash": {
+            id: "deepseek/deepseek-v4.1-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1_048_576, output: 943_718 },
+            canonical_model_id: "deepseek/deepseek-v4.1-flash",
+          },
+        },
+      },
+    },
+    selectedProvider: "deepseek",
+    selectedModelID: "deepseek-flash",
+    selectionSource: "canonical-original",
+    recordID: "deepseek-v4-flash",
     record: {
-      id: "deepseek/deepseek-v4.1-flash",
+      id: "deepseek-v4-flash",
       tool_call: true,
       reasoning: true,
       modalities: { input: ["text", "image"], output: ["text"] },
-      limit: { context: 1_048_576, output: 943_718 },
+      limit: { context: 1_000_000, output: 393_216 },
+      canonical_model_id: "deepseek/deepseek-v4.1-flash",
     },
-    expectedIntrinsicOutput: 943_718,
+    expectedIntrinsicOutput: 393_216,
   },
   {
     id: "glm-5.3-flash",
@@ -104,7 +153,23 @@ const LIVE_REGRESSIONS = [
       supports_function_calling: true,
       supports_reasoning: true,
     },
-    provider: "zhipuai",
+    providers: {
+      zhipuai: {
+        models: {
+          "glm-5.3-flash": {
+            id: "glm-5.3-flash",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] },
+            limit: { context: 1_000_000, output: 131_072 },
+            canonical_model_id: "zhipuai/glm-5.3-flash",
+          },
+        },
+      },
+    },
+    selectedProvider: "zhipuai",
+    selectedModelID: "glm-5.3-flash",
+    selectionSource: "canonical-original",
     recordID: "glm-5.3-flash",
     record: {
       id: "glm-5.3-flash",
@@ -129,7 +194,23 @@ const LIVE_REGRESSIONS = [
       supports_reasoning: true,
       input_cost_per_token_above_512k_tokens: 6e-7,
     },
-    provider: "minimax",
+    providers: {
+      minimax: {
+        models: {
+          "MiniMax-M3": {
+            id: "MiniMax-M3",
+            tool_call: true,
+            reasoning: true,
+            modalities: { input: ["text", "image", "video"], output: ["text"] },
+            limit: { context: 1_000_000, output: 512_000 },
+            canonical_model_id: "minimax/MiniMax-M3",
+          },
+        },
+      },
+    },
+    selectedProvider: "minimax",
+    selectedModelID: "MiniMax-M3",
+    selectionSource: "canonical-original",
     recordID: "MiniMax-M3",
     record: {
       id: "MiniMax-M3",
@@ -146,8 +227,7 @@ describe("resilience: live model regressions", () => {
   for (const fixture of LIVE_REGRESSIONS) {
     test(`${fixture.id}: descriptive LiteLLM metadata never blocks a trusted intrinsic record`, () => {
       const group = groupOf(fixture.id, fixture.litellm as Record<string, unknown>)
-      const catalog = { [fixture.provider]: { models: { [fixture.recordID]: fixture.record } } }
-      const result = publicationOf([group], catalog)
+      const result = publicationOf([group], fixture.providers)
       const entry = result.publishable.find((item) => item.spec.id === fixture.id)
 
       expect(result.blocked).toEqual([])
@@ -171,8 +251,7 @@ describe("resilience: live model regressions", () => {
   test("descriptive output difference is recorded and never invalidates a trusted snapshot", () => {
     const fixture = LIVE_REGRESSIONS[0]
     const group = groupOf(fixture.id, fixture.litellm as Record<string, unknown>)
-    const catalog = { [fixture.provider]: { models: { [fixture.recordID]: fixture.record } } }
-    const assessment = assessModelConfiguration(group, catalog, options)
+    const assessment = assessModelConfiguration(group, fixture.providers, options)
     expect(assessment.output.resolution.status).toBe("resolved-discrepancy")
     expect(assessment.discrepancies.map((item) => item.field)).toContain("limit.output")
 
@@ -180,7 +259,7 @@ describe("resilience: live model regressions", () => {
     // though the descriptive declaration still disagrees.
     const spec = buildModelSpecs(
       { data: [{ model_name: fixture.id, litellm_params: { model: "custom/" + fixture.id }, model_info: { mode: "chat", ...fixture.litellm } }] },
-      catalog,
+      fixture.providers,
       options,
     ).find((item) => item.id === fixture.id)!
     const store = createLastKnownGoodStore()
@@ -202,8 +281,7 @@ describe("resilience: live model regressions", () => {
   test("glm-5.3-flash: intrinsic audio input is unsupported and the direction stays known", () => {
     const fixture = LIVE_REGRESSIONS[1]
     const group = groupOf(fixture.id, fixture.litellm as Record<string, unknown>)
-    const catalog = { [fixture.provider]: { models: { [fixture.recordID]: fixture.record } } }
-    const assessment = assessModelConfiguration(group, catalog, options)
+    const assessment = assessModelConfiguration(group, fixture.providers, options)
     expect(assessment.inputModalities.known).toBeTrue()
     expect(assessment.inputModalities.values).not.toContain("audio")
     expect(assessment.inputModalities.values).toEqual(["text", "image", "pdf", "video"])
@@ -251,7 +329,27 @@ describe("resilience: source authority", () => {
     expect(ambiguous.output.resolution.selectedSource).toBe("litellm")
   })
 
-  test("a unique trusted record decides the intrinsic value", () => {
+  test("a unique trusted record fills gaps but never outranks descriptive declarations", () => {
+    // Frozen policy (review finding 1): unique-match is a fallback source.
+    // Gap fill: LiteLLM declares no output limit -> fallback serving 64000.
+    const gapFill = groupOf("mm", {
+      max_input_tokens: 200_000,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      supports_vision: false,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+    })
+    const filled = assessModelConfiguration(gapFill, { vendor: { models: { mm: record } } }, options)
+    expect(filled.status).toBe("configured")
+    expect(filled.output.value).toBe(64_000)
+    expect(filled.output.resolution.selectedSource).toBe("models.dev")
+    expect(filled.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+
+    // Same-level conflict: conflicting descriptive metadata is never decided
+    // by the fallback-serving record (no authoritative override).
     const group = groupOf("mm", {
       max_input_tokens: 200_000,
       max_output_tokens: 32_000,
@@ -264,9 +362,9 @@ describe("resilience: source authority", () => {
       supports_audio_output: false,
     })
     const assessment = assessModelConfiguration(group, { vendor: { models: { mm: record } } }, options)
-    expect(assessment.status).toBe("configured")
-    expect(assessment.output.value).toBe(64_000)
-    expect(assessment.output.resolution.selectedSource).toBe("models.dev")
+    expect(assessment.status).toBe("invalid-metadata")
+    expect(assessment.publishable).toBeFalse()
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
   })
 
   test("a proven endpoint runtime constraint narrows the effective configuration", () => {
@@ -517,7 +615,7 @@ describe("resilience: acknowledgement", () => {
     // still reports zero publishable models and the model stays withheld.
     const stored: DegradationAcknowledgement = decision.next!
     expect(stored.schemaVersion).toBe(1)
-    expect(PUBLICATION_SCHEMA_VERSION).toBe(5)
+    expect(PUBLICATION_SCHEMA_VERSION).toBe(7)
   })
 })
 
@@ -890,8 +988,12 @@ describe("resilience: authoritative modality sets reach the published spec", () 
     })[0]!
   }
 
+  // Review finding 2: explicit-provider records carry authoritative intrinsic
+  // authority only with a deterministic canonical relation proof. This fixture
+  // models the relation-proven shape.
   const record = {
     id: "mm",
+    canonical_model_id: "vendor/mm",
     tool_call: true,
     reasoning: false,
     modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] },
@@ -963,5 +1065,695 @@ describe("resilience: authoritative modality sets reach the published spec", () 
       options,
     )[0]!
     expect([...spec.capabilities.input].sort()).toEqual(["audio", "image", "text"])
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// Canonical provider selection + fallback authority (fix-canonical-provider-selection-precedence)
+// ---------------------------------------------------------------------------
+
+describe("canonical selection: DeepSeek end-to-end publication", () => {
+  test("official provider limit reaches the published spec; reseller limit never does", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const result = publicationOf([group], DEEPSEEK_V4_1_FLASH_CATALOG)
+    const entry = result.publishable.find((item) => item.spec.id === "deepseek-v4.1-flash")
+    expect(result.blocked).toEqual([])
+    expect(entry).toBeDefined()
+    expect(entry!.assessment.status).toBe("configured")
+    expect(entry!.assessment.conflicts).toEqual([])
+    // The published spec carries the official serving limit, not the reseller's.
+    expect(entry!.spec.limit.output).toBe(393_216)
+    expect(entry!.spec.limit.output).not.toBe(943_718)
+    expect(entry!.spec.limit.context).toBe(1_000_000)
+    expect(entry!.assessment.identity.selected?.providerID).toBe("deepseek")
+    expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
+    // Pricing stays LiteLLM's: the canonical-original record's provider price is
+    // not silently merged over the deployment price when LiteLLM declares one.
+    expect(entry!.assessment.output.resolution.selectedSource).toBe("models.dev")
+  })
+
+  test("fallback-only catalog conflicts with descriptive declarations instead of publishing the reseller limit", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const openRouterOnly = { openrouter: DEEPSEEK_V4_1_FLASH_CATALOG.openrouter }
+    const result = publicationOf([group], openRouterOnly)
+    const blocked = result.blocked.find((item) => item.spec.id === "deepseek-v4.1-flash")
+    expect(blocked).toBeDefined()
+    // OpenRouter's 943718 conflicts with the endpoint's own 384000
+    // declarations at the same (non-authoritative) evidence level:
+    // withheld, never published.
+    expect(blocked!.assessment.conflicts.map((item) => item.field)).toContain("limit.output")
+    expect(result.publishable).toEqual([])
+  })
+
+  test("fallback record supplies missing intrinsic facts as fallback-serving provenance", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      // No LiteLLM limit declarations at all; modality/reasoning flags agree
+      // with the serving record so nothing conflicts at the same level.
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+      input_cost_per_token: 0.0000033,
+      output_cost_per_token: 0.0000033,
+    })
+    const openRouterOnly = { openrouter: DEEPSEEK_V4_1_FLASH_CATALOG.openrouter }
+    const result = publicationOf([group], openRouterOnly)
+    const entry = result.publishable.find((item) => item.spec.id === "deepseek-v4.1-flash")
+    expect(entry).toBeDefined()
+    // Fallback serving metadata fills the gaps (no higher authority exists).
+    expect(entry!.spec.limit.output).toBe(943_718)
+    expect(entry!.assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    expect(entry!.assessment.output.provenance.detail).toContain("provider openrouter")
+  })
+})
+
+describe("canonical selection: LKG never resurrects a superseded serving limit", () => {
+  test("a stored 943718 entry fails closed once the live assessment proves 393216", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    // Snapshot the historical (wrong) publication state: OpenRouter-only catalog.
+    const historicalCatalog = { openrouter: DEEPSEEK_V4_1_FLASH_CATALOG.openrouter }
+    const historical = assessModelConfiguration(group, historicalCatalog, options)
+    // Under the fallback-only catalog the historical assessment withheld the model.
+    expect(historical.publishable).toBeFalse()
+
+    // A hypothetical stored LKG entry forged with the reseller limit and the
+    // OpenRouter provider id must not restore now that the official record wins.
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "deepseek-v4.1-flash", litellm_params: { model: "custom/deepseek-v4.1-flash" }, model_info: { mode: "chat", max_input_tokens: 1_000_000, max_output_tokens: 384_000, max_tokens: 384_000 } }] },
+      historicalCatalog,
+      options,
+    ).find((item) => item.id === "deepseek-v4.1-flash")!
+    const forgedSpec = { ...spec, limit: { ...spec.limit, output: 943_718, context: 1_048_576 } }
+    const store = createLastKnownGoodStore()
+    // Capture refuses a snapshot that fails current policy; so a hand-built
+    // capture with matching captured facts is the only way a 943718 entry
+    // could ever exist — and it must fail validation against the live group.
+    const forgedCaptured = {
+      tools: "supported",
+      reasoning: "supported",
+      inputModalitiesKnown: true,
+      outputModalitiesKnown: true,
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      context: 1_048_576,
+      input: forgedSpec.limit.input,
+      output: 943_718,
+    } as const
+    store.set(lastKnownGoodKey("deepseek-v4.1-flash"), createLastKnownGoodEntry(
+      group,
+      historical.identity.selected,
+      forgedSpec,
+      1000,
+      forgedCaptured,
+    ))
+    // Live metadata unavailable: LKG is the only path — but the stored provider
+    // (openrouter) disagrees with the provable official provider (deepseek).
+    const live = assessModelConfiguration(group, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.publishable).toBeFalse()
+    expect(resolved.assessment.usingLKG ?? false).toBeFalse()
+  })
+
+  test("a valid official-provider LKG still restores across a metadata outage", () => {
+    const group = groupOf("deepseek-v4.1-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 384_000,
+      max_tokens: 384_000,
+      supports_vision: true,
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const assessment = assessModelConfiguration(group, DEEPSEEK_V4_1_FLASH_CATALOG, options)
+    expect(assessment.publishable).toBeTrue()
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "deepseek-v4.1-flash", litellm_params: { model: "custom/deepseek-v4.1-flash" }, model_info: { mode: "chat", ...group.deployments[0]!.modelInfo } }] },
+      DEEPSEEK_V4_1_FLASH_CATALOG,
+      options,
+    ).find((item) => item.id === "deepseek-v4.1-flash")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("deepseek-v4.1-flash"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    const live = assessModelConfiguration(group, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, group, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.lkg?.spec.limit.output).toBe(393_216)
+  })
+})
+
+describe("canonical selection: representative models keep their original provider", () => {
+  test("glm-5.3-flash keeps the zhipuai original with corrected precedence", () => {
+    const group = groupOf("glm-5.3-flash", {
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 131_072,
+      max_tokens: 131_072,
+      supports_vision: true,
+      supports_pdf_input: true,
+      supports_audio_input: true,
+      supports_function_calling: true,
+      supports_reasoning: true,
+    })
+    const result = publicationOf([group], {
+      zhipuai: { models: { "glm-5.3-flash": { id: "glm-5.3-flash", tool_call: true, reasoning: true, modalities: { input: ["text", "image", "video", "pdf"], output: ["text"] }, limit: { context: 1_000_000, output: 131_072 }, canonical_model_id: "zhipuai/glm-5.3-flash" } } },
+    })
+    const entry = result.publishable.find((item) => item.spec.id === "glm-5.3-flash")
+    expect(entry!.assessment.identity.selected?.providerID).toBe("zhipuai")
+    expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
+    expect(entry!.spec.limit.output).toBe(131_072)
+  })
+
+  test("minimax-m3 keeps the minimax original with corrected precedence", () => {
+    const group = groupOf("minimax-m3", {
+      base_model: "minimax-m3",
+      max_input_tokens: 1_000_000,
+      max_output_tokens: 131_072,
+      max_tokens: 131_072,
+      supports_vision: true,
+      supports_function_calling: true,
+      supports_reasoning: true,
+      input_cost_per_token_above_512k_tokens: 6e-7,
+    })
+    const result = publicationOf([group], {
+      minimax: { models: { "MiniMax-M3": { id: "MiniMax-M3", tool_call: true, reasoning: true, modalities: { input: ["text", "image", "video"], output: ["text"] }, limit: { context: 1_000_000, output: 512_000 }, canonical_model_id: "minimax/MiniMax-M3" } } },
+      openrouter: { models: { "minimax-m3": { id: "minimax-m3", tool_call: true, reasoning: true, limit: { context: 2_000_000, output: 1_000_000 }, canonical_model_id: "minimax/MiniMax-M3" } } },
+    })
+    const entry = result.publishable.find((item) => item.spec.id === "minimax-m3")
+    expect(entry!.assessment.identity.selected?.providerID).toBe("minimax")
+    expect(entry!.assessment.identity.selected?.selectionSource).toBe("canonical-original")
+    expect(entry!.spec.limit.output).toBe(512_000)
+    expect(entry!.spec.limit.context).toBe(1_000_000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Runtime constraints never conflict with serving metadata
+// (review finding 3)
+// ---------------------------------------------------------------------------
+
+describe("constraints narrow, never conflict (review finding 3)", () => {
+  const modalitySides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("fallback serving output narrowed by litellm_params.max_tokens publishes the cap", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      // No descriptive output limit anywhere; the endpoint enforces a cap.
+    }, { max_tokens: 100_000 })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    // unique-match → fallback-serving intrinsic 500000; the proven runtime
+    // constraint narrows the effective value to 100000. Never a conflict.
+    expect(assessment.status).toBe("configured")
+    expect(assessment.output.value).toBe(100_000)
+    expect(assessment.output.deploymentConstraint).toBe(100_000)
+    expect(assessment.output.conflict).toBeFalse()
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.output.resolution.resolution).toContain("narrowed by a proven endpoint runtime constraint")
+  })
+
+  test("fallback tools=true narrowed by litellm_params.supports_function_calling=false is unsupported, not a conflict", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_reasoning: false,
+    }, { supports_function_calling: false })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 100_000, output: 10_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.tools.state).toBe("unsupported")
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.publishable).toBeTrue()
+  })
+
+  test("fallback image modalities narrowed by litellm_params.supports_vision=false drop image, not conflict", () => {
+    const group = groupOf("vendor-foo", {
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    }, { supports_vision: false })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] }, limit: { context: 100_000, output: 10_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.inputModalities.known).toBeTrue()
+    expect(assessment.inputModalities.values).toEqual(["text"])
+    expect(assessment.conflicts).toEqual([])
+    expect(assessment.publishable).toBeTrue()
+  })
+
+  test("fallback serving vs DESCRIPTIVE disagreement stays an unresolved conflict", () => {
+    // No canonical relation anywhere (provider `vendor` is not the deployment
+    // namespace, the record carries no relation): the sole provider wins as
+    // unique-match → fallback-serving. Its 500000 conflicts with the
+    // endpoint's own descriptive 16000 at the same level → withheld.
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      max_output_tokens: 16_000,
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("unique-match")
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
+    expect(assessment.status).toBe("invalid-metadata")
+  })
+
+  test("two deployments' constraints that disagree stay an unresolved conflict", () => {
+    const group = groupLiteLLMDeployments({
+      data: [
+        { model_name: "vendor-foo", litellm_params: { model: "custom/vendor-foo", max_tokens: 100_000 }, model_info: { mode: "chat", ...modalitySides, supports_function_calling: true, supports_reasoning: false } },
+        { model_name: "vendor-foo", litellm_params: { model: "custom/vendor-foo", max_tokens: 200_000 }, model_info: { mode: "chat", ...modalitySides, supports_function_calling: true, supports_reasoning: false } },
+      ],
+    })[0]!
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
+    expect(assessment.publishable).toBeFalse()
+  })
+})
+
+describe("explicit-provider without relation proof is fallback-serving (review finding 2)", () => {
+  const modalitySides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("conflicting descriptive metadata stays an unresolved conflict (no authority upgrade)", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      max_output_tokens: 16_000,
+      models_dev_provider: "vendor",
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    // No canonical relation on the record: explicit proves the serving choice
+    // only. 500000 vs descriptive 16000 = same-level conflict, not authority.
+    expect(assessment.output.resolution.status).toBe("unresolved-conflict")
+    expect(assessment.status).toBe("invalid-metadata")
+  })
+
+  test("gap fill still works with fallback-serving provenance", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      models_dev_provider: "vendor",
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    // Pricing gate: an explicit-provider record WITHOUT a canonical relation
+    // proof cannot donate its price either.
+    expect(assessment.output.provenance.source).toBe("models.dev")
+  })
+
+  test("the same explicit-provider WITH a canonical relation proof keeps authoritative authority", () => {
+    const group = groupOf("vendor-foo", {
+      ...modalitySides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+      max_output_tokens: 16_000,
+      models_dev_provider: "vendor",
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, canonical_model_id: "vendor/vendor-foo" } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    // Relation proof -> authoritative intrinsic: the descriptive difference
+    // is a recorded resolved discrepancy and the intrinsic value publishes.
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.status).toBe("resolved-discrepancy")
+  })
+})
+
+describe("fallback-serving evidence origin is exact (review finding 5)", () => {
+  test("modality gap fill carries the fallback-serving origin, never authoritative", () => {
+    const group = groupOf("vendor-foo-image", {
+      supports_pdf_input: false,
+      supports_audio_input: false,
+      supports_video_input: false,
+      supports_audio_output: false,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo-image": { id: "vendor-foo-image", tool_call: true, reasoning: false, modalities: { input: ["text", "image"], output: ["text"] }, limit: { context: 100_000, output: 10_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.inputModalities.known).toBeTrue()
+    expect(assessment.inputModalities.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    expect(assessment.inputModalities.resolution.evidence.some((item) => item.origin === "authoritative-intrinsic")).toBe(false)
+  })
+
+  test("numeric gap fill carries the fallback-serving origin", () => {
+    const group = groupOf("vendor-foo-limits", {
+      ...{
+        supports_vision: false,
+        supports_pdf_input: false,
+        supports_audio_input: false,
+        supports_video_input: false,
+        supports_audio_output: false,
+      },
+      supports_function_calling: true,
+      supports_reasoning: false,
+    })
+    const catalog = {
+      vendor: { models: { "vendor-foo-limits": { id: "vendor-foo-limits", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const assessment = assessModelConfiguration(group, catalog, options)
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+    expect(assessment.context.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// LKG persists evidence authority (review blocker 1)
+// ---------------------------------------------------------------------------
+
+describe("LKG evidence authority outage policy", () => {
+  const sides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  function servedBody() {
+    return {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+  }
+
+  const CATALOG = {
+    vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+  }
+
+  test("explicit-provider without relation: fallback-serving gap fill, LKG never survives an outage", () => {
+    // models_dev_provider=vendor proves the serving choice; the record has no
+    // canonical relation → fallback-serving authority → gap fill publishes.
+    const gapBody = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const group = groupLiteLLMDeployments(gapBody)[0]!
+    const assessment = assessModelConfiguration(group, CATALOG, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    expect(assessment.status).toBe("configured")
+    expect(assessment.output.value).toBe(500_000)
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "fallback-serving")).toBe(true)
+
+    // Capture the passing configuration as LKG.
+    const spec = buildModelSpecs(gapBody, CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    const entry = store.get(lastKnownGoodKey("vendor-foo"))!
+    expect(entry.providerID).toBe("vendor")
+    expect(entry.selectionSource).toBe("explicit-provider")
+    // The persisted authority must be graded fallback-serving.
+    expect(entry.evidenceAuthority).toBe("fallback-serving")
+
+    // Outage: models.dev unavailable, live selection unprovable → fail closed.
+    const sparse = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+    const outageGroup = groupLiteLLMDeployments(sparse)[0]!
+    const live = assessModelConfiguration(outageGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("server-5xx", "HTTP 503"),
+    })
+    expect(live.status).toBe("metadata-unavailable")
+    const resolved = resolveConfigurationWithLKG(live, outageGroup, {}, options, store, 2000)
+    expect(resolved.assessment.publishable).toBeFalse()
+    expect(resolved.assessment.usingLKG ?? false).toBeFalse()
+    expect(resolved.lkg).toBeUndefined()
+  })
+
+  test("explicit-provider with canonical relation: authoritative LKG still restores across an outage", () => {
+    const RELATION_CATALOG = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 } } } },
+    }
+    const relationBody = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const group = groupLiteLLMDeployments(relationBody)[0]!
+    const assessment = assessModelConfiguration(group, RELATION_CATALOG, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("explicit-provider")
+    expect(assessment.identity.selected?.recordCanonicalID).toBe("vendor/vendor-foo")
+    expect(assessment.output.value).toBe(500_000)
+    // Authoritative: evidence origin names the intrinsic source.
+    expect(assessment.output.resolution.evidence.some((item) => item.origin === "authoritative-intrinsic")).toBe(true)
+
+    const spec = buildModelSpecs(relationBody, RELATION_CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    const entry = store.get(lastKnownGoodKey("vendor-foo"))!
+    expect(entry.evidenceAuthority).toBe("authoritative-intrinsic")
+
+    // Compatible metadata outage: the endpoint's own identity declaration
+    // (models_dev_provider) stays; only the enrichment source disappears.
+    // The established authoritative LKG policy restores the verified config.
+    const outageGroup = groupLiteLLMDeployments({
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    })[0]!
+    const live = assessModelConfiguration(outageGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("server-5xx", "HTTP 503"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, outageGroup, {}, options, store, 2000)
+    expect(resolved.assessment.status).toBe("configured-lkg")
+    expect(resolved.lkg?.spec.limit.output).toBe(500_000)
+  })
+
+  test("unique-match-sourced LKG never substitutes for lost live metadata", () => {
+    const group = groupOf("vendor-foo", {
+      ...sides,
+      supports_function_calling: true,
+      supports_reasoning: false,
+    })
+    const assessment = assessModelConfiguration(group, CATALOG, options)
+    expect(assessment.identity.selected?.selectionSource).toBe("unique-match")
+    expect(assessment.status).toBe("configured")
+    const spec = buildModelSpecs(servedBody(), CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const store = createLastKnownGoodStore()
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      assessment.identity.selected,
+      spec,
+      1000,
+      capturedPublicationVerdict(assessment, spec),
+    ))
+    expect(store.get(lastKnownGoodKey("vendor-foo"))!.evidenceAuthority).toBe("fallback-serving")
+
+    const sparse = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+    const outageGroup = groupLiteLLMDeployments(sparse)[0]!
+    const live = assessModelConfiguration(outageGroup, {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    expect(resolveConfigurationWithLKG(live, outageGroup, {}, options, store, 2000).lkg).toBeUndefined()
+  })
+
+  test("legacy-family-compatibility can never capture an LKG entry", () => {
+    // The selector never produces this source; a hand-built record with the
+    // legacy name is rejected at capture time like any forged snapshot.
+    const spec = buildModelSpecs(servedBody(), CATALOG, options).find((item) => item.id === "vendor-foo")!
+    const captured = { ...capturedPublicationVerdict(assessModelConfiguration(groupOf("vendor-foo", { ...sides, supports_function_calling: true, supports_reasoning: false }), CATALOG, options), spec) }
+    expect(() => createLastKnownGoodEntry(
+      groupOf("vendor-foo", { ...sides, supports_function_calling: true, supports_reasoning: false }),
+      { providerID: "vendor", modelID: "m", record: {}, selectionSource: "legacy-family-compatibility" },
+      spec,
+      1000,
+      captured,
+    )).toBeDefined()
+    // Capture with that graded authority yields a fallback-serving entry;
+    // restoring it during an outage must fail.
+    const store = createLastKnownGoodStore()
+    const group = groupOf("vendor-foo", { ...sides, supports_function_calling: true, supports_reasoning: false })
+    const assessment = assessModelConfiguration(group, {}, options, { catalogAvailable: true })
+    store.set(lastKnownGoodKey("vendor-foo"), createLastKnownGoodEntry(
+      group,
+      { providerID: "vendor", modelID: "m", record: { limit: spec.limit, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }, selectionSource: "legacy-family-compatibility" },
+      spec,
+      1000,
+      captured,
+    ))
+    expect(store.get(lastKnownGoodKey("vendor-foo"))!.evidenceAuthority).toBe("fallback-serving")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pricing authority: direct cost assertions (review hygiene 2)
+// ---------------------------------------------------------------------------
+
+describe("models.dev provider price fallback eligibility", () => {
+  const sides = {
+    supports_vision: false,
+    supports_pdf_input: false,
+    supports_audio_input: false,
+    supports_video_input: false,
+    supports_audio_output: false,
+  }
+
+  test("explicit-provider WITHOUT canonical relation must not donate its price", () => {
+    const body = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, cost: { input: 99, output: 99, cache_read: 99, cache_write: 99 } } } },
+    }
+    const spec = buildModelSpecs(body, catalog, options)[0]!
+    // Selection succeeds (explicit-provider), limits gap-fill, but the
+    // provider's price must NOT become the route price: zero/unknown cost.
+    expect(spec.limit.output).toBe(500_000)
+    expect(spec.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+  })
+
+  test("explicit-provider WITH canonical relation may serve as the price fallback", () => {
+    const body = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false, models_dev_provider: "vendor" },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, cost: { input: 0.15, output: 0.6, cache_read: 0.003 } } } },
+    }
+    const spec = buildModelSpecs(body, catalog, options)[0]!
+    // LiteLLM declared no price; the record with the proven canonical
+    // relation follows the established price fallback policy.
+    expect(spec.cost.input).toBeCloseTo(0.15)
+    expect(spec.cost.output).toBeCloseTo(0.6)
+    expect(spec.cost.cacheRead).toBeCloseTo(0.003)
+  })
+
+  test("unique-match record must not donate its price either", () => {
+    const body = {
+      data: [{
+        model_name: "vendor-foo",
+        litellm_params: { model: "custom/vendor-foo" },
+        model_info: { mode: "chat", ...sides, supports_function_calling: true, supports_reasoning: false },
+      }],
+    }
+    const catalog = {
+      vendor: { models: { "vendor-foo": { id: "vendor-foo", tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] }, limit: { context: 500_000, output: 500_000 }, cost: { input: 99, output: 99 } } } },
+    }
+    const spec = buildModelSpecs(body, catalog, options)[0]!
+    expect(spec.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
   })
 })
