@@ -15,10 +15,10 @@ Core SHALL resolve canonical model identity only against the models.dev canonica
 
 #### Scenario: Ordered capability fallback
 - **WHEN** the model is absent from the canonical registry and no serving provider is declared
-- **THEN** Core uses an equivalent exact-id record set, else the exact OpenCode record, else the exact OpenRouter record, else reports ambiguous; relation-only records are never considered
+- **THEN** Core uses no provider record: the model publishes only from complete LiteLLM declarations and is otherwise withheld; the former OpenCode-then-OpenRouter order survives only as the ordering of diagnostic candidates
 
 #### Scenario: Ambiguity stays observable
-- **WHEN** a bare id matches several registry entries, or no registry entry and several non-equivalent reseller records with no OpenCode/OpenRouter precedence
+- **WHEN** a bare id matches several registry entries, or deployments resolve to different registry entries
 - **THEN** Core reports `ambiguous` and does not publish normally
 
 #### Scenario: Deterministic inheritance carries provenance
@@ -31,7 +31,7 @@ Core SHALL resolve canonical model identity only against the models.dev canonica
 
 #### Scenario: Family-name provider matches stay ambiguous
 - **WHEN** the same model id exists under a name-implied provider and another provider and the canonical registry has no entry for it
-- **THEN** trusted publication never selects the name-implied provider and reports `ambiguous` unless the fallback rules of `modelsdev-catalog` select an exact OpenCode/OpenRouter record
+- **THEN** trusted publication never selects the name-implied provider or any other unproven record; the model publishes only from a declared serving record or complete LiteLLM declarations
 
 #### Scenario: Deployment group identities must be consistent
 - **WHEN** one LiteLLM model name has deployments declaring different explicit providers, or deployments whose evidence resolves to different canonical registry entries, or one deployment resolves to a registry entry while another does not
@@ -62,10 +62,10 @@ Core SHALL resolve canonical model identity only against the models.dev canonica
 - **THEN** Core reports the same blocked verdict for every deployment order
 
 ### Requirement: Last Known Good without TTL
-Core SHALL support reusing a previously complete metadata snapshot while live sources fail, with validity decided by stable deployment identity, canonical identity, serving proof, schema, and conflict evidence -- never by fixed age -- and SHALL expose source, fetch time, age, and selection reason. Only a `ModelSpec` that passed the current publication gate in the same round, projected from the same resolution result, may be captured as LKG; a composition of facts from different periods is never a valid entry. LKG SHALL NOT resurrect a model the current LiteLLM directory no longer serves, and an incompatible stored schema SHALL fail safe as withheld rather than restore. Every entry persists schema 8 identity, serving, and authority facts as defined by the `modelsdev-catalog` capability; authority `fallback-serving` never substitutes for lost live metadata.
+Core SHALL support reusing a previously complete metadata snapshot while live sources fail, with validity decided by stable deployment identity, canonical identity, serving proof, schema, and conflict evidence -- never by fixed age -- and SHALL expose source, fetch time, age, and selection reason. Only a `ModelSpec` that passed the current publication gate in the same round, projected from the same resolution result, may be captured as LKG; a composition of facts from different periods is never a valid entry. LKG SHALL NOT resurrect a model the current LiteLLM directory no longer serves, and an incompatible stored schema SHALL fail safe as withheld rather than restore. Every entry persists the schema 8 proof composition defined by the `modelsdev-catalog` capability, and restoration re-proves every proof component and restores the whole stored spec or nothing.
 
 #### Scenario: Valid LKG keeps publication
-- **WHEN** live metadata fails but a stored snapshot with matching stable identity, a restorable authority, and compatible schema exists
+- **WHEN** live metadata fails but a stored schema 8 snapshot exists whose every outage proof component is unchanged
 - **THEN** Core reports status `configured-lkg` with LKG provenance
 
 #### Scenario: Old but stable LKG stays valid
@@ -105,17 +105,17 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 - **THEN** LKG validation fails closed on the captured-facts, canonical, and serving cross-checks and never restores the stale metadata
 
 #### Scenario: Unique-match-sourced LKG never substitutes for lost live metadata
-- **WHEN** an LKG entry was captured with authority `fallback-serving` (unique, OpenCode, or OpenRouter fallback) and the metadata source becomes unavailable
-- **THEN** Core fails the restore closed: fallback-serving facts must be re-proven by a live resolution in the same round, never served from memory
+- **WHEN** a stored entry was captured from a unique-match, OpenCode, or OpenRouter fallback record under schema 7 or earlier and the metadata source becomes unavailable
+- **THEN** Core fails the restore closed: schema 8 has no proof component for unproven provider records, so such facts can never be served from memory
 
 #### Scenario: Persisted authority grades an explicit provider without a canonical relation as fallback-serving
 - **WHEN** an LKG entry is captured while the operator declares `models_dev_provider` and the selected record carries no canonical relation, and the metadata source later becomes unavailable
-- **THEN** the entry persists authority `serving-declared` (the operator declaration proves serving; this replaces the former `fallback-serving` grading) and restores only if every live deployment still declares the same `models_dev_provider`
+- **THEN** the entry's proof records the serving declaration and record digest (the operator declaration proves serving; this replaces the former `fallback-serving` grading), and it restores only if every live deployment still declares the same `models_dev_provider`
 
 #### Scenario: Persisted authority keeps authoritative entries restorable
-- **WHEN** an entry with authority `canonical-intrinsic` or `litellm-declared` is evaluated during a compatible metadata outage with unchanged stable identity
-- **THEN** Core restores it under the established LKG policy
+- **WHEN** an entry whose fields have `canonical`, `serving`, `litellm-declared`, `derived`, or `constraint-narrowed` basis is evaluated during a compatible metadata outage and every proof component re-proves
+- **THEN** Core restores the whole stored spec under the established LKG policy
 
 #### Scenario: Persisted evidence authority is validated as schema-critical
-- **WHEN** a stored entry claims schema 8 but its authority, canonical, or serving fields are missing or not one of the defined values
+- **WHEN** a stored entry claims schema 8 but a proof component is missing, a field basis is not one of the defined values, or a digest or fingerprint is malformed
 - **THEN** both the compatibility guard and the defensive validation reject the entry fail-closed, and it is never restored as `configured-lkg`

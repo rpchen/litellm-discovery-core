@@ -11,7 +11,7 @@
 | relation | 仅 `canonical_model_id` | 只在 provider TOML 使用 `base_model` 时生成；值为 registry key；`base_model` 本身不进生成 JSON | `generate.ts` `canonical_model_id: baseModel.data.base_model` |
 | merge 语义 | 生成期 | `mergeDeep(inheritable(base), overrides)`；**provider 字段赢**；`base_model_omit` 可删继承字段 | `generate.ts` `mergeBaseModel` |
 | first-party | 约定 | provider **是** lab 时允许 inline 定义（无 `base_model` → 无 `canonical_model_id`） | AGENTS.md「Exceptions (full inline definition allowed)」 |
-| snapshot | `catalog.json` | `{providers, models}`；实测 `catalog.providers === api.json`、`catalog.models === models.json`（逐字节） | 本次抓取比对 |
+| snapshot | `catalog.json` | `{providers, models}`；同一时刻抓取的数据等价：`catalog.providers` 与 `api.json` 数据等价、`catalog.models` 与 `models.json` 数据等价（各自 `JSON.stringify` 比对相等）；三个响应本身形状不同，并非字节相同 | 本次抓取比对 |
 | 不存在的字段 | — | `aliases`、`inherits`、`equivalent_to`、`equivalents`、`base_model` 在 8418 条记录中出现 **0** 次 | 本次统计 |
 
 结论：README 的分层（models.json = 内禀，api.json = serving，catalog.json = 同 snapshot 组合）**成立**。
@@ -97,9 +97,12 @@ first-party relation 记录（127 条）也覆盖：limit.output 20、limit.cont
 | `litellm_credential_name` | 运维者命名的凭据标签 | 不透明，不作证据 |
 | `model_info.models_dev_provider` | 本项目约定的显式声明 | **唯一 serving provider 证据** |
 | `model_info.max_input_tokens` | input capacity | 只与 input 维度比较 |
-| `model_info.supports_*_reasoning_effort` | LiteLLM 对单个 effort 档的描述 | descriptive，仅作诊断/收窄候选，不足以合成档位集合 |
+| `model_info.supports_{none,minimal,xhigh,max}_reasoning_effort` | LiteLLM cost-map 对单个档的推导描述（live GPT 7 个模型有，且只覆盖少数档） | 不是 endpoint 声明；只诊断 |
+| `model_info.supported_openai_params` | 推导值（live 部分含 `reasoning_effort`） | 只诊断 |
+| `litellm_params.allowed_openai_params` | 运维者允许透传的参数（live deepseek/kimi-k3/glm/hy4 含 `reasoning_effort`） | 只证明参数会被转发，不证明合法值集合；不生成档位 |
+| `litellm_params.reasoning_effort` | 运维者固定的 effort（live gpt-6-luna=max、gpt-6-sol=high、gpt-6-astra=low） | **endpoint 显式 control**：固定档位，0 个可选档位 |
 
-当前实现漏用：无（base_model 已用）。误用：rule B 把 `openai/` 等 adapter 前缀当 namespace（S3/S6 共 111/110 条价格因此来自 first-party 记录）。
+LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段。当前实现漏用：`litellm_params.reasoning_effort`（见 P1-7）。误用：rule B 把 `openai/` 等 adapter 前缀当 namespace（S3/S6 共 111/110 条价格因此来自 first-party 记录）。
 
 ## 6. Findings
 
@@ -124,14 +127,14 @@ first-party relation 记录（127 条）也覆盖：limit.output 20、limit.cont
 - 概率：高（230 条变体记录，126 条 limits 不同；每形态 27–38 个被选；live mimo-v2.6-flash）。
 - 影响：静默错误配置或误 withheld；serving SKU 由「最短 ID」决定（gpt-5.6-sol → gpt-5.6；deepseek-v4.1-flash → deepseek-flash）。
 - 代码路径：`findMatchesByRelation`、`resolveSingleProviderMatches`、`canonicalOriginalRecord` 排序。
-- 统一修复点：serving 记录只按「已证明 provider 内的精确 wire id」选择；relation 只用于 identity 与诊断。
+- 统一修复点：serving 记录只按「已证明 provider 内的精确 wire id」选择；relation 只用于 identity 与诊断；未证明的同名精确记录也只进诊断（design D5）。
 
 **P0-4 LiteLLM adapter 前缀被当作 lab namespace（rule B）**
 - 触发：`openai/<model>`、`custom_llm_provider` 指向的路由（OpenAI-compatible 网关极常见）。
 - 概率：高（live 20/20 deployment 为 `custom_llm_provider=openai`）。
 - 影响：非 OpenAI 模型无法证明 original；OpenAI 名字的模型被当成 OpenAI first-party serving（价格、档位、serving limit）。
 - 代码路径：`deploymentQualifiedNamespaces`、`canonicalNamespaceFor`（PR #30 rule B）。
-- 统一修复点：wire id 解析剥离 adapter 段；namespace 只来自 registry 精确命中；serving 只来自显式声明。
+- 统一修复点：wire-id 解析（只产出查找键，无证明力）与 registry 证明正式分离（design D3.1/D3.2）；serving 只来自显式声明。
 
 ### P1
 
@@ -141,9 +144,11 @@ first-party relation 记录（127 条）也覆盖：limit.output 20、limit.cont
 
 **P1-3 canonical/provider 矛盾无规则**：23 条（9 条实质不同，集中在 DeepSeek）。修复：identity 证据优先级 + 实质等价判定。
 
-**P1-4 reasoning 档位来源无 authority**：`buildVariants` 直接读选中记录；218/281 个 canonical 跨 provider 档位不一致；models.json 没有 `reasoning_options`。修复：档位只来自已证明 serving 记录（见 Open Questions 关于 lab-default）。
+**P1-4 reasoning 档位来源无 authority**：`buildVariants` 直接读选中记录；218/281 个 canonical 跨 provider 档位不一致；models.json 没有 `reasoning_options`。修复：档位只来自已证明 serving 记录或 `litellm_params` 运维者显式配置（design D7，Q1 已关闭）。
 
 **P1-5 LKG 绑定 serving provider**：v7 `providerID`/`selectionSource` 与 identity 绑在一起；canonical identity 不变但 serving 记录变化即失效，反之 fallback 记录在 identity 正确时永不恢复。修复：schema 8。
+
+**P1-7 运维者固定的 effort 被忽略**：live gpt-6-luna/sol/astra 的 `litellm_params.reasoning_effort` 已固定为 max/high/low，当前仍按 OpenAI first-party 记录发布 5–6 个可选档位——用户选择的档位会被固定值覆盖或无效。概率中（运维者 pin 常见）；影响为静默错误 controls。代码路径：`buildVariants` 只读选中记录。修复：D6/D7 pinned → known-empty + fixedEffort。
 
 **P1-6 规范漂移**：`discovery-quality`「reasoning resolution」仍写「LiteLLM declaration determines support」，与 `publication`/testing-standard「canonical intrinsic 高权威」矛盾。修复：本 change 一并 MODIFIED。
 
@@ -158,3 +163,9 @@ first-party relation 记录（127 条）也覆盖：limit.output 20、limit.cont
 **P2-4 `stripRoutePrefix` 只剥一段**：`openrouter/deepseek/deepseek-chat` 剥成 `deepseek/deepseek-chat`，恰好可作 registry 限定命中；但 `bedrock/converse/...` 等多段 adapter 路由会产生无意义候选。修复：wire id 解析规则化（只有剥离后精确命中 registry 才算 qualified）。
 
 **P2-5 type filter**：默认 catalog 排除 `type=decision`（445 vs 448）；对话发现无影响，记录为已知行为。
+
+## 7. Revision 2 复核（第三方评审）
+
+- registry 字段可选性实测：445 条中 `limit.output` 缺 9、`limit.input` 缺 407、`structured_output` 缺 264；`modalities`/`reasoning`/`tool_call`/`release_date` 当前 0 缺（schema 允许缺省）→ 需要字段级 matrix（design D6）。
+- 未证明同名 reseller 记录取消发布供给：live 17 模型影响 0（唯一 fallback 的 hy4-preview 已在 registry；kimi-k2.7-code 经 base_model 解析）。
+- live 当前发布可选档位的 13 个模型在新规则下：3 个 pinned（0 档 + fixedEffort），10 个档位未知（除非声明 `models_dev_provider`）。

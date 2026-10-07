@@ -25,7 +25,7 @@ Core SHALL keep canonical identity and serving provider as separate facts, SHALL
 - **THEN** Core selects no serving record, even when the lab's own provider record exists
 
 ### Requirement: reasoning resolution
-Core SHALL resolve reasoning support independently from reasoning levels. Reasoning support SHALL follow the effective value algebra: a proven serving value, else the canonical intrinsic value, else fallback-serving, else LiteLLM declarations; an explicit `litellm_params.supports_reasoning: false` narrows support, and a differing `model_info.supports_reasoning` against a canonical or proven-serving value is a resolved discrepancy.
+Core SHALL resolve reasoning support independently from reasoning levels. Reasoning support SHALL follow the field resolution matrix of the `modelsdev-catalog` capability: a proven serving value, else the canonical registry value, else consistent LiteLLM declarations, else unknown; an explicit `litellm_params.supports_reasoning: false` narrows support, and a differing `model_info.supports_reasoning` against a serving or canonical base is a resolved discrepancy. Reasoning levels follow the `Reasoning controls authority` requirement.
 
 #### Scenario: reasoning sources disagree
 - **WHEN** canonical identity is proven and LiteLLM `model_info` declares reasoning support differently from the canonical registry entry
@@ -46,21 +46,6 @@ Core SHALL preserve separate context, input, and output token-limit meanings and
 - **WHEN** LiteLLM declares a `max_input_tokens` different from the canonical input capacity
 - **THEN** Core records an input-dimension resolved discrepancy and never a context discrepancy
 
-### Requirement: capability fallback preserves operational limits
-A fallback-serving record for a model absent from the canonical registry SHALL populate valid limits for dimensions LiteLLM does not declare, while explicit LiteLLM pricing remains authoritative and the fallback record never supplies price or reasoning levels.
-
-#### Scenario: hy4-preview is routed through an OpenAI-compatible LiteLLM deployment
-- **WHEN** LiteLLM exposes `hy4-preview` without token limits and with explicit token prices, the canonical registry contains `tencent/hy4-preview`, and OpenRouter also serves it
-- **THEN** Core emits the canonical intrinsic context/output limits, preserves the LiteLLM prices, uses no OpenRouter limit or reasoning variant, and does not emit a models-dev-unmatched warning
-
-#### Scenario: private model is routed through an OpenAI-compatible LiteLLM deployment
-- **WHEN** LiteLLM exposes a model absent from the canonical registry without token limits, exactly one OpenCode or OpenRouter record has the same id, and LiteLLM explicitly provides token prices
-- **THEN** Core emits non-zero context/output limits from that record as `fallback-serving`, preserves the LiteLLM prices, and emits no reasoning variants from the record
-
-#### Scenario: registered model never uses capability fallback
-- **WHEN** the model id is present in the canonical registry
-- **THEN** Core uses the canonical intrinsic limits and never a reseller record's limits
-
 ### Requirement: record-level selection determinism
 Within a proven serving provider, Core SHALL select the serving record by exact wire id first; otherwise, among records whose `canonical_model_id` equals the canonical identity, Core SHALL pick deterministically only when their serving publication-critical facts (limits, modalities, tool/reasoning verdicts, reasoning options, cost) are equivalent, and SHALL keep the provider match set unresolved when they differ materially. Neither catalog object iteration order nor the first record may decide, and a shortest-id tie-break SHALL never override an exact wire id match.
 
@@ -80,11 +65,26 @@ Within a proven serving provider, Core SHALL select the serving record by exact 
 - **WHEN** a proven provider holds `x-sol` matching the wire id and a shorter record `x` whose `canonical_model_id` names the same canonical model
 - **THEN** Core selects `x-sol`
 
+### Requirement: runtime constraints never conflict with serving metadata
+Resolution SHALL separate LiteLLM descriptive declarations from proven endpoint runtime constraints: a constraint narrows the effective value of its own dimension and never participates in same-level conflict judgment, whatever the base (proven serving, canonical, or LiteLLM-declared). Unproven provider records never form a base and therefore never conflict with anything.
+
+#### Scenario: fallback serving limit narrowed by an enforced cap
+- **WHEN** the base output limit comes from a proven serving record or the canonical registry and the deployment's `litellm_params` declares a smaller enforced `max_tokens`
+- **THEN** Core publishes the narrowed effective value and records a constraint-narrowed resolution, not an unresolved conflict
+
+#### Scenario: descriptive disagreement with fallback serving still conflicts
+- **WHEN** an unproven provider record (including an exact same-name OpenCode or OpenRouter record) declares a value different from a LiteLLM descriptive declaration
+- **THEN** the record contributes no evidence and creates no conflict; only explicit disagreement between deployments remains an unresolved conflict
+
 ## REMOVED Requirements
 
+### Requirement: capability fallback preserves operational limits
+**Reason**: Unproven same-name reseller records no longer supply limits for any model; registered models use canonical limits and unregistered models need a proven serving record or complete LiteLLM declarations.
+**Migration**: See `modelsdev-catalog` `Unproven provider records never supply publication facts` and `Field resolution matrix`; the `hy4-preview` case is covered by acceptance R7 (canonical `tencent/hy4-preview`).
+
 ### Requirement: capability-first provider fallback
-**Reason**: Provider-record precedence (explicit provider > canonical-original > OpenCode > OpenRouter > unique) conflated canonical identity with serving selection and used reverse relation fan-out; canonical-original and route-namespace (rule B) selection treated serving records as intrinsic and LiteLLM adapter prefixes as lab namespaces.
-**Migration**: Canonical identity, serving provider proof, and unregistered-model fallback are specified by the `modelsdev-catalog` capability (`Canonical identity resolution`, `Serving provider proof`, `Fallback only for unregistered models`).
+**Reason**: Provider-record precedence (explicit provider > canonical-original > OpenCode > OpenRouter > unique) conflated canonical identity with serving selection, used reverse relation fan-out, let unproven same-name reseller records supply publication facts, treated canonical-original serving records as intrinsic, and treated LiteLLM adapter prefixes as lab namespaces (rule B).
+**Migration**: Canonical identity, serving provider proof, and unregistered-model fallback are specified by the `modelsdev-catalog` capability (`Wire-ID parsing carries no authority`, `Canonical identity resolution`, `Serving provider proof`, `Unproven provider records never supply publication facts`).
 
 ### Requirement: capability fallback pricing is non-authoritative
 **Reason**: Superseded by a single price authority rule that covers every unproven provider record, not only capability fallback.
@@ -92,4 +92,4 @@ Within a proven serving provider, Core SHALL select the serving record by exact 
 
 ### Requirement: fallback metadata is secondary evidence
 **Reason**: The graded authority of `canonical-original`, `explicit-provider` with relation, and route-namespace proof is replaced by explicit fact classes; explicit-provider records without a relation now prove serving by operator declaration.
-**Migration**: See `modelsdev-catalog` `Fact classes are resolved separately`, `Serving provider proof`, `Fallback only for unregistered models`, and `Effective value algebra`.
+**Migration**: See `modelsdev-catalog` `Fact classes are resolved separately`, `Serving provider proof`, `Unproven provider records never supply publication facts`, and `Field resolution matrix`.
