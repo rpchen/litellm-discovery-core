@@ -17,8 +17,8 @@
 
 ## 1. Catalog 输入（Core）
 
-- [ ] 1.1 `src/core/catalog-input.ts`：`normalizeModelsDevCatalog()`（complete / providers-only / unavailable）；所有公共入口内部归一化
-  - 验收：acceptance G21、`Catalog input contract`
+- [ ] 1.1 `src/core/catalog-input.ts`：`normalizeModelsDevCatalog()`（complete / providers-only / unavailable；complete 要求 providers+models 对象、**未知顶层 key 忽略**）；所有公共入口内部归一化
+  - 验收：acceptance G20、G21、G33、`Catalog input contract`
 - [ ] 1.2 真实 schema fixture：从 live catalog 裁剪 R1–R11 涉及的 canonical 与 provider 记录，记录抓取时间与 models.dev commit；删除 fixtures 中对 `aliases`/`inherits`/`equivalent_to`/`equivalents` 的依赖（保留惰性负向测试）
 
 ## 2. Identity 与 serving（Core）
@@ -67,7 +67,7 @@
 
 - [ ] 6.1 `scripts/audit-modelsdev-catalog.ts`（live，非阻断 manual/scheduled）与离线 fixture 版断言
   - 验收：acceptance §C、`Catalogue-wide regression evidence`
-- [ ] 6.2 R1–R11 真实回归测试；G1–G24 合成矩阵；每个 delta Scenario → 测试映射表（PR 描述）
+- [ ] 6.2 R1–R11 真实回归测试；G1–G33 合成矩阵；每个 delta Scenario → 测试映射表（PR 描述）
 - [ ] 6.3 旧测试逐条审查：依赖 rule B / canonical-original-as-authority / relation fan-out / 虚构 relation 字段的用例按新规范改写，并在 PR 列出被改写用例与理由
 
 ## 7. 文档与治理（Core）

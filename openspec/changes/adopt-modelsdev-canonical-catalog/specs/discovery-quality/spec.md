@@ -25,7 +25,7 @@ Core SHALL keep canonical identity and serving provider as separate facts, SHALL
 - **THEN** Core selects no serving record, even when the lab's own provider record exists
 
 ### Requirement: reasoning resolution
-Core SHALL resolve reasoning support independently from reasoning levels. Reasoning support SHALL follow the field resolution matrix of the `modelsdev-catalog` capability: a proven serving value, else the canonical registry value, else consistent LiteLLM declarations, else unknown; an explicit `litellm_params.supports_reasoning: false` narrows support, and a differing `model_info.supports_reasoning` against a serving or canonical base is a resolved discrepancy. Reasoning levels follow the `Reasoning controls authority` requirement.
+Core SHALL resolve reasoning support independently from reasoning levels. Reasoning support SHALL follow the field resolution matrix of the `modelsdev-catalog` capability: a proven serving value, else the canonical registry value, else consistent LiteLLM declarations, else unknown; an explicitly enforced `litellm_params.supports_reasoning: false` narrows support per the runtime enforcement matrix, and a differing `model_info.supports_reasoning` against a serving or canonical base is a resolved discrepancy. Reasoning levels follow the `Reasoning controls authority` requirement.
 
 #### Scenario: reasoning sources disagree
 - **WHEN** canonical identity is proven and LiteLLM `model_info` declares reasoning support differently from the canonical registry entry
@@ -33,7 +33,7 @@ Core SHALL resolve reasoning support independently from reasoning levels. Reason
 
 #### Scenario: enforced reasoning constraint
 - **WHEN** a deployment declares `litellm_params.supports_reasoning: false`
-- **THEN** Core reports reasoning unsupported as a constraint-narrowed value
+- **THEN** Core reports reasoning unsupported as an enforcement-narrowed value
 
 ### Requirement: token-limit semantics
 Core SHALL preserve separate context, input, and output token-limit meanings and SHALL compare evidence only within the same dimension. LiteLLM `max_input_tokens` is input capacity; it SHALL be compared with `limit.input` (or with the context when no input capacity is declared) and SHALL become a context value only in the documented LiteLLM-only fallback when no models.dev value exists.
@@ -70,7 +70,7 @@ Resolution SHALL separate LiteLLM descriptive declarations from proven endpoint 
 
 #### Scenario: fallback serving limit narrowed by an enforced cap
 - **WHEN** the base output limit comes from a proven serving record or the canonical registry and the deployment's `litellm_params` declares a smaller enforced `max_tokens`
-- **THEN** Core publishes the narrowed effective value and records a constraint-narrowed resolution, not an unresolved conflict
+- **THEN** Core publishes the narrowed effective value and records an enforcement-narrowed resolution, not an unresolved conflict
 
 #### Scenario: descriptive disagreement with fallback serving still conflicts
 - **WHEN** an unproven provider record (including an exact same-name OpenCode or OpenRouter record) declares a value different from a LiteLLM descriptive declaration

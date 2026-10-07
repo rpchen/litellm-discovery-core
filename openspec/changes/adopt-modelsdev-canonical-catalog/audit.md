@@ -100,7 +100,7 @@ first-party relation 记录（127 条）也覆盖：limit.output 20、limit.cont
 | `model_info.supports_{none,minimal,xhigh,max}_reasoning_effort` | LiteLLM cost-map 对单个档的推导描述（live GPT 7 个模型有，且只覆盖少数档） | 不是 endpoint 声明；只诊断 |
 | `model_info.supported_openai_params` | 推导值（live 部分含 `reasoning_effort`） | 只诊断 |
 | `litellm_params.allowed_openai_params` | 运维者允许透传的参数（live deepseek/kimi-k3/glm/hy4 含 `reasoning_effort`） | 只证明参数会被转发，不证明合法值集合；不生成档位 |
-| `litellm_params.reasoning_effort` | 运维者固定的 effort（live gpt-6-luna=max、gpt-6-sol=high、gpt-6-astra=low） | **endpoint 显式 control**：固定档位，0 个可选档位 |
+| `litellm_params.reasoning_effort` | **operator default**：LiteLLM 请求合并序为 `{**litellm_params, ..., **kwargs}`（`router.py` `_acompletion` L3877-3882），请求可覆盖；`_deployment_params_with_request_reasoning_override`（L2582-2612）在请求带 `reasoning_effort` 时主动剥掉 deployment 的 `thinking`/`*.effort` | **不是** endpoint 声明，不产生档位/pin；只进诊断 |
 
 LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段。当前实现漏用：`litellm_params.reasoning_effort`（见 P1-7）。误用：rule B 把 `openai/` 等 adapter 前缀当 namespace（S3/S6 共 111/110 条价格因此来自 first-party 记录）。
 
@@ -148,7 +148,7 @@ LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段
 
 **P1-5 LKG 绑定 serving provider**：v7 `providerID`/`selectionSource` 与 identity 绑在一起；canonical identity 不变但 serving 记录变化即失效，反之 fallback 记录在 identity 正确时永不恢复。修复：schema 8。
 
-**P1-7 运维者固定的 effort 被忽略**：live gpt-6-luna/sol/astra 的 `litellm_params.reasoning_effort` 已固定为 max/high/low，当前仍按 OpenAI first-party 记录发布 5–6 个可选档位——用户选择的档位会被固定值覆盖或无效。概率中（运维者 pin 常见）；影响为静默错误 controls。代码路径：`buildVariants` 只读选中记录。修复：D6/D7 pinned → known-empty + fixedEffort。
+**P1-7 部署默认 effort 被误当 pin**：live gpt-6-luna/sol/astra 的 `litellm_params.reasoning_effort`（max/high/low）当前仍按 OpenAI first-party 记录发布 5–6 个可选档位。LiteLLM 源码核实（Revision 3）：该键是 operator default，请求可覆盖，因此既不是 pin 也不产生档位——正确行为是 serving 未证明时 levels unknown。概率中；影响为静默错误 controls。代码路径：`buildVariants` 只读选中记录。修复：design D7a/D7。
 
 **P1-6 规范漂移**：`discovery-quality`「reasoning resolution」仍写「LiteLLM declaration determines support」，与 `publication`/testing-standard「canonical intrinsic 高权威」矛盾。修复：本 change 一并 MODIFIED。
 
@@ -164,8 +164,17 @@ LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段
 
 **P2-5 type filter**：默认 catalog 排除 `type=decision`（445 vs 448）；对话发现无影响，记录为已知行为。
 
-## 7. Revision 2 复核（第三方评审）
+## 7. Revision 2/3 复核（第三方评审）
 
+**Revision 2**
 - registry 字段可选性实测：445 条中 `limit.output` 缺 9、`limit.input` 缺 407、`structured_output` 缺 264；`modalities`/`reasoning`/`tool_call`/`release_date` 当前 0 缺（schema 允许缺省）→ 需要字段级 matrix（design D6）。
 - 未证明同名 reseller 记录取消发布供给：live 17 模型影响 0（唯一 fallback 的 hy4-preview 已在 registry；kimi-k2.7-code 经 base_model 解析）。
-- live 当前发布可选档位的 13 个模型在新规则下：3 个 pinned（0 档 + fixedEffort），10 个档位未知（除非声明 `models_dev_provider`）。
+- live 当前发布可选档位的 13 个模型在新规则下全部 levels unknown（除非声明 `models_dev_provider`）。
+
+**Revision 3（LiteLLM 源码核实，`BerriAI/litellm@736ff14f`）**
+- `litellm_params` 合并序 `{**litellm_params, ..., **kwargs}`（`router.py` L3877）证明请求可覆盖 deployment 参数 → `litellm_params` 不整体等于 hard constraint；逐键 enforcement 矩阵见 design D7a。
+- `max_input_tokens` 是 router `_pre_call_checks`（L12954-12973）的逐请求硬门（hard-enforced）；`supports_function_calling/reasoning=false` 与 modality flag false 是请求级改写门（hard-enforced）。
+- `max_tokens/max_output_tokens/max_completion_tokens` 与 `reasoning_effort` 请求可覆盖（operator default），不参与 enforcement。
+- live 端点 19/20 deployment 有显式 `custom_llm_provider`（与路由首段一致的 0 条——路由均为裸值；`openai_like/` 一条与首段一致），故 parse 证据在真实数据上可用；裸值路由不受影响。
+- `base_model_omit` 真实案例：`providers/requesty/models/hy3.toml` `base_model_omit = ["limit.input"]`；linked serving 记录中 64 条缺 `limit.input` 而 canonical 有 → 「serving 缺字段回填 canonical」会撤销作者显式 omit，已删除该规则。
+- canonical 裸 ID 大小写不敏感唯一性维持 445/445；但「qualified 值无条件取尾段」在私有路由（`some-private-provider/foo`）上会误命中，已改为仅裸值或经 `custom_llm_provider` 证据确认 adapter 后才取余串。

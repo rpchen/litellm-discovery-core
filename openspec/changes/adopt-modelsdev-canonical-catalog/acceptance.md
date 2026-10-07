@@ -2,7 +2,7 @@
 
 每一行在实施阶段必须映射到至少一个自动化测试（testing-standard §1）。`R*` 使用从 live catalog（2026-10-07 13:11 UTC）裁剪出的真实 schema fixture；`G*` 使用遵循真实 models.dev schema 的合成 catalog；禁止模型特判或白名单——`R*` 只是 `G*` 规则在真实数据上的实例。
 
-记号：`levels` = 推理档位状态（`unknown` / `known[...]` / `pinned=X`）；basis 记号见 design D6。
+记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；`litellm_params.reasoning_effort` 是 operator default（请求可覆盖），永不产生档位或 pin；basis 记号见 design D6/D7a。
 
 ## R — 真实回归（live endpoint 形态，裁剪 fixture）
 
@@ -13,7 +13,7 @@
 | R3 minimax-m3 | route `minimax-m3`，`base_model=minimax-m3`；LiteLLM 1000000/131072 | `minimax/MiniMax-M3` | unproven | 1048576/1048576/512000 | unknown | configured；input、output resolved discrepancy；`opencode/minimax-m3` 只作诊断候选 | invalid-metadata |
 | R3b + `models_dev_provider: minimax` | — | 同上 | declared `minimax/MiniMax-M3` | 1000000/1000000/512000 | known[]（toggle） | configured；context/output basis serving；output discrepancy | invalid-metadata |
 | R3c + `models_dev_provider: opencode` | — | 同上 | declared `opencode/minimax-m3` | 512000/512000/128000 | known[] | configured；input/output discrepancy；cacheRead 来自 OpenCode | — |
-| R3d + `litellm_params.max_tokens: 65536, max_input_tokens: 900000` | — | 同上 | unproven | 1048576/900000/65536 | unknown | configured；constraint-narrowed | — |
+| R3d + `litellm_params.max_input_tokens: 900000`（hard-enforced）；另例 `max_tokens: 65536`（operator default） | — | 同上 | unproven | 1048576/900000/512000；`max_tokens` 不改变 output | unknown | configured；input=enforcement-narrowed；`max_tokens` 只进诊断 | — |
 | R4 deepseek-v4.1-flash | route + `base_model=deepseek-v4.1-flash`；`allowed_openai_params:[reasoning_effort]` | `deepseek/deepseek-v4.1-flash` | unproven | 1000000/1000000/384000 | unknown（allowed_openai_params 不生成档位） | configured；不发布 serving SKU 393216 | configured 1000000/393216，档位 low/high/max |
 | R5 glm-5.3-flash | route `glm-5.3-flash` | `zhipuai/glm-5.3-flash` | unproven | 1000000/1000000/131072 | unknown | configured；modalities 来自 registry | configured，档位 low/high/max |
 | R6 kimi-k3 | route `kimi-k3`；LiteLLM 1048576/1048576 | `moonshotai/kimi-k3` | unproven | 1048576/1048576/131072 | unknown | configured；output discrepancy | configured 1048576/**1048576** |
@@ -21,7 +21,7 @@
 | R7 hy4-preview | route `hy4-preview`；LiteLLM 无 limit，有价格 | `tencent/hy4-preview`（lab 无 provider） | unproven | 1024000/1024000/64000 | unknown | configured；价格=LiteLLM；OpenRouter 只作诊断候选 | configured 1048576/64000 + OpenRouter 档位 |
 | R8 kimi-k2.7-code | route `kimi-k2.7-code`，`base_model=minimax-m2.7` | `minimax/MiniMax-M2.7`（base_model 胜；route 差异仅诊断） | unproven | 204800/204800/131072 | unknown | configured | configured（经 opencode） |
 | R9 gpt-5.6-sol | route `gpt-5.6-sol`；LiteLLM `max_input_tokens` 922000 | `openai/gpt-5.6-sol` | unproven | 1050000/922000/128000 | unknown | configured；0 context/input discrepancy；价格=LiteLLM | 选 `openai/gpt-5.6`，伪 discrepancy，6 档 |
-| R9b gpt-6-luna | route `gpt-6-luna`；`litellm_params.reasoning_effort: max` | `openai/gpt-6-luna` | unproven | 1050000/922000/128000 | pinned=max（known[]） | configured；无可选档位 | 6 档（被 pin 覆盖） |
+| R9b gpt-6-luna | route `gpt-6-luna`；`litellm_params.reasoning_effort: max`（operator default） | `openai/gpt-6-luna` | unproven | 1050000/922000/128000 | unknown；`reasoning_effort` 只进诊断 | configured；无可选档位 | 6 档（被 pin 覆盖） |
 | R10 private + 同名 reseller | route `acme-private-1`；registry 无；OpenCode、OpenRouter 均有同名记录；LiteLLM 无 limit | unproven | unproven | — | — | withheld（incomplete-metadata）；两条记录只列为诊断候选 | — |
 | R10b 同上 + LiteLLM 完整 | LiteLLM 声明全部 gated 字段 | unproven | unproven | LiteLLM 值 | unknown | configured，basis litellm-declared；reseller 值不出现 | — |
 | R10c 同上 + `models_dev_provider: opencode` | — | unproven（OpenCode 记录无 relation） | declared | OpenCode 值 | 来自 OpenCode | configured，basis serving | — |
@@ -55,14 +55,14 @@
 | G13 | LiteLLM descriptive 不一致 | canonical proven；`max_output_tokens` ≠ registry | resolved discrepancy；publishable |
 | G13b | 未证明记录 vs descriptive | registry 无；同名 reseller 值 ≠ LiteLLM descriptive；LiteLLM 完整 | 无 conflict；basis litellm-declared；configured |
 | G13c | 跨 deployment 不一致 | 两 deployment `max_output_tokens` 不同 | conflict；withheld |
-| G14 | constraint 收窄 | `litellm_params.max_tokens` < base | constraint-narrowed |
-| G14b | constraint ≥ base | `max_tokens` > base | no-op |
-| G14c | input constraint | `litellm_params.max_input_tokens` < context | 只收窄 input |
+| G14 | enforcement 收窄（hard-enforced） | `litellm_params.supports_function_calling=false`；canonical tools=true | tools=unsupported（enforcement-narrowed） |
+| G14b | operator default 不收窄 | `litellm_params.max_tokens` 65536 < output base 512000；`reasoning_effort: high` | output 512000 不变；levels 不变；两者只进诊断 |
+| G14c | input enforcement | `litellm_params.max_input_tokens` < context（router 逐请求硬门） | 只收窄 input；context 不变 |
 | G15 | 维度隔离 | registry context 400k、input 272k；LiteLLM `max_input_tokens` 272k / 300k | 0 discrepancy / 只报 input discrepancy |
 | G16 | reasoning 支持、档位已知为空 | serving 记录 `[toggle]` 或 `[]` | supported；levels known[] |
 | G17 | provider-specific 档位 | serving declared P（档位 a,b）；另一 provider 档位 c | variants = a,b |
 | G17b | serving 未证明 | 同上无声明；first-party 有档位 | levels unknown；variants [] |
-| G17c | pinned effort | `litellm_params.reasoning_effort: high`，serving declared 有档位 | pinned=high；variants [] |
+| G17c | operator-default effort vs serving 档位 | serving declared 有档位 low/high/max；`litellm_params.reasoning_effort: high` | variants=[low,high,max]（default 只进诊断，不 pin 不删） |
 | G17d | 非档位证据 | `allowed_openai_params:[reasoning_effort]`、`model_info.supports_xhigh_reasoning_effort: true` | levels unknown |
 | G18 | 价格未证明 | LiteLLM 无价格；serving 未证明；first-party 有 cost | 0 |
 | G18b | 价格逐组件 | LiteLLM 有 input/output；declared P 有 cacheRead | input/output = LiteLLM、cacheRead = P |
@@ -75,7 +75,7 @@
 | G20 | LKG outage（canonical 组成） | basis canonical/derived；catalog unavailable；proof 不变 | configured-lkg |
 | G20b | LKG 混合组成 | context canonical、output serving、price litellm-declared；只改 LiteLLM 价格 | 整份 reject |
 | G20c | LKG serving 声明 | 声明不变 → 恢复；移除/改变 → reject | — |
-| G20d | LKG constraint 指纹 | `litellm_params.max_tokens` 改变 | reject |
+| G20d | LKG enforcement 指纹 | `litellm_params.max_input_tokens`（hard-enforced）改变 → reject；`reasoning_effort` / `max_tokens`（operator default）改变 → 仍有效 | — |
 | G20e | LKG 未被引用记录变化 | live catalog 中无关 provider 记录变化，registry digest 不变 | 仍有效 |
 | G20f | LKG registry digest | live registry entry 内禀值变化 | reject |
 | G20g | schema 7 / 缺 proof / 未知 basis | — | fail closed |
@@ -85,6 +85,14 @@
 | G23 | 确定性 | 打乱 providers/models key 与 deployment 顺序 | 结果逐字节相同 |
 | G24 | 无 heuristic | registry `labA/x-pro`；route `x` | 0 命中 |
 | G25 | model_name 非证据 | route 缺失、`model_name` 等于 registry 裸 id | 不 proven |
+| G26 | qualified 无 adapter 证据 | route `some-private-provider/foo`，无 `custom_llm_provider` 或不匹配第一段；registry 有 `labA/foo` | 只试 full；不取尾段；0 命中 → unproven |
+| G27 | adapter 证据后才取余串 | route `openrouter/labA/x`，`custom_llm_provider: openrouter` | proven `labA/x`；serving unproven |
+| G28 | base_model_omit | serving 记录由 `base_model = tencent/hy3` + `base_model_omit=[\"limit.input\"]` 生成；canonical `tencent/hy3` 有 input | input 保持缺失；不回填 canonical；诊断说明 omit |
+| G29 | canonical/serving 矛盾（事实相同） | deployment → `labA/x`；declared P 记录 `canonical_model_id=labA/y`；x/y 事实全同 | identity conflict → ambiguous → withheld（事实相等不是 identity 关系） |
+| G30 | 跨维度替代禁止（LiteLLM-only） | registry 无；serving 无声明；LiteLLM 声明 max_input/max_output，无 context | context missing → withheld；不拿 max_input_tokens 当 context |
+| G31 | operator default 合并序 | `litellm_params.reasoning_effort: max` + 请求覆盖（LiteLLM 剥 thinking） | Core 不依赖该键产生任何发布事实 |
+| G32 | enforcement 矩阵未知键 | `litellm_params` 出现矩阵未列出的键 | 不产生值/收窄/冲突 |
+| G33 | catalog 未来顶层 key | catalog 多出 `generatedAt`/`schemaVersion` 等未知顶层 key | 仍判 complete；未知 key 忽略 |
 
 ## C — Catalogue-wide 门禁
 

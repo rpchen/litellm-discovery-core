@@ -113,7 +113,7 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 - **THEN** the entry's proof records the serving declaration and record digest (the operator declaration proves serving; this replaces the former `fallback-serving` grading), and it restores only if every live deployment still declares the same `models_dev_provider`
 
 #### Scenario: Persisted authority keeps authoritative entries restorable
-- **WHEN** an entry whose fields have `canonical`, `serving`, `litellm-declared`, `derived`, or `constraint-narrowed` basis is evaluated during a compatible metadata outage and every proof component re-proves
+- **WHEN** an entry whose fields have `canonical`, `serving`, `litellm-declared`, `derived`, or `enforcement-narrowed` basis is evaluated during a compatible metadata outage and every proof component re-proves
 - **THEN** Core restores the whole stored spec under the established LKG policy
 
 #### Scenario: Persisted evidence authority is validated as schema-critical

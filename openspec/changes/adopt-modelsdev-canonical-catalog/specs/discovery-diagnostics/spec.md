@@ -3,9 +3,9 @@
 ## MODIFIED Requirements
 
 ### Requirement: source visibility
-Core SHALL report field-level provenance for protocol, reasoning support and levels, capabilities, context/input/output limits, pricing, and release metadata, and SHALL report as separate observational fields: the canonical model identity and its evidence kind (`qualified-deployment`, `registry-unique`, `serving-relation`, or none), the wire-ID parse metadata (removed route segment, `custom_llm_provider`) labelled as non-evidence, the serving status (`declared`, `declared-unmatched`, `serving-ambiguous`, or `unproven`) with the serving provider and record when present, the reasoning level state (`unknown`, `known`, fixed effort), unproven diagnostic candidate records, and the catalog shape (`complete`, `providers-only`, `unavailable`).
+Core SHALL report field-level provenance for protocol, reasoning support and levels, capabilities, context/input/output limits, pricing, and release metadata, and SHALL report as separate observational fields: the canonical model identity and its evidence kind (`qualified-deployment`, `registry-unique`, `serving-relation`, or none), the wire-ID parse metadata (removed route segment, `custom_llm_provider`) labelled as non-evidence, the serving status (`declared`, `declared-unmatched`, `serving-ambiguous`, or `unproven`) with the serving provider and record when present, the reasoning level state (`unknown`, `known`), the operator-default effort when declared, unproven diagnostic candidate records, and the catalog shape (`complete`, `providers-only`, `unavailable`).
 
-Every field names its basis — `serving`, `canonical`, `litellm-declared`, `derived`, `constraint-narrowed`, or `unknown` — and every evidence item names its origin class; unproven provider records appear only as diagnostic candidates and never as evidence of a resolved value.
+Every field names its basis — `serving`, `canonical`, `litellm-declared`, `derived`, `enforcement-narrowed`, or `unknown` — and every evidence item names its origin class; unproven provider records appear only as diagnostic candidates and never as evidence of a resolved value.
 
 #### Scenario: mixed metadata sources
 - **WHEN** LiteLLM supplies limits and prices while models.dev supplies reasoning support and release metadata
@@ -33,11 +33,11 @@ Every field names its basis — `serving`, `canonical`, `litellm-declared`, `der
 
 #### Scenario: fallback-serving resolution names its origin
 - **WHEN** a field value comes from LiteLLM declarations or is narrowed by a runtime constraint while unproven provider records exist
-- **THEN** the field basis is `litellm-declared` or `constraint-narrowed`, the message names that source, and no unproven provider record is presented as having decided the value
+- **THEN** the field basis is `litellm-declared` or `enforcement-narrowed`, the message names that source, and no unproven provider record is presented as having decided the value
 
-#### Scenario: pinned reasoning effort is explained
+#### Scenario: endpoint default effort is explained
 - **WHEN** a deployment declares `litellm_params.reasoning_effort`
-- **THEN** diagnostics report the fixed effort and that no selectable levels are published
+- **THEN** diagnostics report it as an endpoint default that requests may override, never as a pin, a level set, or a narrowed value
 
 ### Requirement: degraded enrichment
 Core SHALL make missing, empty, or registry-less models.dev metadata observable without preventing LiteLLM-only discovery.
