@@ -19,7 +19,9 @@ import {
   classifyMetadataFailure,
   createLastKnownGoodEntry,
   createLastKnownGoodStore,
+  isLKGEntryCompatible,
   isNormallyPublishable,
+  isPublicationEvidenceAuthority,
   lastKnownGoodKey,
   metadataFailureFor,
   resolveConfigurationWithLKG,
@@ -1816,5 +1818,85 @@ describe("publication: fixture regression", () => {
       expect(blocked.assessment.publishable).toBeFalse()
       expect(isNormallyPublishable(blocked.assessment.status)).toBeFalse()
     }
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// Schema-7 runtime guard for persisted evidence authority (review blocker)
+// ---------------------------------------------------------------------------
+
+describe("LKG evidence authority runtime guard", () => {
+  function localSpec() {
+    return buildModelSpecs(
+      { data: [{ model_name: "m", litellm_params: { model: "openai/m" }, model_info: { mode: "chat", ...COMPLETE_INFO } }] },
+      {},
+      options,
+    )[0]!
+  }
+
+  function forgedAuthority(evidenceAuthority: unknown, overrides: Record<string, unknown> = {}) {
+    const spec = localSpec()
+    const base = {
+      schemaVersion: PUBLICATION_SCHEMA_VERSION,
+      modelName: "m",
+      stableIdentity: "openai/m",
+      canonicalID: "m",
+      providerID: "openai",
+      fetchedAt: new Date(1000).toISOString(),
+      fetchedAtEpochMs: 1000,
+      spec,
+      captured: {
+        tools: "supported",
+        reasoning: "unsupported",
+        inputModalitiesKnown: true,
+        outputModalitiesKnown: true,
+        inputModalities: [...spec.capabilities.input],
+        outputModalities: [...spec.capabilities.output],
+        context: spec.limit.context,
+        input: spec.limit.input,
+        output: spec.limit.output,
+      },
+      provenanceDetail: "forged",
+    }
+    return { ...base, evidenceAuthority, ...overrides } as unknown as LastKnownGoodEntry
+  }
+
+  test("schemaVersion=7 + missing evidenceAuthority is incompatible", () => {
+    const entry = forgedAuthority(undefined)
+    expect(isLKGEntryCompatible(entry)).toBeFalse()
+    expect(validateLastKnownGood(entry, bareGroup("m", "openai/m"), undefined, 2000, options, {}).valid).toBeFalse()
+  })
+
+  test("schemaVersion=7 + invalid evidenceAuthority is incompatible", () => {
+    for (const invalid of ["authoritative", "fallback", "", 1, null, "FALLBACK-SERVING"]) {
+      const entry = forgedAuthority(invalid)
+      expect(isLKGEntryCompatible(entry)).toBeFalse()
+      const validation = validateLastKnownGood(entry, bareGroup("m", "openai/m"), undefined, 2000, options, {})
+      expect(validation.valid).toBeFalse()
+      // Missing/unknown authority never defaults to authoritative: the
+      // store path (compatibility guard) and the defensive validation both
+      // reject it.
+      expect(validation.reason).toContain("authority")
+    }
+  })
+
+  test("corrupted authority LKG is never configured-lkg through the outage path", () => {
+    const store = createLastKnownGoodStore()
+    // Persist a well-formed-looking entry whose authority field was corrupted.
+    store.set(lastKnownGoodKey("m"), forgedAuthority(undefined) as never)
+    const live = assessModelConfiguration(bareGroup("m", "openai/m"), {}, options, {
+      catalogAvailable: false,
+      failure: metadataFailureFor("timeout"),
+    })
+    const resolved = resolveConfigurationWithLKG(live, bareGroup("m", "openai/m"), {}, options, store, 2000)
+    expect(resolved.assessment.usingLKG ?? false).toBeFalse()
+    expect(resolved.assessment.publishable).toBeFalse()
+    expect(resolved.lkg).toBeUndefined()
+  })
+
+  test("well-formed authorities still pass the guard", () => {
+    expect(isLKGEntryCompatible(forgedAuthority("authoritative-intrinsic"))).toBeTrue()
+    expect(isLKGEntryCompatible(forgedAuthority("fallback-serving"))).toBeTrue()
   })
 })

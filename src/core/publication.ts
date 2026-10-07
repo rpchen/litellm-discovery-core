@@ -733,6 +733,16 @@ export function isNormallyPublishable(status: ModelConfigurationStatus): boolean
 export type PublicationEvidenceAuthority = "authoritative-intrinsic" | "fallback-serving"
 
 /**
+ * The only accepted persisted values of `LastKnownGoodEntry.evidenceAuthority`.
+ * Schema 7 makes the field semantically critical: a missing or unknown value
+ * must never fall back to `authoritative-intrinsic`, or a corrupted
+ * fallback-serving snapshot could dodge the outage fail-closed policy.
+ */
+export function isPublicationEvidenceAuthority(value: unknown): value is PublicationEvidenceAuthority {
+  return value === "authoritative-intrinsic" || value === "fallback-serving"
+}
+
+/**
  * Grade the evidence of a selection. Live assessment, LKG capture, price
  * fallback eligibility, and diagnostics all read this single gate, so no
  * caller can drift into re-deriving the authority table.
@@ -1011,6 +1021,12 @@ export function validateLastKnownGood(
   if (entry.schemaVersion !== PUBLICATION_SCHEMA_VERSION) {
     return { valid: false, reason: "schema-incompatible LKG entry", ageMs }
   }
+  // Defensive re-check independent of the compatibility guard: a corrupted
+  // or hand-built entry whose persisted authority is missing/unknown must
+  // fail closed and must never default to authoritative-intrinsic.
+  if (!isPublicationEvidenceAuthority((entry as { evidenceAuthority?: unknown }).evidenceAuthority)) {
+    return { valid: false, reason: "LKG evidence authority is missing or unknown", ageMs }
+  }
   if (typeof entry.modelName !== "string" || entry.modelName.length === 0) {
     return { valid: false, reason: "LKG entry has no provable model identity", ageMs }
   }
@@ -1259,6 +1275,7 @@ export function isLKGEntryCompatible(value: unknown): value is LastKnownGoodEntr
     typeof value.providerID === "string" &&
     typeof value.fetchedAt === "string" &&
     typeof value.fetchedAtEpochMs === "number" &&
+    isPublicationEvidenceAuthority(value.evidenceAuthority) &&
     isCapturedVerdict(value.captured)
 }
 

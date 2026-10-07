@@ -352,6 +352,10 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 - **WHEN** an LKG entry is captured from a canonical-original record or an explicit-provider record with a proven canonical relation (or from LiteLLM-only endpoint declarations), and a compatible metadata outage follows
 - **THEN** the entry persists `evidenceAuthority: authoritative-intrinsic` and restores under the established authoritative LKG policy
 
+#### Scenario: Persisted evidence authority is validated as schema-critical
+- **WHEN** a stored entry claims the current schema version but its `evidenceAuthority` field is missing or not one of `authoritative-intrinsic` / `fallback-serving`
+- **THEN** both the compatibility guard and the defensive validation reject the entry fail-closed, and a corrupted authoritied snapshot is never restored as `configured-lkg`
+
 ### Requirement: Configuration states and provenance
 Core SHALL expose per-model configuration states and per-field provenance answering where each key value came from, including live, fallback, canonical-inheritance, and LKG chains.
 
