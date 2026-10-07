@@ -29,14 +29,14 @@ models.dev 当前（repo `sst/models.dev@450aa1d`，2026-10-07）显式分成三
 - **取消未证明记录的供给资格**：无论 canonical 是否存在，未证明的 provider 记录（OpenCode、OpenRouter、unique、first-party、同名精确匹配、变体）都不能提供任何发布事实；未登记模型只能经已声明 serving 记录或完整 LiteLLM 声明发布，否则 withheld；同名记录只作为诊断候选。
 - **Wire-ID 解析与证据分离**：route adapter 段与 `custom_llm_provider` 只是解析 wire id 的 parse metadata，永不证明 lab、canonical identity 或 serving provider；证明只来自 registry 精确命中与运维者声明。
 - **字段级 resolution matrix**：limit.context/input/output、tools、reasoning support、input/output modalities、reasoning levels、price、release date 逐字段冻结 base 顺序（serving → canonical → litellm-declared → unknown）、缺字段回落、modalities 完整集合语义与 gate 归属。
-- **Reasoning controls**：canonical `reasoning=true` 只证明支持推理；可选档位只来自已证明 serving 记录的 `reasoning_options`；`litellm_params.reasoning_effort` 是 operator default（请求可覆盖），永不产生档位或 pin。
-- **Runtime Enforcement Matrix**：`litellm_params` 不整体等于 hard constraint；逐键冻结为 hard-enforced / operator default / declared-observable / unknown，只有 hard-enforced 键收窄。
-- **无跨维度替代**：`max_input_tokens` 是 input capacity，永不当作 context；LiteLLM-only 无 context 事实即 withheld。
+- **Reasoning controls**：canonical `reasoning=true` 只证明支持推理；可选档位只来自已证明 serving 记录的 `reasoning_options`；`litellm_params.reasoning_effort` 是 operator configuration（请求可覆盖），永不产生档位或 pin。
+- **Runtime Enforcement Matrix（空证明集）**：`litellm_params` 不整体等于 hard constraint；enforcement 证明集从空开始，全部键归 operator configuration——不收窄、不产生事实、不进 LKG 指纹；晋升需 exact source path + 负向突破测试的 OpenSpec delta。
+- **无跨维度替代**：`max_input_tokens` 是 input capacity，永不当作 context；`limit.input` 缺失一律 unknown（models.dev 无 absent==context 契约，`base_model_omit` 删除不可撤销）；LiteLLM-only 无 context 事实即 withheld。
 - **Serving view 最终性**：已证明 serving 记录是 models.dev 生成完成的最终视图（含 `base_model_omit` 删除），Core 不重做继承、缺字段不回填 canonical。
 - **Identity 矛盾 fail closed**：deployment 证据与已证明 serving 记录的 `canonical_model_id` 指向不同 registry key 时一律 identity conflict，事实相等不构成等价。
 - **Single resolver**：新增唯一 `resolveModel()`，`ModelSpec`、publication gate、diagnostics、LKG capture/validation 消费同一份 `ResolvedModel`。
 - **LKG schema 8 proof composition（group-wide）**：持久化产生 spec 的证明组合（逐 deployment canonical 证据与 registry 摘要、逐 deployment serving 声明与记录摘要、逐字段 basis、enforcement/LiteLLM 指纹）；整体逐组件重证明，绝不按字段拼接；v≤7 fail closed 后重新捕获。
-- **删除**：`resolveInheritedRecord` 的跨 provider 字段继承、rule B（适配器前缀当 namespace）、`canonical-original` 作为 serving 证明、基于 relation fan-out 的选择、OpenCode/OpenRouter/unique 的发布供给、`max_input_tokens → context` 的 LiteLLM-only 替代、`reasoning_effort` 当 pin 的语义。
+- **删除**：`resolveInheritedRecord` 的跨 provider 字段继承、rule B（适配器前缀当 namespace）、`canonical-original` 作为 serving 证明、基于 relation fan-out 的选择、OpenCode/OpenRouter/unique 的发布供给、`max_input_tokens → context` 替代、`limit.input = context` 推导、`reasoning_effort` 当 pin 的语义、`litellm_params` 键当 enforcement 的假设。
 
 **BREAKING**（Core 公共 API 与语义）：`SelectedModelRecord.selectionSource` 语义拆分为 identity evidence 与 serving proof；`PUBLICATION_SCHEMA_VERSION = 8`；`buildModelSpecs` 改由 resolver 派生；models.dev 输入从 provider map 变为 catalog。adapter 需随新 Core SHA 迁移（见 design「Downstream impact」）。
 

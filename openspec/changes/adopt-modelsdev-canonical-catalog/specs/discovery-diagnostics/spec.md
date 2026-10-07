@@ -33,7 +33,7 @@ Every field names its basis — `serving`, `canonical`, `litellm-declared`, `der
 
 #### Scenario: fallback-serving resolution names its origin
 - **WHEN** a field value comes from LiteLLM declarations or is narrowed by a runtime constraint while unproven provider records exist
-- **THEN** the field basis is `litellm-declared` or `enforcement-narrowed`, the message names that source, and no unproven provider record is presented as having decided the value
+- **THEN** the field basis is `litellm-declared` (no key is `enforcement-narrowed` until a promotion delta exists), the message names that source, and no unproven provider record is presented as having decided the value
 
 #### Scenario: endpoint default effort is explained
 - **WHEN** a deployment declares `litellm_params.reasoning_effort`

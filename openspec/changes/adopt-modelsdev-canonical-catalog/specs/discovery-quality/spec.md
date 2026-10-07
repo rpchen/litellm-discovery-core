@@ -36,7 +36,7 @@ Core SHALL resolve reasoning support independently from reasoning levels. Reason
 - **THEN** Core reports reasoning unsupported as an enforcement-narrowed value
 
 ### Requirement: token-limit semantics
-Core SHALL preserve separate context, input, and output token-limit meanings and SHALL compare evidence only within the same dimension. LiteLLM `max_input_tokens` is input capacity; it SHALL be compared with `limit.input` (or with the context when no input capacity is declared) and SHALL become a context value only in the documented LiteLLM-only fallback when no models.dev value exists.
+Core SHALL preserve separate context, input, and output token-limit meanings and SHALL compare evidence only within the same dimension. LiteLLM `max_input_tokens` is input capacity; it SHALL be compared only with a declared `limit.input` and SHALL NOT be compared with, nor substituted for, the total context under any circumstances. A missing `limit.input` SHALL stay unknown: models.dev defines `limit.input` as an optional maximum-input-tokens field with no absent-equals-context contract, provider syncs intentionally leave it undefined, and `base_model_omit` deletions must stay deletions. Host consumers that need an input number resolve that in the adapter mapping layer, not by inventing a canonical fact.
 
 #### Scenario: total context differs from input limit
 - **WHEN** the canonical registry supplies total context and an input capacity and LiteLLM declares an equal `max_input_tokens`
@@ -45,6 +45,10 @@ Core SHALL preserve separate context, input, and output token-limit meanings and
 #### Scenario: LiteLLM input differs from canonical input
 - **WHEN** LiteLLM declares a `max_input_tokens` different from the canonical input capacity
 - **THEN** Core records an input-dimension resolved discrepancy and never a context discrepancy
+
+#### Scenario: Missing canonical input stays unknown
+- **WHEN** the canonical entry declares no `limit.input` (or a proven serving record omits it through `base_model_omit`) and LiteLLM declares no `max_input_tokens`
+- **THEN** Core keeps the input fact unknown and never derives it from the total context
 
 ### Requirement: record-level selection determinism
 Within a proven serving provider, Core SHALL select the serving record by exact wire id first; otherwise, among records whose `canonical_model_id` equals the canonical identity, Core SHALL pick deterministically only when their serving publication-critical facts (limits, modalities, tool/reasoning verdicts, reasoning options, cost) are equivalent, and SHALL keep the provider match set unresolved when they differ materially. Neither catalog object iteration order nor the first record may decide, and a shortest-id tie-break SHALL never override an exact wire id match.
@@ -66,11 +70,11 @@ Within a proven serving provider, Core SHALL select the serving record by exact 
 - **THEN** Core selects `x-sol`
 
 ### Requirement: runtime constraints never conflict with serving metadata
-Resolution SHALL separate LiteLLM descriptive declarations from proven endpoint runtime constraints: a constraint narrows the effective value of its own dimension and never participates in same-level conflict judgment, whatever the base (proven serving, canonical, or LiteLLM-declared). Unproven provider records never form a base and therefore never conflict with anything.
+Resolution SHALL separate LiteLLM descriptive declarations from proven runtime enforcement. A key promoted through the runtime enforcement matrix of the `modelsdev-catalog` capability narrows the effective value of its own dimension and never participates in same-level conflict judgment, whatever the base (proven serving, canonical, or LiteLLM-declared). The proven set starts empty, so until a promotion delta merges, no `litellm_params` key narrows anything; `litellm_params.max_tokens`, `max_output_tokens`, and `max_completion_tokens` are request-overridable operator configuration and never cap the output. Unproven provider records never form a base and therefore never conflict with anything.
 
 #### Scenario: fallback serving limit narrowed by an enforced cap
-- **WHEN** the base output limit comes from a proven serving record or the canonical registry and the deployment's `litellm_params` declares a smaller enforced `max_tokens`
-- **THEN** Core publishes the narrowed effective value and records an enforcement-narrowed resolution, not an unresolved conflict
+- **WHEN** a `litellm_params` key has been promoted to hard-enforced by a runtime-enforcement delta and the base limit of that key's dimension comes from a proven serving record or the canonical registry
+- **THEN** Core publishes the narrowed effective value and records an enforcement-narrowed resolution, not an unresolved conflict; before such a promotion exists the resolved value stays unchanged and the key appears only in diagnostics
 
 #### Scenario: descriptive disagreement with fallback serving still conflicts
 - **WHEN** an unproven provider record (including an exact same-name OpenCode or OpenRouter record) declares a value different from a LiteLLM descriptive declaration

@@ -21,6 +21,25 @@ Core SHALL record, for every publication-critical field, which source decided it
 - **WHEN** only a model name, family substring, or neighbor-model value suggests a capability or identity
 - **THEN** Core does not treat models.dev as authoritative and never fills values from the guess
 
+### Requirement: Deployment constraints are separate from intrinsic facts
+Core SHALL keep proven runtime enforcement as a distinct fact class. Only `litellm_params` keys promoted through the runtime enforcement matrix of the `modelsdev-catalog` capability — an OpenSpec delta carrying the exact source path where LiteLLM reads that deployment key to reject or rewrite a breaking request, plus an automated negative breakthrough test — may narrow an effective value, a narrowing key SHALL NOT be reported as a conflict, and the proven set starts empty so no key narrows anything before such a delta exists. A descriptive `model_info` declaration SHALL never narrow or veto an authoritative intrinsic value.
+
+#### Scenario: Runtime constraint narrows the effective configuration
+- **WHEN** a `litellm_params` key has been promoted to hard-enforced and the operator's deployment configuration declares a value smaller than the model's intrinsic value in that key's dimension
+- **THEN** Core publishes the smaller effective value, reports the enforcement, and keeps the model publishable
+
+#### Scenario: Descriptive declaration does not become a hard cap
+- **WHEN** only `model_info` declares a limit that differs from the authoritative intrinsic value
+- **THEN** Core does not treat it as an enforced cap; the intrinsic value is selected and the difference is recorded
+
+#### Scenario: Dimensions are never mixed
+- **WHEN** a promoted enforcement key exists for one limit dimension
+- **THEN** it narrows only that dimension; total context, input capacity, and output limit are never compared against each other
+
+#### Scenario: Unpromoted configured keys never narrow
+- **WHEN** the operator's deployment configuration declares a limit or capability key that has not been promoted
+- **THEN** Core resolves the field from the field resolution matrix alone, keeps the model publishable when otherwise complete, and lists the key in diagnostics as operator configuration
+
 ### Requirement: Trusted Last Known Good reuse
 Core SHALL reuse a previously verified complete configuration while live enrichment is unavailable, under all of the following: the entry was captured from a resolution that passed the current publication gate; the live group's own stable identity evidence is provable and unchanged; schema version is compatible (schema 8); every component of the entry's proof composition re-proves (deployment input, serving declaration, runtime constraint and LiteLLM fingerprints, and with a live catalog the registry and serving record digests); and no canonical intrinsic fact, proven serving fact, or proven runtime constraint contradicts the entry. Age SHALL NOT be a validity condition. LKG SHALL NOT resurrect a model the current LiteLLM directory does not serve, and a mismatch SHALL fail closed as withheld.
 
