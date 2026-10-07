@@ -132,11 +132,16 @@ function buildScenario(spec: {
   }
 }
 
-function runChecker(root: string) {
-  return spawnSync(process.execPath, [path.resolve("scripts/check-openspec-closure.mjs")], {
-    cwd: root,
+function runChecker(root: string, cwd = root) {
+  const checker = cwd === root
+    ? path.resolve("scripts/check-openspec-closure.mjs")
+    // A checker copy must exist in the temp scenario; scenarios without one
+    // resolve the repo copy relative to the real repository layout.
+    : path.resolve(root, "scripts/check-openspec-closure.mjs")
+  return spawnSync(process.execPath, [checker], {
+    cwd,
     encoding: "utf8",
-    env: { ...process.env, OPENSPEC_CHANGES_DIR: path.join(root, "openspec", "changes") },
+    env: { ...process.env, OPENSPEC_CHANGES_DIR: path.join(cwd, "openspec", "changes") },
     stdio: ["ignore", "pipe", "pipe"],
   })
 }
@@ -260,4 +265,72 @@ describe("hybrid chronology gate (Git primary, fixture refines collisions)", () 
     const r = scenario.result()
     expect(r.status).toBe(0)
   })
+})
+// ---------------------------------------------------------------------------
+// Per-history fixture-refined counting + strict committed-fixture scope
+// (chronology-gate-git-primary follow-up)
+// ---------------------------------------------------------------------------
+
+describe("committed fixture scope and refined counting", () => {
+  function runWithCommittedFixture(fixture: unknown) {
+    const built = buildScenario({
+      archives: [
+        { name: "2026-01-01-a", commit: "a", content: ADDED_DELTA("a") },
+        { name: "2026-01-02-b", commit: "b", content: MODIFIED_DELTA("b") },
+      ],
+      fixture,
+    })
+    return built.result()
+  }
+
+  test("a committed fixture pair across DISTINCT introduction commits fails scope validation (even matching Git)", () => {
+    // a < b is Git-provable (distinct commits, ancestry). Re-declaring it in
+    // the committed fixture is out of scope even though the direction agrees.
+    const r = runWithCommittedFixture({ edges: [["2026-01-01-a", "2026-01-02-b"]] })
+    expect(r.status).not.toBe(0)
+    expect(r.stdout + r.stderr).toContain("commits differ (or are Git-unprovable)")
+  })
+
+  test("the opposite-direction distinct-commit pair fails with the ancestry contradiction message", () => {
+    const r = runWithCommittedFixture({ edges: [["2026-01-02-b", "2026-01-01-a"]] })
+    expect(r.status).not.toBe(0)
+    expect(r.stdout + r.stderr).toContain("contradicts Git provenance")
+    expect(r.stdout + r.stderr).toContain("commits differ")
+  })
+
+  test("same-commit collision + committed fixture refines exactly one history (fixture-refined = 1)", () => {
+    const { result } = buildScenario({
+      archives: [
+        { name: "2026-01-01-a", commit: "a", content: ADDED_DELTA("a") },
+        { name: "2026-01-02-b", commit: "b", content: MODIFIED_DELTA("b") },
+      ],
+      collapse: [["2026-01-01-a", "2026-01-02-b"]],
+      fixture: { edges: [["2026-01-01-a", "2026-01-02-b"]] },
+    })
+    const r = result()
+    expect(r.status).toBe(0)
+    expect(r.stdout).toMatch(/1 (injected-)?fixture-refined chronology histories/)
+    expect(r.stdout).toMatch(/(ancestry-resolved chronology histories)/)
+    // The ancestry-resolved count must not have absorbed the fixture-refined one:
+    // this repo has exactly one multi-event history and it is the collision.
+    expect(r.stdout).toMatch(/0 ancestry-resolved chronology histories/)
+  })
+
+  test("Git-provable history counts ancestry-resolved and never fixture-refined", () => {
+    // Distinct commits a<b<c touching the same requirement three times: Git
+    // resolves the whole identity chronology; the committed fixture is empty.
+    const { result } = buildScenario({
+      archives: [
+        { name: "2026-01-01-a", commit: "a", content: ADDED_DELTA("a") },
+        { name: "2026-01-02-b", commit: "b", content: MODIFIED_DELTA("b") },
+        { name: "2026-01-03-c", commit: "c", content: MODIFIED_DELTA("c") },
+      ],
+      fixture: { edges: [] },
+    })
+    const r = result()
+    expect(r.status).toBe(0)
+    expect(r.stdout).toMatch(/1 ancestry-resolved chronology histories/)
+    expect(r.stdout).toMatch(/0 (injected-)?fixture-refined chronology histories/)
+  })
+
 })
