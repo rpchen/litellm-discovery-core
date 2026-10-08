@@ -8,12 +8,12 @@
 
 | ID | 部署形态 | 期望 identity | 期望 serving | 期望 effective ctx/in/out | levels | 期望结果 | 当前 main 行为 |
 |---|---|---|---|---|---|---|---|
-| R1 mimo-v2.6-pro | route `mimo-v2.6-pro`，`custom_llm_provider=openai`；LiteLLM 1048576/131072 | `xiaomi/mimo-v2.6-pro` registry-unique；parse metadata `openai` | unproven | 1048576/1048576/131072 | unknown | configured；0 discrepancy；OpenRouter 1050000 不出现；价格=LiteLLM | invalid-metadata |
+| R1 mimo-v2.6-pro | route `mimo-v2.6-pro`，`custom_llm_provider=openai`；LiteLLM 1048576/131072 | `xiaomi/mimo-v2.6-pro` registry-unique；parse metadata `openai` | unproven | 1048576/1048576（registry 无 `limit.input` → LiteLLM 补缺，litellm-declared）/131072 | unknown | configured；0 discrepancy；OpenRouter 1050000 不出现；价格=LiteLLM | invalid-metadata |
 | R2 mimo-v2.6-flash | 同上 | `xiaomi/mimo-v2.6-flash` | unproven | 1048576/1048576/131072 | unknown | configured；`opencode/mimo-v2.6-flash-free` 不出现在 resolution（也不是诊断候选：wire id 不同） | invalid-metadata（选中 -free） |
-| R3 minimax-m3 | route `minimax-m3`，`base_model=minimax-m3`；LiteLLM 1000000/131072 | `minimax/MiniMax-M3` | unproven | 1048576/1048576/512000 | unknown | configured；input、output resolved discrepancy；`opencode/minimax-m3` 只作诊断候选 | invalid-metadata |
-| R3b + `models_dev_provider: minimax` | — | 同上 | declared `minimax/MiniMax-M3` | 1000000/1000000/512000 | known[]（toggle） | configured；context/output basis serving；output discrepancy | invalid-metadata |
-| R3c + `models_dev_provider: opencode` | — | 同上 | declared `opencode/minimax-m3` | 512000/512000/128000 | known[] | configured；input/output discrepancy；cacheRead 来自 OpenCode | — |
-| R3d + `litellm_params.max_input_tokens: 900000`、`max_tokens: 65536`（均 operator configuration，D7a 空证明集） | — | 同上 | unproven | 1048576/**1048576**/512000（两键都不收窄；`max_tokens` 不改 output） | unknown | configured；两键只进诊断，不产生 discrepancy/conflict | — |
+| R3 minimax-m3 | route `minimax-m3`，`base_model=minimax-m3`；LiteLLM 1000000/131072 | `minimax/MiniMax-M3` | unproven | 1048576/**1000000**/512000（input = LiteLLM 同维度补缺，basis litellm-declared） | unknown | configured；input、output resolved discrepancy；`opencode/minimax-m3` 只作诊断候选 | invalid-metadata |
+| R3b + `models_dev_provider: minimax` | — | 同上 | declared，record resolved（精确 wire id） | 1000000/1000000/512000（serving 记录有 `limit.input` → input = serving） | known[]（toggle） | configured；context/output basis serving；output discrepancy | invalid-metadata |
+| R3c + `models_dev_provider: opencode` | — | 同上 | declared，record resolved（精确 wire id；`canonical_model_id` 一致） | 512000/1000000/128000（serving 记录无 `limit.input` → serving-absence policy：LiteLLM 同维度补缺，不回填 canonical） | known[] | configured；output discrepancy；cacheRead 来自 OpenCode | — |
+| R3d + `litellm_params.max_input_tokens: 900000`、`max_tokens: 65536`（均 operator configuration，D7a 空证明集） | — | 同上 | unproven | 1048576/**1000000**/512000（两键都不收窄；input 仍 = LiteLLM `model_info.max_input_tokens` 补缺；`max_tokens` 不改 output） | unknown | configured；两键只进诊断，不产生 discrepancy/conflict | — |
 | R4 deepseek-v4.1-flash（serving 未证明） | route + `base_model=deepseek-v4.1-flash`；`allowed_openai_params:[reasoning_effort]` | `deepseek/deepseek-v4.1-flash` | unproven | 1000000/**unknown**/384000（registry 无 `limit.input`，不推导） | unknown（allowed_openai_params 不生成档位） | **configured，output=384000（canonical）**——**行为变化测试**：前一阶段冻结的 393216 是 serving SKU 值，仅 serving 证明后可用；注释引用 design Risks，禁止回改 | configured 1000000/393216，档位 low/high/max |
 | R4b deepseek-v4.1-flash（serving 显式证明） | 同上 + `models_dev_provider: deepseek` | 同上 | declared（deepseek 内 parsed-key/relation 精确命中） | 1000000/1000000/**393216**（first-party serving） | 来自 first-party 记录 | configured，output=393216（serving override） | — |
 | R5 glm-5.3-flash | route `glm-5.3-flash` | `zhipuai/glm-5.3-flash` | unproven | 1000000/1000000/131072 | unknown | configured；modalities 来自 registry | configured，档位 low/high/max |
@@ -57,7 +57,7 @@
 | G13c | 跨 deployment 不一致 | 两 deployment `max_output_tokens` 不同 | conflict；withheld |
 | G14 | enforcement 收窄（晋升后） | 假设某键已按 D7a 晋升并声明（合成 delta fixture） | 按该 delta 语义收窄（**当前无此键**；本行仅在实施时作为矩阵驱动的占位） |
 | G14b | operator configuration 不收窄 | `litellm_params.max_tokens` 65536 < output base 512000；`reasoning_effort: high`；`supports_function_calling=false` | output 512000 不变；levels 不变；tools 不变；三者只进诊断 |
-| G14c | input 键不收窄 | `litellm_params.max_input_tokens` 900000 < context | input 保持 1048576；context 不变；只进诊断 |
+| G14c | input 键不收窄 | `litellm_params.max_input_tokens` 900000 < context；`model_info.max_input_tokens` 1000000 | input 保持 1000000（litellm-declared 补缺值不受 operator-configuration 键影响）；context 不变；该键只进诊断 |
 | G15 | 维度隔离 | registry context 400k、input 272k；LiteLLM `max_input_tokens` 272k / 300k | 0 discrepancy / 只报 input discrepancy |
 | G16 | reasoning 支持、档位已知为空 | serving 记录 `[toggle]` 或 `[]` | supported；levels known[] |
 | G17 | provider-specific 档位 | serving declared P（档位 a,b）；另一 provider 档位 c | variants = a,b |
@@ -93,12 +93,17 @@
 | G31 | operator configuration 合并序 | `litellm_params.reasoning_effort: max` + 请求覆盖（LiteLLM 剥 thinking） | Core 不依赖该键产生任何发布事实 |
 | G32 | enforcement 矩阵未知键 | `litellm_params` 出现矩阵未列出的键 | 不产生值/收窄/冲突 |
 | G33 | catalog 未来顶层 key | catalog 多出 `generatedAt`/`schemaVersion` 等未知顶层 key | 仍判 complete；未知 key 忽略 |
-| G34 | input 不推导 | canonical proven 且 registry 无 `limit.input`；LiteLLM 无 `max_input_tokens` | input unknown；绝不 = context；发布不因 input 缺失 withheld（非 gated） |
-| G35 | input 不推导（serving omit） | serving proven 且记录因 `base_model_omit` 无 `limit.input` | input unknown；不回填 canonical、不 = context |
+| G34 | input 不跨维度推导 | canonical proven 且 registry 无 `limit.input`；LiteLLM 无 `max_input_tokens` | input unknown；绝不 = context；发布不因 input 缺失 withheld（非 gated） |
+| G35 | input serving-absence | serving proven、record resolved 且记录因 `base_model_omit` 无 `limit.input`；LiteLLM 有 `max_input_tokens` | input = LiteLLM 同维度补缺（litellm-declared）；不回填 canonical、不 = context |
 | G36 | enforcement 全空 | deployment 声明 `litellm_params.max_input_tokens`/`max_tokens`/`supports_function_calling=false`/`reasoning_effort` | 所有 gated 字段值不变；无 narrowing；全部只进诊断 |
 | G37 | operator-configuration 诊断 | 同 G36 | 诊断列出键名并标注 operator configuration，不称 enforcement |
 | G38 | LKG evidence multiset | 两个 deployment route 相同但 base_model/models_dev_provider 证据不同，其一改变 | multiset 不等 → 整份 reject |
 | G39 | catalog models-only | 顶层只有 `models` | unavailable；LiteLLM-only + LKG 路径 |
+| G40 | provider 证明 ≠ record 证明 | `models_dev_provider: gatewayX`；gatewayX 只有 `x-free`（relation→`labA/x`）；wire id `x` | record unresolved；整组按 serving-unproven 解析；`x-free` 不提供任何 fact；诊断 `serving-record-unresolved` |
+| G41 | LKG litellm-only capture | R11 形态 configured 后 capture | identityKind=litellm-only、无 canonicalModelID、无 registryDigest；合法 capture |
+| G42 | LKG serving-only capture | R10c 形态 configured 后 capture | identityKind=serving-only、无 canonicalModelID、无 registryDigest、有 serving 声明+recordDigest；合法 capture |
+| G43 | LKG proof 类型不一致 | identityKind=litellm-only 却有 registryDigest；或 canonical 无 canonicalModelID | fail closed（forged） |
+| G44 | Operator-Declared Pricing | `litellm_params.input_cost_per_token` 与 `model_info.input_cost_per_token` 不同 | 用 `litellm_params`（镜像键优先）；价格键永不 narrowing 任何能力字段 |
 
 ## C — Catalogue-wide 门禁
 

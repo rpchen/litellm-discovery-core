@@ -2,6 +2,8 @@
 
 > 状态：DESIGN（第三轮修订，冻结待评审，未实施）。本设计取代 `capability-first provider fallback`、rule B（PR #30）与 `canonical-original`-as-authority 的组合模型。审计证据见 `audit.md`，验收矩阵见 `acceptance.md`。
 >
+> **Revision 5（第五轮评审后，OpenSpec 内部一致性收敛）**：① D7a 作用域拆分——enforcement（空证明集）只约束 capability/limit/control facts，`MirroredPricingParams` 的 7 个价格键按 D8 Operator-Declared Pricing 独立处理；② D6 改为分支算法：serving proven 时按 per-field serving-absence policy（永不回填 canonical），serving record unresolved 时整组按 serving-unproven 解析；③ LKG proof 改 `deploymentEvidence`（`canonicalModelID` 可选、`identityKind` = canonical/litellm-only/serving-only，`registryDigest` 可选），支持 R10b/R10c/R11 合法 capture；④ serving provider proof 与 serving record proof 拆开：relation-only 命中不证明 SKU，record = unresolved 时继续用 canonical/LiteLLM facts；⑤ 清除全部残留旧语义。
+>
 > **Revision 4（第四轮评审后，LiteLLM 源码复核）**：① **撤销 D7a 全部 hard-enforced 归类**——`get_router_model_info()` 不合并 `litellm_params` 能力键，`Deployment.__init__` 只镜像 7 个价格键，`supports_*` 请求级门读 cost-map/provider config 而非 deployment 配置；enforcement 证明集从空开始，逐键晋升需 exact source path + 负向突破测试；② 删除 `limit.input = context` 推导（models.dev 无 absent==context 契约）；③ catalog 判定改穷举三态（models-only 归 unavailable）；④ LKG deployment 证明改 evidence multiset + 持久化 `model_info.id`；⑤ DeepSeek 行为变化显式双场景 + migration note；⑥ 全文清除 Revision 2/3 残留。
 >
 > **Revision 3（第三轮评审后）**：① Runtime Enforcement Matrix 概念（D7a）：`litellm_params` 不再整体当作 runtime constraint，逐键分类 enforcement 语义；② serving 记录缺字段不再回落 canonical（serving view 是生成完成的最终视图，`base_model_omit` 不可撤销）；③ canonical/serving 矛盾一律 identity conflict，删除「事实等价 → discrepancy」例外；④ wire-id 解析不再无条件去尾/去首段，tail lookup 仅限裸值或经 parse 证据确认 adapter 前缀的 qualified 值；⑤ LKG proof 升级为 group-wide（逐 deployment 的 canonical 证据集 + serving 声明集）；⑥ 删除 `max_input_tokens → context` 的跨维度替代，LiteLLM-only 无 context 即 withheld；⑦ hygiene：`normalizeModelsDevCatalog` 忽略未知顶层 key。
@@ -39,7 +41,8 @@
 | **Canonical Model Identity** | `catalog.models` 的 key（`<lab>/<model>`） | 内禀事实索引、LKG 身份 |
 | **Intrinsic Model Facts** | `catalog.models[id]` | 默认 capability 值 |
 | **Serving Provider Facts** | 已证明 serving provider P 的 `catalog.providers[P].models[r]` | serving override 与 serving-only 字段 |
-| **Proven Runtime Enforcement** | 通过晋升门槛的 `litellm_params` 键（D7a：证明集当前**为空**） | 只收窄同维度 |
+| **Proven Runtime Enforcement** | 通过 D7a 晋升门槛的 `litellm_params` 键（证明集当前**为空**） | 只收窄同维度 |
+| **Operator-Declared Pricing** | `litellm_params` 中 `MirroredPricingParams` 的 7 个价格键（LiteLLM 显式镜像进 `model_info`） | 按 D8 独立处理；不是 enforcement，也不是 capability 事实 |
 | **LiteLLM Descriptive** | `model_info.*` | secondary evidence |
 | **Wire-ID parse metadata** | route adapter 段、`custom_llm_provider` | **只**用于解析 wire id 与诊断，永不作为证据 |
 
@@ -85,7 +88,11 @@ adapter 段与 `custom_llm_provider` 记录为 parse metadata（进入诊断）�
 ### D4 Serving provider resolution
 
 - **proven** 当且仅当组内所有 deployment 声明同一 `models_dev_provider = P`，且 `catalog.providers[P]` 存在。
-- 记录选择（只在 P 内）：① key/id 精确等于 D3.1 的 `full` → `afterAdapter` → `tail`；② 否则 P 内 `canonical_model_id == C` 的唯一记录，或多条且 serving publication-critical facts（limit、modalities、tool_call、reasoning、reasoning_options、cost）实质等价；③ 多条实质不同 → `serving-ambiguous`（withheld）；④ 0 条 → `declared-unmatched`（serving facts 未知，按 serving 未证明发布 + warning）。
+- **Provider 证明 ≠ record/SKU 证明。** 记录选择（只在 P 内）：
+  1. key/id 精确等于 D3.1 的 parsed lookup keys（full → adapter-evidenced remainder → bare）→ record **resolved**；
+  2. 无 parsed-key 命中时，P 内 `canonical_model_id == C` 的记录**只能证明 underlying canonical identity**（与 D3.3 一致），**不能证明**当前 route 的 SKU——record = **unresolved**（`serving-record-unresolved`）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断说明「provider 已声明但无精确同名记录；请用精确 wire id 或改声明」，并禁止把 relation-only 记录（`x-free`/`x-fast`/`thinking`/tier 变体）当 serving facts；canonical identity 未证明时，relation-only 命中仍可作 `serving-relation` 的 identity 证据（D3.3），但同样不提供 serving facts；
+  3. parsed-key 命中多条且 serving publication-critical facts 实质不同 → `serving-ambiguous`（withheld）；
+  4. P 无任何候选记录 → `declared-unmatched`（按 serving 未证明发布 + warning）。
 - 多 deployment 选出的 serving 记录 publication-critical facts 必须一致，否则 conflict。
 - **unproven**：无声明。此时任何 provider 记录都不提供事实。删除 rule B。
 
@@ -106,17 +113,30 @@ canonical registry absent
 
 ### D6 字段级 resolution matrix（冻结）
 
-**通用顺序**（每字段、每 deployment 组）：
+**分支算法（每字段、每 deployment 组；不再是一级联 fallback）**：
 
 ```text
-base = (serving proven ∧ serving 记录有该字段) ? serving
-     : (canonical proven ∧ registry 有该字段) ? canonical
-     : LiteLLM proven-declaration aggregate（跨 deployment 全部声明且一致，且该键的 enforcement class = declared-observable，见 D7a）
-     : unknown
-effective = base      // D7a 证明集为空：当前不存在任何 proven runtime enforcement 收窄；晋升后此处才恢复 narrow(base, hard-enforced 同维度)
-discrepancy: LiteLLM declared-observable ≠ base（base ∈ {serving, canonical}）→ resolved discrepancy
-conflict:    跨 deployment declared-observable / proven enforcement 显式不一致 → unresolved conflict
+if serving provider proven AND serving record resolved:      // D4：record 解析独立于 provider 证明
+    if serving 记录有该字段:    base = serving（basis serving）
+    else:                      base = 该字段的 serving-absence policy（见下；永不回填 canonical）
+elif canonical proven AND registry 有该字段:
+                              base = canonical（basis canonical）
+elif LiteLLM 声明（跨 deployment 全部声明且一致）:
+                              base = litellm-declared
+else:                         base = unknown
+
+effective = base    // D7a 证明集为空：无 enforcement 收窄；晋升后 narrow(base, hard-enforced 同维度)
+discrepancy: LiteLLM 声明 ≠ base（base ∈ {serving, canonical}）→ resolved discrepancy
+conflict:    跨 deployment LiteLLM 声明显式不一致 → unresolved conflict
 ```
+
+**per-field serving-absence policy**（serving record resolved 但缺该字段）：
+- optional 字段（如 `limit.input`）：**unknown**（可能是 `base_model_omit` 删除，与真实缺省不可区分）。
+- **禁止**：从 canonical registry 回填（撤销 models.dev 作者的显式 omit）。
+- **允许**：**同维度**的 LiteLLM 声明补缺（serving 无 `limit.input` 而 LiteLLM 有 `max_input_tokens` → input = litellm-declared；不是跨维度替代、不是 canonical 回填）。
+- serving 记录的 schema 必填字段（`limit.context`/`limit.output`/`modalities`）缺失视为 unknown → gate 判 missing。
+
+**serving provider proven 但 serving record unresolved**（D4）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断标注 `serving-record-unresolved`。
 
 - **serving 已证明 ⇒ serving 记录就是该模型的最终 serving 视图（models.dev 生成期已完成 base merge 与 `base_model_omit` 删除）**。Core 不得重做 models.dev 继承：serving 记录缺失的字段**不回落 canonical**，按该字段自己的缺席语义处理（registry 缺失时 `limit.input` 按推导规则、其余按 unknown；见逐字段表）。真实数据规模：64 条 linked serving 记录缺 `limit.input` 而 canonical 有（audit §7）；live 例子 `providers/requesty/models/hy3.toml` 用 `base_model_omit = ["limit.input"]` 明确删除（`requesty/hy3` serving 无 input，canonical `tencent/hy3` input=192000）。
 - base 来自 LiteLLM 声明时该字段 basis 为 `litellm-declared`；部分 deployment 未声明 → unknown（不得过滤缺失）。
@@ -127,7 +147,7 @@ conflict:    跨 deployment declared-observable / proven enforcement 显式不�
 | 字段 | serving proven + 有值 | canonical 有值 | 两者皆无时，LiteLLM 声明 | 都没有 | proven enforcement（D7a：当前**为空**） | declared-observable ≠ base | gate |
 |---|---|---|---|---|---|---|---|
 | `limit.context` | serving `limit.context` | registry `limit.context` | —（**无替代**：`max_input_tokens` 是 input capacity，不得作为 context） | unknown → missing | 无同维度 enforcement 键 | — | gated |
-| `limit.input` | serving `limit.input`；**缺即缺**（可能被 `base_model_omit` 删除），不回落 canonical | registry `limit.input`；registry 亦缺 → **unknown**（models.dev 只定义 `input` optional，无 absent==context 契约；不作推导） | `max_input_tokens`（declared-observable） | unknown | —（无通过门槛的键） | `max_input_tokens` ≠ input base → discrepancy（只比 input） | 非 gated |
+| `limit.input` | serving `limit.input`；缺 → serving-absence policy：unknown + **允许** LiteLLM `max_input_tokens` 同维度补缺（litellm-declared），**不回填 canonical** | registry `limit.input`；registry 亦缺 → LiteLLM `max_input_tokens`（同维度补缺）→ unknown | `max_input_tokens`（declared-observable） | unknown | —（无通过门槛的键） | `max_input_tokens` ≠ input base → discrepancy（只比 input） | 非 gated |
 | `limit.output` | serving `limit.output` | registry `limit.output` | `max_output_tokens` ?? `max_tokens`（declared-observable） | unknown → missing | 无 hard enforcement（请求可覆盖） | discrepancy | gated |
 | tools | serving `tool_call` | registry `tool_call` | `supports_function_calling` tri-state（declared-observable） | unknown | — | discrepancy | gated |
 | reasoning support | serving `reasoning` | registry `reasoning` | `supports_reasoning` tri-state（declared-observable） | unknown | — | discrepancy | gated |
@@ -159,7 +179,9 @@ conflict:    跨 deployment declared-observable / proven enforcement 显式不�
 > - `supports_factory`（utils.py L2801）读 `get_model_info_helper`（cost-map / provider config），不读 deployment 配置；上一轮引用的 `main.py L4492` 实为 Ollama dispatch，与能力门无关。
 > - 因 `Deployment.__init__` 的镜像缺失，运维者写在 `litellm_params` 的能力键甚至**不会进入** LiteLLM 自己的 admission/capability 门（与价格键不同）。
 
-**冻结表（Revision 4）**：
+**作用域（Revision 5）**：本矩阵只约束 **capability / limit / control facts**（limits、tools、reasoning、modalities、档位、任何 narrowing）。`litellm_params` 中 `MirroredPricingParams` 的 7 个价格键（`input_cost_per_token`、output_cost_per_token`、input_cost_per_character`、output_cost_per_character`、cache_read_input_token_cost`、cache_creation_input_token_cost`、tiered_pricing`）是 **Operator-Declared Pricing**：LiteLLM 显式把它们从 `litellm_params` 镜像进 `model_info`（types/router.py L750-753），是经源码证明的运维者价格声明，按 D8 独立处理——它们不是 enforcement，不受「不产生事实」约束，也永不参与 narrowing。因此本矩阵的「operator configuration」指**非价格键**。
+
+**冻结表（Revision 4，Revision 5 补作用域）：**
 
 | 键 | class | 判据 | 处置 |
 |---|---|---|---|
@@ -180,7 +202,7 @@ conflict:    跨 deployment declared-observable / proven enforcement 显式不�
 
 ### D8 Price
 
-逐组件（input/output/cacheRead/cacheWrite）：LiteLLM 显式价格（`litellm_params` 优先于 `model_info`，多 deployment 取最高；declared-observable）→ 已证明 serving 记录 `cost` → unknown。registry 无价格；未证明 provider 记录永不提供价格。（行为变化：explicit-provider 无 relation 的记录现在可提供价格，因为运维者声明即 serving 证明。）
+逐组件（input/output/cacheRead/cacheWrite）：**Operator-Declared Pricing**（`litellm_params` 中 `MirroredPricingParams` 的 7 个价格键——LiteLLM 显式镜像进 `model_info`，故先于 `model_info` 同名键；多 deployment 取最高）→ provider 已证明**且 record resolved** 的 serving 记录 `cost` → unknown。registry 无价格；未证明 provider 记录永不提供价格。价格键是 D7a 之外独立的第四类 `litellm_params` 事实：不是 enforcement、不参与 narrowing，但**是**事实。（行为变化：运维者声明即 provider 证明；record resolved 才用其 cost。）
 
 ### D9 Single resolver
 
@@ -201,36 +223,38 @@ toModelSpec(resolved): ModelSpec          // 唯一 ModelSpec 构造器
 
 不变量：`buildModelSpecs = groups.map(resolveModel).map(toModelSpec)`；assessment、partition、diagnostics、LKG capture/validation 全部消费同一 `ResolvedModel`；publishable `spec` 恒等于 `toModelSpec(resolved)`；captured verdict 与 proof 由同一 resolved 派生。删除 `mapCapabilities` 独立解析与 `resolveInheritedRecord` 字段继承。`assessModelConfiguration` 形状兼容（新增 `identity.canonicalModelID`、`serving`；旧 `identity.selected` 只表示「已证明 serving 记录」）。
 
-### D10 LKG schema 8：proof composition（group-wide）
+### D10 LKG schema 8：proof composition（group-wide，identityKind 三态）
 
 ```ts
-interface CanonicalEvidenceItem {
-  deploymentID: string               // 持久化的稳定 deployment 标识：LiteLLM `model_info.id`（存在且非空时），否则由组内全部 deployment 证据派生的稳定 multiset 键
-  normalizedInputs: string[]          // 该 deployment 的归一化候选值 multiset（base_model + route，排序去重）
-  evidenceKind: "qualified-deployment" | "registry-unique" | "serving-relation"
-  canonicalModelID: string
+interface DeploymentEvidenceItem {
+  deploymentID: string               // LiteLLM `model_info.id`（存在且非空时），否则由该 deployment 全部 identity 证据 multiset 派生
+  normalizedInputs: string[]          // 归一化候选值 multiset（base_model + route，排序）
+  identityKind: "canonical" | "litellm-only" | "serving-only"
+  canonicalModelID?: string           // identityKind = canonical 时必有；其余为空
+  canonicalEvidenceKind?: "qualified-deployment" | "registry-unique" | "serving-relation"   // canonical 时必有
 }
 interface LastKnownGoodEntryV8 {
   schemaVersion: 8; modelName; stableIdentity
   proof: {
-    canonicalEvidence: CanonicalEvidenceItem[]           // **每个** deployment 一项，稳定排序（按 deploymentID）
-    registryDigest: string                               // 被使用 canonical 事实的稳定摘要
-    serving?: { providerID; recordID; declarations: Array<{ deploymentID; declared: string }>; recordDigest: string }   // declarations 为 group-wide，逐 deployment
-    fields: Record<FieldName, FieldBasis>               // 每字段决策依据
-    enforcementFingerprint: string                       // 全部 deployment 的 hard-enforced 键（D7a 证明集，当前为空）稳定序列化摘要；形状先冻结，内容为空
-    litellmFingerprint?: string                          // 仅当任一字段 basis = litellm-declared：相关 model_info 键的摘要
+    deploymentEvidence: DeploymentEvidenceItem[]   // 每个 deployment 一项，稳定排序（按 deploymentID）
+    registryDigest?: string                         // 仅当任一字段 basis = canonical：被使用 canonical 事实的稳定摘要
+    serving?: { providerID; recordID; declarations: Array<{ deploymentID; declared: string }>; recordDigest: string }   // record resolved 时；逐 deployment declarations
+    fields: Record<FieldName, FieldBasis>           // 每字段决策依据
+    enforcementFingerprint: string                 // hard-enforced 键摘要（D7a 证明集，当前为空）：形状冻结、内容空
+    litellmFingerprint?: string                    // 仅当任一字段 basis = litellm-declared：相关 model_info 键的摘要
   }
   fetchedAt; fetchedAtEpochMs; spec; captured; provenanceDetail
 }
 ```
 
-- **Group-wide 重证明（evidence multiset）**：`deploymentID` = LiteLLM `model_info.id`（存在且非空——live 20/20 deployment 均有），否则由该 deployment 的**全部** identity 证据（`base_model`、route、`custom_llm_provider`、`models_dev_provider`、`model_info.id` 缺省时的顺序稳定派生键）multiset 派生；`normalizedInputs` 是该 deployment 的候选值 multiset（不只 route）。恢复时要求**排序后的 evidence multiset 逐项相等**（deploymentID 集合、每个的 `normalizedInputs`、`evidenceKind`、`canonicalModelID`）；serving 恢复要求 `declarations` 逐 deployment 一致。只证明「其中一个输入没变」不够；两个 route 相同但证据不同的 deployment 永远派生出不同的 multiset 键。
-- `registryDigest`/`recordDigest`：被使用事实的稳定摘要（limit、modalities、tool_call、reasoning；serving 另含 reasoning_options、cost）。
+- **identityKind 覆盖全部可发布形态**：`canonical`（canonicalModelID + canonicalEvidenceKind 必填）、`litellm-only`（R10b/R11：registry 无 canonical match、LiteLLM gated facts 完整）、`serving-only`（R10c：registry 无 canonical match、`models_dev_provider` 声明且 serving record resolved；serving facts 由 record 提供，identity 由 serving-relation 或 provider+wire-id 证明）。R10b/R10c/R11 与 R1–R9 在同一 schema 下合法 capture——**single resolver 成功发布 ⇒ capture 必能构造合法 proof**（gate 与 capture 不漂移）。
+- **Group-wide 重证明（evidence multiset）**：`deploymentID` = LiteLLM `model_info.id`（live 20/20 有值），否则由该 deployment 全部 identity 证据 multiset 派生；`normalizedInputs` 是候选值 multiset。恢复要求排序后 multiset 逐项相等（deploymentID 集合、normalizedInputs、identityKind、canonicalModelID）；两个 route 相同但证据不同的 deployment 永远派生不同 multiset 键。
+- `registryDigest`/`recordDigest`：被使用事实的稳定摘要（limit、modalities、tool_call、reasoning；serving 另含 reasoning_options、cost）；按 basis 可选，未参与者不写入。
 - **整体判定，绝不按字段拼接**：恢复要么发布整份 `spec`，要么 fail closed。
-- outage（catalog `unavailable`/`providers-only`）可恢复条件：stableIdentity 不变；`canonicalEvidence` 逐 deployment 重证明成功；`declarations` 逐 deployment 不变（若有）；`enforcementFingerprint` 不变；`litellmFingerprint` 不变（若有）；captured == spec。
-- live catalog 可用（LKG 仍只在 live `discovered-incomplete`/`metadata-unavailable` 时被咨询）：额外要求 live canonical id 集合相同、`registryDigest` 相同、serving 记录 `recordDigest` 相同（若有）；未被 proof 引用的 provider 记录变化不使 entry 失效。
-- 由于未证明记录不再产生发布事实，v8 不存在不可恢复的「fallback」authority；全部 basis 均可恢复，可恢复性由 proof 各组成部分逐项重证明决定。
-- v≤7、缺 proof 字段、未知 basis：fail closed，不迁移。
+- outage（catalog `unavailable`/`providers-only`）可恢复条件：stableIdentity 不变；`deploymentEvidence` 逐 deployment 重证明成功（含 identityKind 与 canonicalModelID）；serving `declarations` 逐 deployment 不变（若有）；`enforcementFingerprint` 不变；`litellmFingerprint` 不变（若有）；captured == spec。
+- live catalog 可用（LKG 仍只在 live `discovered-incomplete`/`metadata-unavailable` 时被咨询）：额外要求 live canonical id 集合与 identityKind 集合相同、有 canonical 的项 `registryDigest` 相同、serving 记录 `recordDigest` 相同（若有）；未被 proof 引用的 provider 记录变化不使 entry 失效。
+- 由于未证明记录不再产生发布事实，v8 不存在不可恢复的「fallback」authority；可恢复性由 proof 各组成部分逐项重证明决定。
+- v≤7、缺 proof 字段、未知 basis、identityKind 与 proof 内容不一致（如 `canonical` 无 canonicalModelID、或 `litellm-only` 却有 registryDigest）：fail closed，不迁移。
 
 ### D11 Data fetching
 
@@ -244,10 +268,10 @@ interface LastKnownGoodEntryV8 {
 
 | 情形 | canonical identity | 字段 basis | effective context / input / output | discrepancy / conflict | levels | price | publishability / LKG proof |
 |---|---|---|---|---|---|---|---|
-| **A** serving 未证明 | `minimax/MiniMax-M3`（registry-unique，经 base_model tail） | context/output/tools/reasoning/modalities = canonical；input **unknown**（registry 无 `limit.input`，不推导） | 1048576 / — / 512000 | input：base unknown（registry 无 input），LiteLLM 1000000 只进诊断不作比较；output 131072 vs 512000 → resolved discrepancy | unknown | LiteLLM（input/output）；其余组件 unknown | configured；proof = canonical + constraint/litellm 指纹 |
+| **A** serving 未证明 | `minimax/MiniMax-M3`（registry-unique，经 base_model tail） | context/output/tools/reasoning/modalities = canonical；registry 无 `limit.input` → **input 由 LiteLLM 同维度补缺**（`max_input_tokens` = 1000000，basis litellm-declared） | 1048576 / 1000000 / 512000 | input：base = litellm-declared 1000000（与声明一致，无 discrepancy）；output 131072 vs 512000 → resolved discrepancy；context 无 LiteLLM 声明可比较 | unknown | LiteLLM（input/output）；其余组件 unknown | configured；proof = canonical + constraint/litellm 指纹 |
 | **B** `models_dev_provider: minimax` | 同上；inline first-party 与 C 一致 | context/output = serving；serving 记录有 `limit.input`（1000000）→ input = serving | 1000000 / 1000000 / 512000 | input 一致；output 131072 vs 512000 → discrepancy | known-empty（toggle） | LiteLLM 组件优先，cacheRead = MiniMax 0.06 | configured；proof = canonical + serving(minimax) |
-| **C** `models_dev_provider: opencode` | 同上；relation 一致 | context/output = serving(opencode) | 512000 / 512000 / 128000 | input 1000000 vs 512000、output 131072 vs 128000 → discrepancy | known-empty（`[]`） | LiteLLM 组件优先，cacheRead = OpenCode 0.06 | configured；proof = canonical + serving(opencode) |
-| **D** A + `litellm_params.max_input_tokens 900000`（operator configuration，D7a 证明集为空） | 同 A | 同 A（无任何收窄） | 1048576 / 1048576 / 512000 | `litellm_params.max_input_tokens` 只进诊断，不收窄、不产生 discrepancy；descriptive 差异同 A | unknown | 同 A | configured；enforcement fingerprint（空）不因该键变化失效；**若未来该键通过 D7a 晋升，本行按新 delta 重算** |
+| **C** `models_dev_provider: opencode` | 同上；relation 一致 | context/output = serving(opencode)；serving 记录无 `limit.input` → absence policy：LiteLLM 同维度补缺（input = 1000000，litellm-declared），不回填 canonical | 512000 / 1000000 / 128000 | input：1000000（litellm-declared，无比较对象不一致）；output 131072 vs 128000 → discrepancy | known-empty（`[]`） | LiteLLM 组件优先，cacheRead = OpenCode 0.06 | configured；proof = canonical + serving(opencode) |
+| **D** A + `litellm_params.max_input_tokens 900000`（operator configuration，D7a 证明集为空） | 同 A | 同 A（无任何收窄） | 1048576 / 1000000 / 512000 | `litellm_params.max_input_tokens` 只进诊断，不收窄、不产生 discrepancy；descriptive 差异同 A | unknown | 同 A | configured；enforcement fingerprint（空）不因该键变化失效；**若未来该键通过 D7a 晋升，本行按新 delta 重算** |
 
 ## Risks / Trade-offs
 

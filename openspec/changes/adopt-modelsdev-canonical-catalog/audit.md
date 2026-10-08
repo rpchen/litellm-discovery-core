@@ -180,6 +180,13 @@ LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段
 - `base_model_omit` 真实案例：`providers/requesty/models/hy3.toml` `base_model_omit = ["limit.input"]`；linked serving 记录中 64 条缺 `limit.input` 而 canonical 有 → 「serving 缺字段回填 canonical」会撤销作者显式 omit，已删除该规则。
 - canonical 裸 ID 大小写不敏感唯一性维持 445/445；但「qualified 值无条件取尾段」在私有路由（`some-private-provider/foo`）上会误命中，已改为仅裸值或经 `custom_llm_provider` 证据确认 adapter 后才取余串。
 
+**Revision 5（第五轮评审，OpenSpec 内部一致性收敛）**
+- D7a 作用域与 Price authority 冲突修正：enforcement 矩阵只约束 capability/limit/control facts；`MirroredPricingParams` 7 个价格键独立为 **Operator-Declared Pricing**（源码证明 LiteLLM 显式镜像，types/router.py L750-753），不是 enforcement，也不因「不产生能力事实」而被禁用。
+- D6 由四级 fallback 改为**分支算法**：serving record resolved 时按 per-field serving-absence policy（永不回填 canonical，允许同维度 LiteLLM 补缺）；record unresolved 时整组按 serving-unproven 解析。
+- MiniMax A/C 的 input 统一为 LiteLLM 同维度补缺（1000000，litellm-declared），design/spec/acceptance 三处一致。
+- LKG proof 改 `deploymentEvidence` + `identityKind`（canonical / litellm-only / serving-only），`canonicalModelID` 与 `registryDigest` 按 kind 可选——R10b/R10c/R11 的正常发布可合法 capture，gate 与 capture 不漂移。
+- serving provider proof 与 serving record proof 拆开：relation-only 命中证明 underlying canonical identity 但不证明 SKU；`serving-record-unresolved` 状态防止 -free/-fast/-thinking/tier 变体经 provider 声明回流。
+
 **Revision 4（第四轮评审，LiteLLM 源码逐行复核）**
 - **撤销 rev3 全部 hard-enforced 归类**：`_pre_call_checks` admission 门读 `get_router_model_info()` 解析的 `model_info["max_input_tokens"]`（L12954 → L11091 → L11124：cost-map ∨ discovered ∨ `deployment.model_info`），不读 `litellm_params` 同名键（router.py 直接读取 0 处）；`Deployment.__init__`（types/router.py L750-753）只镜像 `MirroredPricingParams` 的 7 个**价格**键，无能力键镜像；`supports_factory`（utils.py L2801）读 cost-map/provider config。运维者写在 `litellm_params` 的能力键甚至不会进入 LiteLLM 自己的门。
 - enforcement 证明集从空开始；晋升门槛 = exact source path + 负向突破测试，经 delta 逐键晋升（design D7a）。

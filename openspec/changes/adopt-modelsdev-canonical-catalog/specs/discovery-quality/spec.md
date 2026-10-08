@@ -25,15 +25,15 @@ Core SHALL keep canonical identity and serving provider as separate facts, SHALL
 - **THEN** Core selects no serving record, even when the lab's own provider record exists
 
 ### Requirement: reasoning resolution
-Core SHALL resolve reasoning support independently from reasoning levels. Reasoning support SHALL follow the field resolution matrix of the `modelsdev-catalog` capability: a proven serving value, else the canonical registry value, else consistent LiteLLM declarations, else unknown; an explicitly enforced `litellm_params.supports_reasoning: false` narrows support per the runtime enforcement matrix, and a differing `model_info.supports_reasoning` against a serving or canonical base is a resolved discrepancy. Reasoning levels follow the `Reasoning controls authority` requirement.
+Core SHALL resolve reasoning support independently from reasoning levels. Reasoning support SHALL follow the field resolution matrix of the `modelsdev-catalog` capability: a resolved serving value, else the canonical registry value, else consistent LiteLLM declarations, else unknown; `litellm_params.supports_reasoning: false` is operator configuration and narrows support only after the runtime enforcement matrix promotes that key (the proven set starts empty), and a differing `model_info.supports_reasoning` against a serving or canonical base is a resolved discrepancy. Reasoning levels follow the `Reasoning controls authority` requirement.
 
 #### Scenario: reasoning sources disagree
 - **WHEN** canonical identity is proven and LiteLLM `model_info` declares reasoning support differently from the canonical registry entry
 - **THEN** the canonical value determines support and diagnostics report a resolved discrepancy
 
 #### Scenario: enforced reasoning constraint
-- **WHEN** a deployment declares `litellm_params.supports_reasoning: false`
-- **THEN** Core reports reasoning unsupported as an enforcement-narrowed value
+- **WHEN** a deployment declares `litellm_params.supports_reasoning: false` and that key has been promoted by a runtime-enforcement delta
+- **THEN** Core reports reasoning unsupported as an enforcement-narrowed value; until such a promotion exists the declaration is operator configuration that changes no verdict
 
 ### Requirement: token-limit semantics
 Core SHALL preserve separate context, input, and output token-limit meanings and SHALL compare evidence only within the same dimension. LiteLLM `max_input_tokens` is input capacity; it SHALL be compared only with a declared `limit.input` and SHALL NOT be compared with, nor substituted for, the total context under any circumstances. A missing `limit.input` SHALL stay unknown: models.dev defines `limit.input` as an optional maximum-input-tokens field with no absent-equals-context contract, provider syncs intentionally leave it undefined, and `base_model_omit` deletions must stay deletions. Host consumers that need an input number resolve that in the adapter mapping layer, not by inventing a canonical fact.

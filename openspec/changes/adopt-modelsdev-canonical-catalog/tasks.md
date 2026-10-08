@@ -61,8 +61,8 @@
 
 ## 5. LKG schema 8（Core）
 
-- [ ] 5.1 `PUBLICATION_SCHEMA_VERSION = 8`、group-wide proof composition：`canonicalEvidence`（每 deployment 一项：`deploymentID` = `model_info.id` 或 evidence-multiset 派生键、`normalizedInputs` multiset、evidenceKind、canonicalModelID）+ registryDigest、逐 deployment serving declarations + recordDigest、field basis、enforcementFingerprint（形状冻结、内容空）、litellmFingerprint
-  - 验收：`Last Known Good schema 8 proof composition`、G38
+- [ ] 5.1 `PUBLICATION_SCHEMA_VERSION = 8`、group-wide proof composition：`deploymentEvidence`（每 deployment 一项：`deploymentID` = `model_info.id` 或 evidence-multiset 派生键、`normalizedInputs` multiset、`identityKind` = canonical/litellm-only/serving-only、`canonicalModelID` + `canonicalEvidenceKind` 仅 canonical 时）+ `registryDigest`（仅当任一字段 basis = canonical）+ 逐 deployment serving declarations + recordDigest（record resolved 时）+ field basis + enforcementFingerprint（形状冻结、内容空）+ litellmFingerprint
+  - 验收：`Last Known Good schema 8 proof composition`、G38、G41、G42、G43
 - [ ] 5.2 整体判定的逐组件重证明：evidence multiset 逐项相等（outage 与 live 两套条件）；serving declarations 逐 deployment；operator-configuration 键不进 enforcement fingerprint；未引用记录变化不失效；绝不按字段拼接；v≤7 fail closed
   - 验收：G20–G20h、`Last Known Good without TTL`、`Trusted Last Known Good reuse`
 - [ ] 5.3 capture 由同一 resolved 派生（消灭 seeding 静默失败）
