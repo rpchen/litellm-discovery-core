@@ -505,7 +505,7 @@ export function resolveModel(
   const operatorConfigurationKeys = collectOperatorConfigurationKeys(group);
 
   if (catalog.kind !== "complete") {
-    return resolveWithoutCatalog(group, catalog.kind, protocol, operatorConfigurationKeys);
+    return resolveWithoutCatalog(group, catalog.kind, protocol, operatorConfigurationKeys, options);
   }
 
   const registry = registryEntries(catalog);
@@ -660,6 +660,7 @@ function resolveWithoutCatalog(
   kind: "providers-only" | "unavailable",
   protocol: Protocol,
   operatorConfigurationKeys: string[],
+  options: ResolveOptions = {},
 ): ResolvedModel {
   // No canonical resolution, no provider record use. LiteLLM-complete models
   // publish as litellm-declared; the rest are metadata-unavailable (LKG may
@@ -689,9 +690,10 @@ function resolveWithoutCatalog(
     }
     : fields;
   const withIllegal = applyIllegality(group, undefined, undefined, withContext);
+  const withTier = applyTierCap(group, withIllegal, options.contextTierCap);
   const identity: ResolvedIdentity = { status: "unproven", evidence: "none", parse: {} };
   const serving: ResolvedServing = { status: "unproven" };
-  return assembleResolved(group, kind, protocol, operatorConfigurationKeys, identity, serving, withIllegal, withEffort, []);
+  return assembleResolved(group, kind, protocol, operatorConfigurationKeys, identity, serving, withTier, withEffort, []);
 }
 
 interface FieldSet {
@@ -1301,18 +1303,7 @@ function finishResolution(
 
   // contextTierCap (legacy BuildOption): narrow context/input to the first
   // pricing-tier point. Applies to the resolved values, never as evidence.
-  if (options.contextTierCap) {
-    const tier = firstTierPointOf(group);
-    if (tier !== undefined) {
-      const cap = (field: FieldResolutionWithBasis): FieldResolutionWithBasis =>
-        typeof field.value === "number" && field.value > 0
-          ? { ...field, value: Math.min(field.value, tier) }
-          : field.value === undefined || field.value === 0
-            ? field
-            : field;
-      fields = { ...fields, context: cap(fields.context), input: cap(fields.input) };
-    }
-  }
+  fields = applyTierCap(group, fields, options.contextTierCap);
 
   // Release metadata: resolved serving record wins; canonical registry next;
   // a serving omission is never refilled from canonical (Revision 7).
@@ -1670,6 +1661,21 @@ function firstTierPointOf(group: DeploymentGroup): number | undefined {
     }
   }
   return points.length > 0 ? Math.min(...points) : undefined;
+}
+
+function applyTierCap(
+  group: DeploymentGroup,
+  fields: FieldSet,
+  enabled: boolean | undefined,
+): FieldSet {
+  if (!enabled) return fields;
+  const tier = firstTierPointOf(group);
+  if (tier === undefined) return fields;
+  const cap = (field: FieldResolutionWithBasis): FieldResolutionWithBasis =>
+    typeof field.value === "number" && field.value > 0
+      ? { ...field, value: Math.min(field.value, tier) }
+      : field;
+  return { ...fields, context: cap(fields.context), input: cap(fields.input) };
 }
 
 function deploymentStableID(deployment: { modelInfo: Record<string, unknown> }, lookupKeys: string[]): string {
