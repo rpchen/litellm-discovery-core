@@ -111,7 +111,11 @@ merge 全在 Core。
 - **kimi-k3 输出 1048576 → 131072**：first-party serving override 不再当内禀发布。
 - **无 proven enforcement**：`litellm_params` 非价格键不再收窄任何字段（含
   `max_input_tokens`）；运维者若依赖旧收窄行为，需改用 LiteLLM 描述性声明或
-  等待晋升 delta。
+  等待晋升 delta。**非正值的非价格 `litellm_params` 键（如 `max_tokens: 0`）同样
+  不再使模型 `invalid-metadata`、不再使 LKG 失效**：非法性裁决只接受能力证据
+  （`model_info` 描述性声明与 trusted 记录 limit），operator configuration 的坏值
+  仅以 `operator-configuration-invalid-value` 诊断呈现，绝不参与 publication gate
+  （D7a/G20d）。
 - **LiteLLM-only 更严格**：canonical 未证明、无 serving 的私有模型，`max_input_tokens`
   只是 input capacity，**绝不充当 `limit.context`**（维度隔离无 LiteLLM-only 例外，
   G30/design Risks）：无 context 语义声明即 context missing → withheld；此前 main

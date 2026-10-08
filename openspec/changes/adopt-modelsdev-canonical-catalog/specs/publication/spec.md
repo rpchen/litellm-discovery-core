@@ -119,3 +119,7 @@ Core SHALL support reusing a previously complete metadata snapshot while live so
 #### Scenario: Persisted evidence authority is validated as schema-critical
 - **WHEN** a stored entry claims schema 8 but a proof component is missing, a field basis is not one of the defined values, or a digest or fingerprint is malformed
 - **THEN** both the compatibility guard and the defensive validation reject the entry fail-closed, and it is never restored as `configured-lkg`
+
+#### Scenario: Operator configuration never fails an LKG entry closed
+- **WHEN** a live deployment declares a non-positive value in a non-pricing `litellm_params` limit key (for example `max_tokens: 0`) while every capability fact — `model_info` descriptive declarations and trusted record limits — is unchanged from the captured entry
+- **THEN** the entry stays valid and may substitute: unproven operator-configuration keys never participate in the illegality verdict (D7a empty proven set), so their bad values are diagnostics only. A non-positive `model_info` descriptive limit or trusted record limit still fails the restore closed under the established illegal-metadata policy.

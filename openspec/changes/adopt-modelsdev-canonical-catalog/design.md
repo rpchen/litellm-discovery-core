@@ -76,8 +76,8 @@ adapter 段与 `custom_llm_provider` 记录为 parse metadata（进入诊断）�
 
 `base_model` 证明成功即决定该 deployment；路由解析不同只记 `identity-route-differs` 诊断（live `kimi-k2.7-code → minimax/MiniMax-M2.7`）。
 
-**D3.3 serving relation 证据**（D4 证明 provider 之后）：**候选记录**（无论 record resolved 或 relation-only unresolved）的 `canonical_model_id` = C'。**identity 证据资格 ≠ serving-record 解析**：relation-only 记录可证明 underlying canonical identity，但永不解析 SKU、永不提供 serving facts（D4）。
-- deployment 未证明 canonical 且 C' 是 registry key → canonical = C'（`serving-relation`）。
+**D3.3 serving relation 证据**（D4 证明 provider 之后）：**候选记录 = 与当前 deployment 有确定性候选关系的记录**——即 key/id 精确命中该 deployment 的 D3.1 parsed lookup keys 的记录（该命中按 D4 规则 1 同时使 record resolved）；候选记录的 `canonical_model_id` = C'。**identity 证据资格 ≠ serving-record 解析**：候选记录可证明 underlying canonical identity，但 relation-only 候选（key/id 命中 lookup keys 但仅经 `canonical_model_id` 关联 canonical）在自身无法解析 SKU 时永不提供 serving facts（D4）。**未命中任何 lookup key 的记录不是候选**：无法通过确定性候选关系关联的 relation-only SKU（`x-free`/`x-fast`/`thinking`/tier 变体）只能作为诊断候选，不提供 identity 证据、不提供 serving facts——遍历整个 provider 推断身份被明确禁止（candidate 资格只能来自当前 deployment 的 parsed lookup keys，绝不能来自 relation 字段本身或 provider 内其它记录）。
+- deployment 未证明 canonical 且候选记录的 C' 是 registry key → canonical = C'（`serving-relation`）。
 - deployment canonical C ≠ C'（两边都是确定性 identity 证据）→ **identity conflict，fail closed**（ambiguous，withheld，reason `identity-ambiguous`）。事实相等不是 identity 关系：`labA/x` 与 `labA/y` limits/modalities/tools/reasoning 全同也可能是不同模型；models.dev 当前没有任何能证明两个 canonical 等价的关系字段（audit §1：`aliases`/`inherits`/`equivalent_to` 在真实数据中出现 0 次）。
 - inline first-party 记录（无 `canonical_model_id`）仅在 `provider == lab(C)` 且 `record id == tail(C)` 时视为与 C 一致，否则不提供 identity 证据。
 
@@ -90,7 +90,7 @@ adapter 段与 `custom_llm_provider` 记录为 parse metadata（进入诊断）�
 - **proven** 当且仅当组内所有 deployment 声明同一 `models_dev_provider = P`，且 `catalog.providers[P]` 存在。
 - **Provider 证明 ≠ record/SKU 证明。** 记录选择（只在 P 内）：
   1. key/id 精确等于 D3.1 的 parsed lookup keys（full → adapter-evidenced remainder → bare）→ record **resolved**；
-  2. 无 parsed-key 命中时，P 内 `canonical_model_id == C` 的记录**只能证明 underlying canonical identity**（与 D3.3 一致），**不能证明**当前 route 的 SKU——record = **unresolved**（`serving-record-unresolved`）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断说明「provider 已声明但无精确同名记录；请用精确 wire id 或改声明」，并禁止把 relation-only 记录（`x-free`/`x-fast`/`thinking`/tier 变体）当 serving facts；canonical identity 未证明时，relation-only 命中仍可作 `serving-relation` 的 identity 证据（D3.3），但同样不提供 serving facts；
+  2. 无 parsed-key 命中时，record = **unresolved**（`serving-record-unresolved`）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断说明「provider 已声明但无精确同名记录；请用精确 wire id 或改声明」。此时 P 内任何记录都未与当前 deployment 建立确定性候选关系，因此**没有任何记录能作为 `serving-relation` 的 identity 证据**（D3.3：候选资格只能来自 parsed lookup keys 命中；无命中即无候选）；P 内 `canonical_model_id == C`（C 已由 deployment 侧证据证明）的记录只作诊断一致性展示，并禁止把 relation-only 记录（`x-free`/`x-fast`/`thinking`/tier 变体）当 serving facts 或 identity 证据；
   3. parsed-key 命中多条且 serving publication-critical facts 实质不同 → `serving-ambiguous`（withheld）；
   4. P 无任何候选记录 → `declared-unmatched`（按 serving 未证明发布 + warning）。
 - 多 deployment 选出的 serving 记录 publication-critical facts 必须一致，否则 conflict。
@@ -188,7 +188,7 @@ conflict:    跨 deployment LiteLLM 声明显式不一致 → unresolved conflic
 | 键 | class | 判据 | 处置 |
 |---|---|---|---|
 | （**空**） | hard-enforced | 无任何键通过晋升门槛 | — |
-| `litellm_params.*`（全部，含 `max_input_tokens`、`supports_function_calling`、`supports_reasoning`、modality flags、`reasoning_effort`、`max_tokens` 系） | **operator configuration（未证明）** | 出现在运维者配置中，但其对请求的 enforcement 语义未按晋升门槛证明 | **不参与 effective-value narrowing、不产生事实、不进 LKG enforcement fingerprint**；只进诊断（「运维者配置的键」） |
+| `litellm_params.*`（全部，含 `max_input_tokens`、`supports_function_calling`、`supports_reasoning`、modality flags、`reasoning_effort`、`max_tokens` 系） | **operator configuration（未证明）** | 出现在运维者配置中，但其对请求的 enforcement 语义未按晋升门槛证明 | **不参与 effective-value narrowing、不产生事实、不进 LKG enforcement fingerprint、不参与非法性裁决**（非正值只作 `operator-configuration-invalid-value` 配置合法性诊断，绝不使字段 illegal、绝不 withheld 模型、绝不负向影响 LKG——非法性只接受能力证据：`model_info` 描述性声明与 trusted 记录 limit）；只进诊断（「运维者配置的键」） |
 | `model_info.*`（含 `max_input_tokens`、`max_output_tokens`、`supports_*`、`litellm_provider`、`key`、`supports_*_reasoning_effort`、`reasoning_effort_levels`） | **declared-observable** | LiteLLM cost-map / 部署配置推导的描述性事实 | 字段矩阵的 LiteLLM 声明列 / 诊断；`litellm_provider`/`key` 不作 identity 证据 |
 
 **晋升门槛（冻结）**：一个键要进入 hard-enforced，必须同时有

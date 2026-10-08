@@ -194,7 +194,7 @@ gate 或 LKG。
 - **必须区分四类事实**：
   - 模型内禀事实（context / output / input capacity / modalities / vision / audio / video / pdf / tools / reasoning）：canonical identity 可靠时以 registry entry 为高权威；LiteLLM `model_info` 中的同类字段是 declared-observable secondary evidence；
   - serving 事实（上述字段的 serving override、`cost`、`reasoning_options`）：只来自已证明 serving 记录（provider 声明 + 精确 SKU 命中）；serving 记录是 models.dev 生成完成的最终视图，缺字段永不回填 canonical，只允许同维度 LiteLLM 补缺；
-  - Proven Runtime Enforcement：当前证明集**为空**——全部非价格 `litellm_params` 键均为 operator configuration，不收窄、不产生事实、不进 LKG 指纹，只进诊断；晋升单个键需 OpenSpec delta（含 LiteLLM 源码 exact source path + 负向突破测试）；
+  - Proven Runtime Enforcement：当前证明集**为空**——全部非价格 `litellm_params` 键均为 operator configuration，不收窄、不产生事实、不进 LKG 指纹，也**不参与非法性裁决**（非正值的 operator-configuration 键只进诊断，绝不使模型 `invalid-metadata` 或使 LKG fail closed），只进诊断；晋升单个键需 OpenSpec delta（含 LiteLLM 源码 exact source path + 负向突破测试）；
   - Operator-Declared Pricing（`MirroredPricingParams` 7 个价格键）：独立价格事实（`litellm_params` 先于 `model_info`、多 deployment 取最高），其次已证明 serving `cost`，否则 unknown；永不收窄能力字段。
   - 字段名本身不构成 hard cap；描述性声明不得收窄或否决权威 intrinsic 值。
 - **resolved discrepancy 与 unresolved conflict 必须分开**：可裁决差异记录证据后继续 publication assessment，不得报告为 incomplete / invalid / blocked；无法按 authority 裁决的冲突才 withheld。`discrepancy ≠ conflict`、`resolved discrepancy ≠ incomplete`。
@@ -209,7 +209,9 @@ gate 或 LKG。
 - LKG 必须由 Core 重新证明仍满足当前 publication policy：只有本轮完整通过 gate、
   由同一 resolution 投影的 `ModelSpec` 才可成为 LKG（不同时期的事实拼盘永不是合法
   条目）；live 冲突判定只接受 authoritative intrinsic 事实，低权威描述性差异不得
-  使快照失效；identity/provider/schema 变化、任何 live illegal limit 整份 fail
+  使快照失效；identity/provider/schema 变化、任何 live illegal limit（按非法性裁决的
+  证据来源：`model_info` 描述性声明与 trusted 记录 limit；operator configuration 的
+  非正值不属于 illegal limit，见上）整份 fail
   closed；LKG 不得复活 LiteLLM 已不再提供的模型；条目为 schema 8 proof composition
   （逐 deployment 证据 multiset、registry/serving 摘要、逐字段 basis、空 enforcement
   指纹、LiteLLM 指纹），恢复逐组件重证明、整份恢复或整体 fail closed，绝不按字段

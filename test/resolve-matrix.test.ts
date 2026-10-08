@@ -811,6 +811,34 @@ describe("review fixes: identity and serving proof", () => {
     expect(resolved.publishable).toBe(false);
   });
 
+  test("issue 2/G46: converging relations without a lookup-key match never prove identity", () => {
+    // Even when EVERY relation record in the declared provider names the SAME
+    // canonical identity (perfect convergence), the records match none of the
+    // deployment's parsed lookup keys, so no deterministic candidate relation
+    // exists: the identity stays unproven and the group withholds (G30).
+    // Whole-provider convergence is exactly the inference the review forbids.
+    const doc = catalog(
+      { "labA/x": entry() },
+      {
+        P: {
+          "x-free": { id: "x-free", canonical_model_id: "labA/x", limit: { context: 5, output: 5 } },
+          "x-fast": { id: "x-fast", canonical_model_id: "labA/x", limit: { context: 5, output: 5 } },
+          "x:thinking": { id: "x:thinking", canonical_model_id: "labA/x", limit: { context: 5, output: 5 } },
+        },
+      },
+    );
+    const litellm = litellmModel("m", { model: "zzz" }, { ...FULL, models_dev_provider: "P" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.serving.status).toBe("serving-record-unresolved");
+    expect(resolved.identity.status).toBe("unproven");
+    expect(resolved.identity.evidence).toBe("none");
+    expect(resolved.publishable).toBe(false);
+    // No canonical identity is proven, so the relation SKUs cannot even be
+    // recommended as exact-wire-id candidates (that R4b listing requires a
+    // proven canonical identity to relate to). They contribute nothing.
+    expect(resolved.diagnosticCandidates).toEqual([]);
+  });
+
   test("issue 1: relation identity is proven by the resolved record only (G4 shape)", () => {
     const doc = catalog(
       { "labA/x": entry() },
@@ -1050,5 +1078,100 @@ describe("review fixes: LKG proof stability (issue 6)", () => {
     };
     forgedTwo.proof.deploymentEvidence[0]!.identityKind = "serving-only";
     expect(validateLastKnownGood(forgedTwo, group, undefined, Date.now(), options, servingDoc).valid).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review-fix adversarial coverage (issue 7): operator configuration never
+// participates in capability verdicts — illegality is the strongest verdict,
+// so unproven `litellm_params` keys must never make a trusted model illegal
+// (D7a empty proven set, G20d, testing-standard §8).
+// ---------------------------------------------------------------------------
+
+describe("review fixes: operator configuration vs the publication gate (issue 7)", () => {
+  const trustedDoc = catalog(
+    { "labA/x": entry({ limit: { context: 10000, input: 9000, output: 1000 } }) },
+    {},
+  );
+
+  test("non-positive operator-configuration limits never make a trusted model illegal", () => {
+    // Canonical identity proven, registry supplies every gated field, and the
+    // operator's deployment carries a ZERO max_tokens and NEGATIVE
+    // max_completion_tokens in litellm_params. Unproven keys are operator
+    // configuration: the model stays configured and published with the
+    // registry values.
+    const litellm = litellmModel("m", { model: "x", max_tokens: 0, max_completion_tokens: -5 }, FULL);
+    const resolved = resolveModel(groupOf(litellm, "m"), trustedDoc, options);
+    expect(resolved.identity.status).toBe("proven");
+    expect(resolved.publishable).toBe(true);
+    expect(resolved.status).toBe("configured");
+    expect(resolved.fields["limit.output"]!.status).not.toBe("illegal");
+    expect(resolved.fields["limit.output"]!.value).toBe(1000);
+    // The invalid operator values are observable configuration diagnostics.
+    expect(resolved.operatorConfigurationIssueKeys).toEqual(["litellm_params.max_completion_tokens", "litellm_params.max_tokens"]);
+  });
+
+  test("non-positive operator-configuration input keys never veto input", () => {
+    const litellm = litellmModel("m", { model: "x", max_input_tokens: 0 }, FULL);
+    const resolved = resolveModel(groupOf(litellm, "m"), trustedDoc, options);
+    expect(resolved.publishable).toBe(true);
+    expect(resolved.fields["limit.input"]!.status).not.toBe("illegal");
+    expect(resolved.operatorConfigurationIssueKeys).toEqual(["litellm_params.max_input_tokens"]);
+  });
+
+  test("descriptive model_info non-positive limits stay illegal (existing rule not regressed)", () => {
+    const litellm = litellmModel("m", { model: "x" }, { ...FULL, max_output_tokens: 0 });
+    const resolved = resolveModel(groupOf(litellm, "m"), trustedDoc, options);
+    expect(resolved.status).toBe("invalid-metadata");
+    expect(resolved.fields["limit.output"]!.status).toBe("illegal");
+    expect(resolved.publishable).toBe(false);
+  });
+
+  test("trusted-record non-positive limits stay illegal (existing rule not regressed)", () => {
+    const doc = catalog({ "labA/x": entry({ limit: { context: 10000, input: 9000, output: 0 } }) });
+    const litellm = litellmModel("m", { model: "x" }, FULL);
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, options);
+    expect(resolved.status).toBe("invalid-metadata");
+    expect(resolved.fields["limit.output"]!.status).toBe("illegal");
+  });
+
+  test("LKG stays valid when only operator-configuration values go non-positive (G20d)", () => {
+    // Capture from a healthy group, then the operator's litellm_params gains a
+    // zero max_tokens while every capability fact (model_info + registry)
+    // stays identical. G20d: operator reconfiguration never invalidates the
+    // entry — the old illegalLiveLimit read litellm_params and would have
+    // rejected the restore.
+    const healthy = litellmModel("m", { model: "x" }, FULL);
+    const group = groupOf(healthy, "m");
+    const publication = buildPublicationResult(healthy, trustedDoc, options);
+    const live = publication.publishable[0]!;
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), trustedDoc, options);
+    const reconfigured = groupOf(litellmModel("m", { model: "x", max_tokens: 0 }, FULL), "m");
+    const validation = validateLastKnownGood(entry, reconfigured, undefined, Date.now(), options, trustedDoc);
+    expect(validation.valid).toBe(true);
+  });
+
+  test("LKG still fails closed for live descriptive illegal limits (existing rule not regressed)", () => {
+    const healthy = litellmModel("m", { model: "x" }, FULL);
+    const group = groupOf(healthy, "m");
+    const publication = buildPublicationResult(healthy, trustedDoc, options);
+    const live = publication.publishable[0]!;
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), trustedDoc, options);
+    const illegalDescriptive = groupOf(litellmModel("m", { model: "x" }, { ...FULL, max_output_tokens: 0 }), "m");
+    const validation = validateLastKnownGood(entry, illegalDescriptive, undefined, Date.now(), options, trustedDoc);
+    expect(validation.valid).toBe(false);
+  });
+
+  test("diagnostics report invalid operator configuration without gating publication", () => {
+    const litellm = litellmModel("m", { model: "x", max_tokens: 0 }, FULL);
+    const diagnosed = diagnoseModelSpecs(litellm, trustedDoc, options);
+    const codes = diagnosed.diagnostics.issues.map((item: { code: string }) => item.code);
+    expect(codes).toContain("operator-configuration-invalid-value");
+    const message = diagnosed.diagnostics.issues.find((item: { code: string }) => item.code === "operator-configuration-invalid-value")?.message ?? "";
+    expect(message).toContain("litellm_params.max_tokens");
+    expect(codes).not.toContain("publication-invalid-metadata");
+    // The publication verdict itself stays configured.
+    const assessment = assessModelConfiguration(groupOf(litellm, "m"), trustedDoc, options);
+    expect(assessment.publishable).toBe(true);
   });
 });

@@ -2,7 +2,9 @@
 
 每一行在实施阶段必须映射到至少一个自动化测试（testing-standard §1）。`R*` 使用从 live catalog（2026-10-07 13:11 UTC）裁剪出的真实 schema fixture；`G*` 使用遵循真实 models.dev schema 的合成 catalog；禁止模型特判或白名单——`R*` 只是 `G*` 规则在真实数据上的实例。
 
-记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；**非价格** `litellm_params` 键当前均为 operator configuration（D7a 空证明集）：永不产生档位、pin、narrowing 或 LKG 指纹；`MirroredPricingParams` 的 7 个价格键是 Operator-Declared Pricing（design D8），只产生价格事实；basis 记号见 design D6/D7a；R4/R4b/R4c、R9b、R10b/R11 为**行为变化测试**（注释引用 design Risks，禁止回改为旧值）。
+记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；**非价格** `litellm_params` 键当前均为 operator configuration（D7a 空证明集）：永不产生档位、pin、narrowing、**非法性裁决**或 LKG 指纹（G45：非正值的 operator configuration 只进 `operator-configuration-invalid-value` 诊断，绝不参与 publication gate——非法性只接受能力证据：`model_info` 描述性声明与 trusted 记录 limit）；`MirroredPricingParams` 的 7 个价格键是 Operator-Declared Pricing（design D8），只产生价格事实；basis 记号见 design D6/D7a；R4/R4b/R4c、R9b、R10b/R11 为**行为变化测试**（注释引用 design Risks，禁止回改为旧值）。
+
+**规范统一（review issue 8，2026-10-08）**：D3.3/D4 原文「候选记录（无论 record resolved 或 relation-only unresolved）」的「unresolved 也可证 identity」存在内部张力——其唯一非矛盾解读是**候选资格来自当前 deployment 的确定性候选关系（key/id 精确命中 D3.1 parsed lookup keys）**，而非 relation 字段本身。按该解读统一：命中 lookup key 的记录按 D4 规则 1 即 resolved；无 lookup-key 命中的记录不是候选，其 relation 不提供 identity 证据或 serving facts（无论 provider 内 relation 是否收敛），只能进诊断候选。design.md D3.3/D4、modelsdev spec「Canonical identity resolution」与「Serving provider proof」、acceptance G4/G40 行已按此修正，并新增 G46 对抗行；实现（resolved-record-only）与 G4/G40 场景不变。
 
 **规范冲突裁决（review issue 4，2026-10-08）**：原 R10b/R11 行「LiteLLM 值 / configured，basis litellm-declared」与 G30、design D6 跨维度替代禁止不变量、design Revision 3 ⑥（删除 `max_input_tokens → context` 替代，LiteLLM-only 无 context 即 withheld）、Revision 4 ②、Risks「[LiteLLM-only 更严格]」与 Migration 4 行为变化清单直接矛盾。按设计真源（五处一致陈述）裁决：**strict 生效**——`max_input_tokens` 在任何分支（含 LiteLLM-only）都只是 input capacity，绝不作 context；LiteLLM-only 私有模型无 context 即 withheld。R10b/R11/G21/G41 行已按裁决修正；这不是改变已批准的产品规则，而是消除验收矩阵与已冻结设计之间的矛盾（第一轮实现误按 lenient 侧实现，本修正将其对齐设计）。
 
@@ -42,7 +44,7 @@
 | G3b | adapter 段只作 parse metadata | route `openai/x`，`custom_llm_provider: openai`，registry 只有 `labA/x` | identity `labA/x`；serving unproven；`openai` 不出现在任何 basis/evidence |
 | G3c | 默认 adapter 不推断 serving | route `labA/x`，无可见 api_base | identity proven；serving unproven |
 | G3d | 首段既可能是 adapter 也可能是 lab | route `labA/x`，registry 有 `labA/x` | full 精确命中 → identity；不证明 serving |
-| G4 | provider relation | registry 无 `x-sku`；`models_dev_provider: P`；P/`x-sku` `canonical_model_id=labA/x` | proven `serving-relation` `labA/x`；serving declared |
+| G4 | provider relation | registry 无 `x-sku`；`models_dev_provider: P`；P/`x-sku` `canonical_model_id=labA/x`（记录 key `x-sku` 精确命中 wire id——**确定性候选关系**） | proven `serving-relation` `labA/x`；serving declared |
 | G5 | canonical/provider 矛盾（无论事实是否相同） | deployment → `labA/x`；声明 P 的记录 relation → `labA/y`（x/y 内禀等价或不同两种子情况） | identity conflict → ambiguous → withheld；事实相等不构成等价 |
 | G6 | first-party override 未证明 | registry `labA/x` 100/10；`labA` provider 记录 80/10 | effective 100/10 |
 | G6b | first-party override 已证明 | 同上 + `models_dev_provider: labA` | effective 80/10；context basis serving |
@@ -103,11 +105,13 @@
 | G37 | operator-configuration 诊断 | 同 G36 | 诊断列出键名并标注 operator configuration，不称 enforcement |
 | G38 | LKG evidence multiset | 两个 deployment route 相同但 base_model/models_dev_provider 证据不同，其一改变 | multiset 不等 → 整份 reject |
 | G39 | catalog models-only | 顶层只有 `models` | unavailable；LiteLLM-only + LKG 路径 |
-| G40 | provider 证明 ≠ record 证明 | `models_dev_provider: gatewayX`；gatewayX 只有 `x-free`（relation→`labA/x`）；wire id `x` | record unresolved；整组按 serving-unproven 解析；`x-free` 不提供任何 fact；诊断 `serving-record-unresolved` |
+| G40 | provider 证明 ≠ record 证明 | `models_dev_provider: gatewayX`；gatewayX 只有 `x-free`（relation→`labA/x`）；wire id `x` | record unresolved；整组按 serving-unproven 解析；`x-free` 不提供任何 fact **也不提供 identity 证据**（identity 由 wire id `x` 的 registry-unique 裸命中证明，与 relation 无关）；诊断 `serving-record-unresolved` |
 | G41 | LKG litellm-only capture 不可达 | R11 形态按 G30 永远 withheld，永远不产生 capture；`identityKind=litellm-only` 保留在 schema 供前向兼容，结构上不可捕获；存储中出现的 litellm-only proof 一律按伪造 fail closed（G43） |
 | G42 | LKG serving-only capture | R10c 形态 configured 后 capture | identityKind=serving-only、无 canonicalModelID、无 registryDigest、有 serving 声明+recordDigest；合法 capture |
 | G43 | LKG proof 类型不一致 | identityKind=litellm-only 却有 registryDigest；或 canonical 无 canonicalModelID | fail closed（forged） |
 | G44 | Operator-Declared Pricing | `litellm_params.input_cost_per_token` 与 `model_info.input_cost_per_token` 不同 | 用 `litellm_params`（镜像键优先）；价格键永不 narrowing 任何能力字段 |
+| G45 | operator configuration 不触发非法（gate 冲突，review issue 7） | canonical/serving 完整；`litellm_params.max_tokens: 0`、`max_completion_tokens: -5`、`max_input_tokens: 0` | 全部只进诊断（`operator-configuration-invalid-value`）；模型照常 configured 发布；字段不 illegal；LKG 不失效（G20d） |
+| G46 | relation-only 无 lookup-key 命中不证 identity（spec 统一，review issue 8） | registry 无 `zzz`；`models_dev_provider: P`；P 只有 relation SKU（key/id 均不命中 wire id `zzz`），无论 relation 收敛到几个 canonical | identity 保持 unproven（绝不由 provider 内 relation 收敛推断）；serving-record-unresolved；LiteLLM-only 分支 → G30 withheld |
 
 ## C — Catalogue-wide 门禁
 

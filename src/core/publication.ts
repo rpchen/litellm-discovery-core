@@ -1074,14 +1074,15 @@ function liveLitellmFingerprintOf(group: DeploymentGroup): string {
 
 /**
  * Illegal live deployment limit values are never hidden behind an LKG
- * restore. Both descriptive (`model_info`) and operator-configuration
- * (`litellm_params`) declarations participate.
+ * restore. Only declared-observable `model_info` limits participate:
+ * unproven operator-configuration `litellm_params` keys are NOT capability
+ * evidence (D7a empty proven set), so their non-positive values never veto
+ * a restore (G20d: operator reconfiguration keeps the entry valid). A
+ * non-positive operator key is a diagnostics issue, not a gate.
  */
 function illegalLiveLimit(group: DeploymentGroup): boolean {
   return group.deployments.some((deployment) =>
-    ["max_input_tokens", "max_output_tokens", "max_tokens", "max_completion_tokens"].some((key) => {
-      const constraint = optionalNumber(deployment.litellmParams[key]);
-      if (constraint !== undefined && !(constraint > 0)) return true;
+    ["max_input_tokens", "max_output_tokens", "max_tokens"].some((key) => {
       const descriptive = optionalNumber(deployment.modelInfo[key]);
       return descriptive !== undefined && !(descriptive > 0);
     }),

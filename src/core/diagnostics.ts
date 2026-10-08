@@ -508,6 +508,20 @@ function modelDiagnostic(
       message: `${key} is operator configuration (no proven enforcement): it narrows nothing and enters no fingerprint.`,
     });
   }
+  // Configuration-validity diagnostics (D7a/G20d): a non-positive operator-
+  // configuration limit is reported so the operator can fix the deployment
+  // configuration, but it is NOT capability evidence — it never withholds
+  // the model, never marks a field illegal, and never invalidates an LKG
+  // entry. The publication gate stays untouched by these keys.
+  for (const key of resolved.operatorConfigurationIssueKeys) {
+    issues.push({
+      severity: "warning",
+      stage: "mapping",
+      code: "operator-configuration-invalid-value",
+      modelId: group.modelName,
+      message: `${key} declares a non-positive limit; the operator configuration is invalid, but unproven keys never gate publication — fix the deployment configuration.`,
+    });
+  }
   if (!hasOperationalLimits(spec)) {
     issues.push({
       severity: "warning",

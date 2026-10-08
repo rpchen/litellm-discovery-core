@@ -128,6 +128,8 @@ export interface ResolvedModel {
   readonly reasoningLevels: ReasoningLevelsState;
   readonly diagnosticCandidates: readonly DiagnosticCandidate[];
   readonly operatorConfigurationKeys: readonly string[];
+  /** Non-positive operator-configuration limit keys (diagnostics only; never gate evidence — D7a/G20d). */
+  readonly operatorConfigurationIssueKeys: readonly string[];
   readonly status: "configured" | "discovered-incomplete" | "unmatched" | "ambiguous" | "metadata-unavailable" | "invalid-metadata";
   readonly publishable: boolean;
   readonly reasons: readonly string[];
@@ -523,9 +525,10 @@ export function resolveModel(
   const catalog = normalizeModelsDevCatalog(catalogInput);
   const protocol = resolveProtocol(group, options.protocolOverrides ?? {});
   const operatorConfigurationKeys = collectOperatorConfigurationKeys(group);
+  const operatorConfigurationIssueKeys = collectOperatorConfigurationIssueKeys(group);
 
   if (catalog.kind !== "complete") {
-    return resolveWithoutCatalog(group, catalog.kind, protocol, operatorConfigurationKeys, options);
+    return resolveWithoutCatalog(group, catalog.kind, protocol, operatorConfigurationKeys, operatorConfigurationIssueKeys, options);
   }
 
   const registry = registryEntries(catalog);
@@ -543,7 +546,7 @@ export function resolveModel(
       reason: `deployments declare different models_dev_provider values (${declaredProviders.sort().join(", ")})`,
       parse: {},
     };
-    return finishResolution(group, catalog, protocol, operatorConfigurationKeys, conflictIdentity, { status: "unproven" }, "ambiguous", undefined, options);
+    return finishResolution(group, catalog, protocol, operatorConfigurationKeys, operatorConfigurationIssueKeys, conflictIdentity, { status: "unproven" }, "ambiguous", undefined, options);
   }
   const perDeployment = group.deployments.map((deployment) => {
     const candidates = deploymentCandidates({
@@ -615,7 +618,7 @@ export function resolveModel(
         reason: `deployment evidence resolves ${identity.canonicalModelID} but serving record declares ${relation} (identity-ambiguous)`,
         parse,
       };
-      return finishResolution(group, catalog, protocol, operatorConfigurationKeys, conflictIdentity, { status: "unproven" }, "ambiguous", undefined, options);
+      return finishResolution(group, catalog, protocol, operatorConfigurationKeys, operatorConfigurationIssueKeys, conflictIdentity, { status: "unproven" }, "ambiguous", undefined, options);
     }
   }
 
@@ -633,6 +636,7 @@ export function resolveModel(
     catalog,
     protocol,
     operatorConfigurationKeys,
+    operatorConfigurationIssueKeys,
     identity,
     servingUsable,
     groupStatus,
@@ -653,11 +657,37 @@ function collectOperatorConfigurationKeys(group: DeploymentGroup): string[] {
   return [...keys].sort();
 }
 
+/**
+ * Non-positive operator-configuration limit keys. These are configuration
+ * VALIDITY observations only (D7a/G20d): an unproven `litellm_params` key
+ * never participates in a capability verdict, so its bad value neither
+ * withholds the model nor fails an LKG entry closed — it is reported so the
+ * operator can fix the configuration. Diagnostics-only, never gate input.
+ */
+const OPERATOR_CONFIGURATION_LIMIT_KEYS = [
+  "max_input_tokens",
+  "max_output_tokens",
+  "max_tokens",
+  "max_completion_tokens",
+] as const;
+
+function collectOperatorConfigurationIssueKeys(group: DeploymentGroup): string[] {
+  const keys = new Set<string>();
+  for (const deployment of group.deployments) {
+    for (const key of OPERATOR_CONFIGURATION_LIMIT_KEYS) {
+      const value = optionalNumber(deployment.litellmParams[key]);
+      if (value !== undefined && !(value > 0)) keys.add(`litellm_params.${key}`);
+    }
+  }
+  return [...keys].sort();
+}
+
 function resolveWithoutCatalog(
   group: DeploymentGroup,
   kind: "providers-only" | "unavailable",
   protocol: Protocol,
   operatorConfigurationKeys: string[],
+  operatorConfigurationIssueKeys: string[],
   options: ResolveOptions = {},
 ): ResolvedModel {
   // No canonical resolution, no provider record use. LiteLLM-complete models
@@ -677,7 +707,7 @@ function resolveWithoutCatalog(
   const withTier = applyTierCap(group, withIllegal, options.contextTierCap);
   const identity: ResolvedIdentity = { status: "unproven", evidence: "none", parse: {} };
   const serving: ResolvedServing = { status: "unproven" };
-  return assembleResolved(group, kind, protocol, operatorConfigurationKeys, identity, serving, withTier, withEffort, []);
+  return assembleResolved(group, kind, protocol, operatorConfigurationKeys, operatorConfigurationIssueKeys, identity, serving, withTier, withEffort, []);
 }
 
 interface FieldSet {
@@ -1261,6 +1291,7 @@ function finishResolution(
   catalog: NormalizedCatalog,
   protocol: Protocol,
   operatorConfigurationKeys: string[],
+  operatorConfigurationIssueKeys: string[],
   identity: ResolvedIdentity,
   servingUsable: ResolvedServing,
   forcedStatus?: ResolvedModel["status"],
@@ -1316,6 +1347,7 @@ function finishResolution(
     catalog.kind,
     protocol,
     operatorConfigurationKeys,
+    operatorConfigurationIssueKeys,
     identity,
     originalServing ?? servingUsable,
     fields,
@@ -1328,9 +1360,19 @@ function finishResolution(
 }
 
 /**
- * Illegal metadata: an explicitly declared non-positive limit (descriptive
- * or operator-configuration, deployment-level or trusted record-level) is
- * illegal, never missing or a default. Attaches to the affected field.
+ * Illegal metadata: an explicitly declared non-positive limit is illegal,
+ * never missing or a default. Attaches to the affected field.
+ *
+ * D7a/G20d scoping (review follow-up): unproven operator configuration —
+ * every non-pricing `litellm_params` key — participates in NO capability
+ * verdict. Illegality is the strongest capability veto (it withholds the
+ * model and fails LKG closed), so an operator-configuration key must never
+ * trigger it: only declared-observable `model_info` limits and trusted
+ * record (serving/canonical registry) limits are capability evidence whose
+ * non-positive values are illegal. A non-positive operator-configuration
+ * key is surfaced as a separate diagnostics issue instead (see
+ * collectOperatorConfigurationIssues), never through the publication gate
+ * or an LKG fingerprint.
  */
 function applyIllegality(
   group: DeploymentGroup,
@@ -1339,19 +1381,13 @@ function applyIllegality(
   fields: FieldSet,
 ): FieldSet {
   const illegalInputDeclared = group.deployments.some((deployment) => {
-    const values = [
-      optionalNumber(deployment.modelInfo.max_input_tokens),
-      optionalNumber(deployment.litellmParams.max_input_tokens),
-    ];
-    return values.some((value) => value !== undefined && !(value > 0));
+    const value = optionalNumber(deployment.modelInfo.max_input_tokens);
+    return value !== undefined && !(value > 0);
   });
   const illegalOutputDeclared = group.deployments.some((deployment) => {
     const values = [
       optionalNumber(deployment.modelInfo.max_output_tokens),
       optionalNumber(deployment.modelInfo.max_tokens),
-      optionalNumber(deployment.litellmParams.max_tokens),
-      optionalNumber(deployment.litellmParams.max_output_tokens),
-      optionalNumber(deployment.litellmParams.max_completion_tokens),
     ];
     return values.some((value) => value !== undefined && !(value > 0));
   });
@@ -1493,6 +1529,7 @@ function assembleResolved(
   catalogKind: NormalizedCatalog["kind"],
   protocol: Protocol,
   operatorConfigurationKeys: string[],
+  operatorConfigurationIssueKeys: string[],
   identity: ResolvedIdentity,
   serving: ResolvedServing,
   fields: FieldSet,
@@ -1590,6 +1627,7 @@ function assembleResolved(
     reasoningLevels,
     diagnosticCandidates,
     operatorConfigurationKeys,
+    operatorConfigurationIssueKeys,
     status,
     publishable,
     reasons,
