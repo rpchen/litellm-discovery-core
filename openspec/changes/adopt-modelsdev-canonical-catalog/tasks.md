@@ -17,7 +17,7 @@
 - [x] 0.7 Revision 3：LiteLLM 源码核实与六项修订
 - [x] 0.8 Revision 4：撤销 D7a 全部 hard-enforced 归类（`get_router_model_info` 不合并 `litellm_params` 能力键、`MirroredPricingParams` 仅 7 个价格键、`supports_factory` 读 cost-map）；enforcement 证明集从空开始 + 晋升门槛；删除 `limit.input = context` 推导；catalog 穷举三态；LKG evidence multiset；DeepSeek R4/R4b；tasks 全文重写清除旧设计
   - 证据：`design.md` Revision 4 / D7a / D2 / D6 / D10、`audit.md` §7（Revision 4）、`acceptance.md` G34–G39、`specs/*`、本文件
-- [ ] 0.9 最终设计评审通过（逐行 review 已推送分支 head；当前评审轮次：第六轮 review 后的 Revision 6 收敛）
+- [ ] 0.9 最终设计评审通过（DESIGN_APPROVED_FOR_IMPLEMENTATION；分支 head 已推送，等待 consistency confirmation）
 
 ## 1. Catalog 输入（Core）
 

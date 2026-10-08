@@ -76,7 +76,7 @@ adapter 段与 `custom_llm_provider` 记录为 parse metadata（进入诊断）�
 
 `base_model` 证明成功即决定该 deployment；路由解析不同只记 `identity-route-differs` 诊断（live `kimi-k2.7-code → minimax/MiniMax-M2.7`）。
 
-**D3.3 serving relation 证据**（D4 证明 serving 之后）：选中 serving 记录的 `canonical_model_id` = C'。
+**D3.3 serving relation 证据**（D4 证明 provider 之后）：**候选记录**（无论 record resolved 或 relation-only unresolved）的 `canonical_model_id` = C'。**identity 证据资格 ≠ serving-record 解析**：relation-only 记录可证明 underlying canonical identity，但永不解析 SKU、永不提供 serving facts（D4）。
 - deployment 未证明 canonical 且 C' 是 registry key → canonical = C'（`serving-relation`）。
 - deployment canonical C ≠ C'（两边都是确定性 identity 证据）→ **identity conflict，fail closed**（ambiguous，withheld，reason `identity-ambiguous`）。事实相等不是 identity 关系：`labA/x` 与 `labA/y` limits/modalities/tools/reasoning 全同也可能是不同模型；models.dev 当前没有任何能证明两个 canonical 等价的关系字段（audit §1：`aliases`/`inherits`/`equivalent_to` 在真实数据中出现 0 次）。
 - inline first-party 记录（无 `canonical_model_id`）仅在 `provider == lab(C)` 且 `record id == tail(C)` 时视为与 C 一致，否则不提供 identity 证据。
@@ -155,7 +155,7 @@ conflict:    跨 deployment LiteLLM 声明显式不一致 → unresolved conflic
 | output modalities | serving `modalities.output`（缺则 unknown） | registry `modalities.output` | 同上（`supports_audio_output`） | unknown | — | 同上 | gated |
 | reasoning levels | serving `reasoning_options`（known，可为空） | —（registry 无此字段） | —（`model_info.supports_*_reasoning_effort` 只诊断） | levels unknown | — | — | 非 gated |
 | price（逐组件） | serving `cost`（仅当 LiteLLM 未声明该组件） | —（registry 无价格） | LiteLLM 显式价格**始终最高优先**（`litellm_params` 先于 `model_info`，多 deployment 取最高；declared-observable） | unknown（0） | — | — | 非 gated |
-| release date | serving `release_date`（canonical 未证明时）；canonical proven 时用 registry | registry `release_date` | — | unknown（`releaseUnit: none`） | — | — | 非 gated |
+| release date | resolved serving 记录的 `release_date`（有则用；缺 → unknown，**不回填 canonical**——与 D6 分支算法一致，无特殊优先级） | registry `release_date` | — | unknown（`releaseUnit: none`） | — | — | 非 gated |
 
 **modalities 语义**（按 models.dev schema）：`modalities.input/output` 是必填完整集合——列出即 supported、未列出即 unsupported；整个 `modalities` 对象缺失（schema 允许、当前 0/445）→ unknown，绝不当作 text-only。
 
@@ -277,10 +277,10 @@ interface LastKnownGoodEntryV8 {
 
 - **[值变保守]** kimi-k3 output 1048576 → 131072、deepseek 393216 → 384000。→ 只有 **serving provider 与 exact serving record（SKU）都被证明**（声明 `models_dev_provider` 且 wire id 精确命中该 provider 的 serving record）才恢复 393216；仅声明 provider 而无 exact SKU（DeepSeek 真实 catalog 只有 relation-only SKU）仍是 384000。README/诊断说明。
 - **[推理档位消失]** live 当前有 13 个模型发布可选档位。serving 未证明时全部变为 levels unknown。→ 声明 `models_dev_provider`；不放松证据规则。
-- **[DeepSeek 输出值变化（显式确认）]** `deepseek-v4.1-flash`/`deepseek-v4-pro` 从 serving SKU 的 393216 变为 canonical 384000（serving 未证明）。**provider 声明本身不足以恢复 393216**：deepseek 真实 catalog 只有 relation-only SKU（`deepseek-flash` 等），仅声明 `models_dev_provider: deepseek` 仍是 384000；只有 provider 声明 **且** wire id 精确命中某条 SKU record（如 `custom_llm_provider: deepseek` + route `deepseek/deepseek-flash`）才采用该 SKU 的 393216。这与前一阶段保护的 393216 regression 是明确的用户可见行为变化，按 acceptance R4/R4b 双场景固定，写入 migration/release notes；任何人不得把其中一侧行为改回旧值而不走 delta。
+- **[DeepSeek 输出值变化（显式确认）]** `deepseek-v4.1-flash`/`deepseek-v4-pro` 从 serving SKU 的 393216 变为 canonical 384000（serving 未证明）。**provider 声明本身不足以恢复 393216**：deepseek 真实 catalog 只有 relation-only SKU（`deepseek-flash` 等），仅声明 `models_dev_provider: deepseek` 仍是 384000；只有 provider 声明 **且** wire id 精确命中某条 SKU record（如 `custom_llm_provider: deepseek` + route `deepseek/deepseek-flash`）才采用该 SKU 的 393216。这与前一阶段保护的 393216 regression 是明确的用户可见行为变化，按 acceptance R4/R4b/R4c 三场景固定，写入 migration/release notes；任何人不得把其中一侧行为改回旧值而不走 delta。
 - **[无任何 proven enforcement]** D7a 证明集为空：**非价格** `litellm_params` 键只进诊断，不收窄任何字段（包括 `max_input_tokens`）；7 个价格键按 Operator-Declared Pricing 独立处理（D8）。已声明 enforcement 键的运维者会看到行为变化（不再收窄）；README 说明晋升门槛与未来 delta 路径。
 - **[LiteLLM-only 更严格]** LiteLLM-only（canonical 未证明、无 serving）且无真实 context 语义声明时，模型由「拿 `max_input_tokens` 当 context」改为 withheld。live 20 个 deployment 中无此形态（均有 canonical 匹配）；影响集中在私有模型。
-- **[serving 缺字段不回填]** 已证明 serving 缺 `limit.input`（可能被 `base_model_omit` 删除，真实数据 64 条）时保持缺失，不再回填 canonical。→ 与 models.dev 生成器语义一致。
+- **[serving 缺字段不回填]** resolved serving 缺 `limit.input`（可能被 `base_model_omit` 删除，真实数据 64 条）时：**禁止 canonical 回填**；有同维度 LiteLLM 声明（`max_input_tokens`）→ litellm-declared 补缺；没有 → unknown。→ 与 models.dev 生成器语义和 D6 分支算法一致。
 - **[未登记模型更严格]** registry 无条目、LiteLLM 声明不完整、无 serving 声明的私有模型由「reseller 补值」改为 withheld。live 影响 0；诊断列出可声明的候选。
 - **[schema 8 一次性 fail closed]** 升级后首轮若 models.dev outage，旧 LKG 不恢复。→ 下一轮 live 自动重捕获；release notes 说明。
 - **[providers-only 镜像]** → Q2。

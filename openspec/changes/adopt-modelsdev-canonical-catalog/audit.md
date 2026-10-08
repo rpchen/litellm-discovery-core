@@ -180,6 +180,12 @@ LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段
 - `base_model_omit` 真实案例：`providers/requesty/models/hy3.toml` `base_model_omit = ["limit.input"]`；linked serving 记录中 64 条缺 `limit.input` 而 canonical 有 → 「serving 缺字段回填 canonical」会撤销作者显式 omit，已删除该规则。
 - canonical 裸 ID 大小写不敏感唯一性维持 445/445；但「qualified 值无条件取尾段」在私有路由（`some-private-provider/foo`）上会误命中，已改为仅裸值或经 `custom_llm_provider` 证据确认 adapter 后才取余串。
 
+**Revision 7（第七轮评审后，最终一致性 patch）**
+- `release_date` 优先级统一：resolved serving 记录有则用、缺失不回填 canonical——与 D6 分支算法一致，删除「canonical > serving」的特殊优先级。
+- LKG 删除「enforcement fingerprint covers `max_input_tokens`」这种当前空证明集下不可能的 scenario，改为空 fingerprint + 任意 operator-configuration 键变化不失效。
+- D3.3 措辞对齐 D4：relation-only 记录可证明 underlying canonical identity（identity 证据资格），但 identity 证据资格 ≠ serving-record 解析。
+- 机械清理：deployment evidence 命名、`reasoning_effort` 诊断措辞、R4/R4b/R4c 三场景、tasks 0.9 评审门槛、Risks 的 input 规则完整化。
+
 **Revision 5（第五轮评审，OpenSpec 内部一致性收敛）**
 - D7a 作用域与 Price authority 冲突修正：enforcement 矩阵只约束 capability/limit/control facts；`MirroredPricingParams` 7 个价格键独立为 **Operator-Declared Pricing**（源码证明 LiteLLM 显式镜像，types/router.py L750-753），不是 enforcement，也不因「不产生能力事实」而被禁用。
 - D6 由四级 fallback 改为**分支算法**：serving record resolved 时按 per-field serving-absence policy（永不回填 canonical，允许同维度 LiteLLM 补缺）；record unresolved 时整组按 serving-unproven 解析。
