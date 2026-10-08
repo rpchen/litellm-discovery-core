@@ -17,7 +17,7 @@
 - [x] 0.7 Revision 3：LiteLLM 源码核实与六项修订
 - [x] 0.8 Revision 4：撤销 D7a 全部 hard-enforced 归类（`get_router_model_info` 不合并 `litellm_params` 能力键、`MirroredPricingParams` 仅 7 个价格键、`supports_factory` 读 cost-map）；enforcement 证明集从空开始 + 晋升门槛；删除 `limit.input = context` 推导；catalog 穷举三态；LKG evidence multiset；DeepSeek R4/R4b；tasks 全文重写清除旧设计
   - 证据：`design.md` Revision 4 / D7a / D2 / D6 / D10、`audit.md` §7（Revision 4）、`acceptance.md` G34–G39、`specs/*`、本文件
-- [ ] 0.9 最终设计评审通过（DESIGN_APPROVED_FOR_IMPLEMENTATION；分支 head 已推送，等待 consistency confirmation）
+- [x] 0.9 最终设计评审通过（DESIGN_APPROVED_FOR_IMPLEMENTATION）：代码 Review 通过（八项 review 修复落地：候选关系限定、组级 serving 证明、identity-critical facts、维度隔离 strict、base_model 零匹配、LKG 指纹稳定性/重排无关、operator configuration 不参与非法裁决、relation-only 措辞统一），实施、双轮对抗测试与全部门禁完成（2026-10-08）
 
 ## 1. Catalog 输入（Core）
 
@@ -84,7 +84,7 @@
 - [x] 7.2 `docs/testing-standard.md` §8：identity precedence 与价格规则改为 canonical registry / serving proof 模型；「runtime constraint」表述改为 Proven Runtime Enforcement（空证明集 + 晋升门槛）；删除 `max_input_tokens` 收窄与 input=context 例外
 - [x] 7.3 `docs/decisions.md` 新增 ADR（canonical catalog 采纳、fact classes、未证明记录零供给、Q1 关闭、enforcement 空证明集与晋升门槛、Q2 结论）
 - [x] 7.4 交付门禁：`npm run typecheck`、`bun test`、`npm run build:dist`、`npm run test:package`、`npm run validate:spec`、`npm run test:openspec-closure`
-- [ ] 7.5 PR → main（不自行合并）；合并后 `finish_codebase_task`；archive + canonical sync + strict validation
+- [x] 7.5 PR → main：squash 合并完成（PR #32，merge commit `300c28af7bd5e2d9e7cbc005bb651e3d9760f994`，2026-10-08T14:25:44Z；合并前 CI 绿、MERGEABLE/CLEAN、base `61f4894` 未变、head `2542080`）；合并后 `finish_codebase_task`、archive + canonical sync + strict validation 见后续条目与 main 提交记录
 
 ## 8. Downstream（各自仓库另立 change，Core SHA 稳定后）
 
