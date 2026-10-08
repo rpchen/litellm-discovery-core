@@ -32,7 +32,7 @@
   - 证据：`resolve-matrix`「wire-ID parsing」（G3/G3b/G3c/G3d/G26/G27）
 - [x] 2.1 `resolveCanonicalIdentity()`：registry 精确证明（full → adapter-evidenced remainder → bare）、`0/1/>1`、base_model 优先、组级一致
   - 证据：`resolve-matrix`「canonical identity resolution」（G1/G2/G2b/G24/G25/G29）+ R1–R9；组证据 rank 确定性（G23）
-- [x] 2.2 `resolveServing()`：`models_dev_provider` 证明 provider；record 只由 exact parsed-key 命中 resolve；relation-only 命中仅为 identity 证据（D3.3），record = `serving-record-unresolved`（整组按 serving-unproven 解析）；多条 exact 候选事实实质不同 → serving-ambiguous；无候选 → declared-unmatched；多 deployment 一致
+- [x] 2.2 `resolveServing()`：`models_dev_provider` 证明 provider；record 只由 exact parsed-key 命中 resolve（命中即 resolved，resolved 记录的 `canonical_model_id` 可按 D3.3 额外证明 identity，不存在「已命中但 SKU unresolved」）；provider 存在但无 exact 命中 → `serving-record-unresolved`（relation-only 记录只进诊断，不提供 identity/serving facts；整组按 serving-unproven 解析）；多条 exact 候选事实实质不同 → serving-ambiguous；声明的 provider 不存在于 catalog → `declared-unmatched`；多 deployment 一致
   - 证据：`resolve-matrix`「serving provider proof」（G4/G6/G6b/G7/G8/G10/G10b/G11/G12b/G12c/G40）+ R3b/R3c/R4b/R4c/R6b/R10c
 - [x] 2.3 canonical/provider 矛盾：两边都是确定性 identity 证据而指向不同 registry key → identity conflict、fail closed；事实相等不构成等价（无 G5a 例外）
   - 证据：`resolve-matrix` G29

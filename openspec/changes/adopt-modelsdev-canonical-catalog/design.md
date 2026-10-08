@@ -76,7 +76,7 @@ adapter 段与 `custom_llm_provider` 记录为 parse metadata（进入诊断）�
 
 `base_model` 证明成功即决定该 deployment；路由解析不同只记 `identity-route-differs` 诊断（live `kimi-k2.7-code → minimax/MiniMax-M2.7`）。
 
-**D3.3 serving relation 证据**（D4 证明 provider 之后）：**候选记录 = 与当前 deployment 有确定性候选关系的记录**——即 key/id 精确命中该 deployment 的 D3.1 parsed lookup keys 的记录（该命中按 D4 规则 1 同时使 record resolved）；候选记录的 `canonical_model_id` = C'。**identity 证据资格 ≠ serving-record 解析**：候选记录可证明 underlying canonical identity，但 relation-only 候选（key/id 命中 lookup keys 但仅经 `canonical_model_id` 关联 canonical）在自身无法解析 SKU 时永不提供 serving facts（D4）。**未命中任何 lookup key 的记录不是候选**：无法通过确定性候选关系关联的 relation-only SKU（`x-free`/`x-fast`/`thinking`/tier 变体）只能作为诊断候选，不提供 identity 证据、不提供 serving facts——遍历整个 provider 推断身份被明确禁止（candidate 资格只能来自当前 deployment 的 parsed lookup keys，绝不能来自 relation 字段本身或 provider 内其它记录）。
+**D3.3 serving relation 证据**（D4 证明 provider 之后）：**候选记录 = 与当前 deployment 有确定性候选关系的记录**——即 key/id 精确命中该 deployment 的 D3.1 parsed lookup keys 的记录。按 D4 规则 1，该精确命中**同时使 record resolved**：不存在「已精确命中但 SKU unresolved」的状态。候选记录的 `canonical_model_id` = C' 可**额外**证明 underlying canonical identity（`serving-relation`）——identity 证据资格与 serving-record 解析在**结果**上分离：一条记录可以证明 canonical identity 而从不提供 serving facts（例如仅经 `canonical_model_id` 关联、自身 serving 值不参与发布的场景按 D6 分支算法处理）。**未命中任何 lookup key 的记录不是候选**：无法通过确定性候选关系关联的 relation-only SKU（`x-free`/`x-fast`/`thinking`/tier 变体）只能作为诊断候选，不提供 identity 证据、不提供 serving facts——遍历整个 provider 推断身份被明确禁止（candidate 资格只能来自当前 deployment 的 parsed lookup keys，绝不能来自 relation 字段本身或 provider 内其它记录）。
 - deployment 未证明 canonical 且候选记录的 C' 是 registry key → canonical = C'（`serving-relation`）。
 - deployment canonical C ≠ C'（两边都是确定性 identity 证据）→ **identity conflict，fail closed**（ambiguous，withheld，reason `identity-ambiguous`）。事实相等不是 identity 关系：`labA/x` 与 `labA/y` limits/modalities/tools/reasoning 全同也可能是不同模型；models.dev 当前没有任何能证明两个 canonical 等价的关系字段（audit §1：`aliases`/`inherits`/`equivalent_to` 在真实数据中出现 0 次）。
 - inline first-party 记录（无 `canonical_model_id`）仅在 `provider == lab(C)` 且 `record id == tail(C)` 时视为与 C 一致，否则不提供 identity 证据。
@@ -89,12 +89,12 @@ adapter 段与 `custom_llm_provider` 记录为 parse metadata（进入诊断）�
 
 - **proven** 当且仅当组内所有 deployment 声明同一 `models_dev_provider = P`，且 `catalog.providers[P]` 存在。
 - **Provider 证明 ≠ record/SKU 证明。** 记录选择（只在 P 内）：
-  1. key/id 精确等于 D3.1 的 parsed lookup keys（full → adapter-evidenced remainder → bare）→ record **resolved**；
-  2. 无 parsed-key 命中时，record = **unresolved**（`serving-record-unresolved`）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断说明「provider 已声明但无精确同名记录；请用精确 wire id 或改声明」。此时 P 内任何记录都未与当前 deployment 建立确定性候选关系，因此**没有任何记录能作为 `serving-relation` 的 identity 证据**（D3.3：候选资格只能来自 parsed lookup keys 命中；无命中即无候选）；P 内 `canonical_model_id == C`（C 已由 deployment 侧证据证明）的记录只作诊断一致性展示，并禁止把 relation-only 记录（`x-free`/`x-fast`/`thinking`/tier 变体）当 serving facts 或 identity 证据；
+  1. key/id 精确等于 D3.1 的 parsed lookup keys（full → adapter-evidenced remainder → bare）→ record **resolved**；不存在「已精确命中但 SKU unresolved」的状态——resolved 记录的 `canonical_model_id` 按 D3.3 可额外证明 canonical identity；
+  2. **provider 存在但无任何 exact record 命中** → record = **unresolved**（`serving-record-unresolved`）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断说明「provider 已声明但无精确同名记录；请用精确 wire id 或改声明」。此时 P 内任何记录都未与当前 deployment 建立确定性候选关系，因此**没有任何记录能作为 `serving-relation` 的 identity 证据**（D3.3：候选资格只能来自 parsed lookup keys 命中；无命中即无候选）；P 内 `canonical_model_id == C`（C 已由 deployment 侧证据证明）的记录只作诊断一致性展示，并禁止把 relation-only 记录（`x-free`/`x-fast`/`thinking`/tier 变体）当 serving facts 或 identity 证据——无论 provider 持有多少 relation 记录、无论其 relation 是否收敛；
   3. parsed-key 命中多条且 serving publication-critical facts 实质不同 → `serving-ambiguous`（withheld）；
-  4. P 无任何候选记录 → `declared-unmatched`（按 serving 未证明发布 + warning）。
+  4. **声明的 provider 不存在于 catalog** → `declared-unmatched`（按 serving 未证明发布 + warning）。
 - 多 deployment 选出的 serving 记录 publication-critical facts 必须一致，否则 conflict。
-- **unproven**：无声明。此时任何 provider 记录都不提供事实。删除 rule B。
+- **unproven**：无声明，或组内声明不一致/部分声明。此时任何 provider 记录都不提供事实。删除 rule B。
 
 ### D5 未证明记录（取代旧 fallback）
 
@@ -213,7 +213,7 @@ resolveModel(group, catalog: NormalizedCatalog, options): ResolvedModel
 interface ResolvedModel {
   group; protocol; catalogKind
   identity: { status: "proven"|"unproven"|"ambiguous"|"conflict"; canonicalModelID?; evidence: "qualified-deployment"|"registry-unique"|"serving-relation"|"none"; matchedCandidate?; parse: { adapterSegment?; customLLMProvider? }; discrepancy?; reason? }
-  serving: { status: "declared"|"declared-unmatched"|"serving-record-unresolved"|"serving-ambiguous"|"unproven"; providerID?; recordID?; reason? }   // declared = provider proven + record resolved；serving-record-unresolved = provider proven、无 exact SKU
+  serving: { status: "declared"|"declared-unmatched"|"serving-record-unresolved"|"serving-ambiguous"|"unproven"; providerID?; recordID?; reason? }   // declared = provider proven + record resolved（exact lookup-key 命中）；serving-record-unresolved = provider proven 但无 exact record 命中；declared-unmatched = 声明的 provider 不存在于 catalog
   fields: Record<FieldName, FieldResolution & { basis: FieldBasis }>   // FieldBasis = "serving"|"canonical"|"litellm-declared"|"unknown"（"enforcement-narrowed" 预留给 D7a 晋升后的键；当前不产生）
   reasoningLevels: { state: "unknown"|"known"; values; operatorDefaultEffort? }   // operatorDefaultEffort 仅诊断
   diagnosticCandidates: Array<{ providerID; recordID; why }>             // 未证明记录，只诊断

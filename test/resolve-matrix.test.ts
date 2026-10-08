@@ -288,14 +288,40 @@ describe("serving provider proof", () => {
     expect(resolved.fields["price.input"]!.basis).toBe("unknown");
   });
 
-  test("G12b/G12c: unknown or empty provider is declared-unmatched", () => {
+  test("G12b: declared provider absent from the catalog is declared-unmatched", () => {
     const doc = catalog({ "labA/x": base }, {});
+    // `nope` and `labA` are both absent from the providers table (the catalog
+    // declares no providers at all), so both are declared-unmatched.
     for (const provider of ["nope", "labA"]) {
       const litellm = litellmModel("m", { model: "x" }, { ...FULL, models_dev_provider: provider });
       const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
       expect(resolved.serving.status).toBe("declared-unmatched");
       expect(resolved.publishable).toBe(true);
     }
+  });
+
+  test("G12c: declared provider present in the catalog but without an exact record is serving-record-unresolved", () => {
+    // The provider EXISTS in the catalog but none of its records (here: an
+    // unrelated relation-only SKU) matches the wire id's parsed lookup keys.
+    // That is serving-record-unresolved — declared-unmatched is reserved for
+    // a provider absent from the catalog entirely.
+    const doc = catalog(
+      { "labA/x": base },
+      { P: { "un-related": { id: "un-related", canonical_model_id: "labA/x", limit: { context: 5, output: 5 } } } },
+    );
+    const litellm = litellmModel("m", { model: "x" }, { ...FULL, models_dev_provider: "P" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.serving.status).toBe("serving-record-unresolved");
+    // Provider P exists but supplies no facts; the group resolves through
+    // canonical branches (identity proven via the registry bare match).
+    expect(resolved.publishable).toBe(true);
+  });
+
+  test("G12c (empty provider): a provider present with an empty record set is serving-record-unresolved", () => {
+    const doc = catalog({ "labA/x": base }, { P: {} });
+    const litellm = litellmModel("m", { model: "x" }, { ...FULL, models_dev_provider: "P" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.serving.status).toBe("serving-record-unresolved");
   });
 
   test("G4: relation-only SKU proves underlying identity under a proven provider", () => {
