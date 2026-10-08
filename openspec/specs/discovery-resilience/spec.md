@@ -6,34 +6,42 @@ Defines how Core keeps a LiteLLM endpoint usable when model metadata enrichment 
 ## Requirements
 
 ### Requirement: Evidence provenance and source authority
-Core SHALL record, for every publication-critical field, which source decided it and what kind of evidence each source contributed. Canonical identity is a precondition: the trusted models.dev record is authoritative for intrinsic model metadata only when canonical identity is reliably resolved; LiteLLM `model_info` values are secondary descriptive evidence; only a key proven to be enforced by the endpoint — declared in the operator's own deployment configuration (`litellm_params`) — counts as a deployment runtime constraint. Field names alone never prove enforcement.
+Core SHALL record, for every publication-critical field, which source decided it and what kind of evidence each source contributed. Canonical identity is a precondition: the canonical registry entry is authoritative for intrinsic model metadata only when canonical identity is proven; a serving record overrides it only when the serving provider is proven by operator declaration; LiteLLM `model_info` values are secondary descriptive evidence; only a `litellm_params` key promoted through the runtime enforcement matrix of the `modelsdev-catalog` capability counts as proven runtime enforcement, and that proven set starts empty — the presence of a key in the operator's deployment configuration never proves enforcement by itself. Field names, LiteLLM adapter prefixes, and first-party or same-namespace provider records never prove authority by themselves.
 
 #### Scenario: Provenance is recorded per evidence item
 - **WHEN** a publication-critical field is resolved
-- **THEN** Core reports the selected value, the selecting source, and every contributing evidence item with its origin (`authoritative-intrinsic`, `descriptive-metadata`, `deployment-constraint`, or `unknown-provenance`)
+- **THEN** Core reports the selected value, the selecting source, and every contributing evidence item with its origin (`canonical-intrinsic`, `serving`, `litellm-declared`, `operator-declared-pricing`, `descriptive-metadata`, `proven-runtime-enforcement` (no instance until a promotion delta), or `unknown-provenance`)
 
 #### Scenario: Intrinsic truth is authoritative once identity is resolved
-- **WHEN** canonical identity is reliably resolved and the trusted record declares a field that a LiteLLM `model_info` declaration contradicts
-- **THEN** Core selects the trusted value and records the LiteLLM declaration as a resolved discrepancy, never as a conflict or incomplete metadata
+- **WHEN** canonical identity is proven and the registry entry declares a field that a LiteLLM `model_info` declaration contradicts
+- **THEN** Core selects the registry value (or the proven serving override) and records the LiteLLM declaration as a resolved discrepancy, never as a conflict or incomplete metadata
+
+#### Scenario: Unproven provider records carry no authority
+- **WHEN** canonical identity is proven and a first-party, reseller, or variant provider record declares a different value while no serving provider is declared
+- **THEN** that record contributes no evidence to the resolved field
 
 #### Scenario: Simulated model names never decide authority
 - **WHEN** only a model name, family substring, or neighbor-model value suggests a capability or identity
 - **THEN** Core does not treat models.dev as authoritative and never fills values from the guess
 
 ### Requirement: Deployment constraints are separate from intrinsic facts
-Core SHALL keep endpoint runtime constraints as a distinct fact class. Only constraints proven from the operator's own deployment configuration may narrow an effective value, and a narrowing constraint SHALL NOT be reported as a conflict. A descriptive declaration SHALL never narrow or veto an authoritative intrinsic value.
+Core SHALL keep proven runtime enforcement as a distinct fact class. Only `litellm_params` keys promoted through the runtime enforcement matrix of the `modelsdev-catalog` capability — an OpenSpec delta carrying the exact source path where LiteLLM reads that deployment key to reject or rewrite a breaking request, plus an automated negative breakthrough test — may narrow an effective value, a narrowing key SHALL NOT be reported as a conflict, and the proven set starts empty so no key narrows anything before such a delta exists. A descriptive `model_info` declaration SHALL never narrow or veto an authoritative intrinsic value.
 
 #### Scenario: Runtime constraint narrows the effective configuration
-- **WHEN** the operator's deployment configuration declares an enforced limit that is smaller than the model's intrinsic value
-- **THEN** Core publishes the smaller effective value, reports the constraint, and keeps the model publishable
+- **WHEN** a `litellm_params` key has been promoted to hard-enforced and the operator's deployment configuration declares a value smaller than the model's intrinsic value in that key's dimension
+- **THEN** Core publishes the smaller effective value, reports the enforcement, and keeps the model publishable
 
 #### Scenario: Descriptive declaration does not become a hard cap
 - **WHEN** only `model_info` declares a limit that differs from the authoritative intrinsic value
 - **THEN** Core does not treat it as an enforced cap; the intrinsic value is selected and the difference is recorded
 
 #### Scenario: Dimensions are never mixed
-- **WHEN** a constraint exists for one limit dimension
+- **WHEN** a promoted enforcement key exists for one limit dimension
 - **THEN** it narrows only that dimension; total context, input capacity, and output limit are never compared against each other
+
+#### Scenario: Unpromoted configured keys never narrow
+- **WHEN** the operator's deployment configuration declares a limit or capability key that has not been promoted
+- **THEN** Core resolves the field from the field resolution matrix alone, keeps the model publishable when otherwise complete, and lists the key in diagnostics as operator configuration
 
 ### Requirement: Resolved discrepancy versus unresolved conflict
 Core SHALL separate the two outcomes explicitly. A difference that source authority can decide is a *resolved discrepancy*: the selected value is used, the difference is retained as evidence, and the model continues its publication assessment. A difference that no authority can decide is an *unresolved conflict*: the model is withheld with an explicit conflict reason. Resolved discrepancies SHALL NOT be reported as incomplete, invalid, or blocked, and SHALL NOT invalidate a trusted snapshot.
@@ -51,10 +59,10 @@ Core SHALL separate the two outcomes explicitly. A difference that source author
 - **THEN** the affected field is not listed as missing, unknown, or illegal, and the model is not reported as `discovered-incomplete` because of it
 
 ### Requirement: Trusted Last Known Good reuse
-Core SHALL reuse a previously verified complete configuration while live enrichment is unavailable, under all of the following: the entry was captured from a snapshot that passed the current publication gate; the live group's own identity evidence is provable and unchanged (provider namespace included); schema version is compatible; and no authoritative intrinsic fact or proven runtime constraint contradicts the entry. Age SHALL NOT be a validity condition. LKG SHALL NOT resurrect a model the current LiteLLM directory does not serve, and a mismatch SHALL fail closed as withheld.
+Core SHALL reuse a previously verified complete configuration while live enrichment is unavailable, under all of the following: the entry was captured from a resolution that passed the current publication gate; the live group's own stable identity evidence is provable and unchanged; schema version is compatible (schema 8); every component of the entry's proof composition re-proves (deployment evidence multiset, serving declaration, proven runtime enforcement and LiteLLM fingerprints, and with a live catalog the registry and serving record digests); and no canonical intrinsic fact, proven serving fact, or proven runtime constraint contradicts the entry. Age SHALL NOT be a validity condition. LKG SHALL NOT resurrect a model the current LiteLLM directory does not serve, and a mismatch SHALL fail closed as withheld.
 
 #### Scenario: Outage with a valid snapshot keeps the model available
-- **WHEN** the metadata source is temporarily unavailable, LiteLLM still serves the same model, identity is unchanged, and a valid entry exists
+- **WHEN** the metadata source is temporarily unavailable, LiteLLM still serves the same model, stable identity is unchanged, and an entry whose outage proof components all re-prove exists
 - **THEN** Core publishes the model as `configured-lkg` with the entry's fetch time, age, and selection reason
 
 #### Scenario: No valid snapshot means withheld
@@ -70,8 +78,12 @@ Core SHALL reuse a previously verified complete configuration while live enrichm
 - **THEN** the model does not appear in the publication result at all
 
 #### Scenario: Identity or provider change invalidates the entry
-- **WHEN** the live canonical identity or provider differs from the stored entry
+- **WHEN** the live canonical identity or the declared serving provider differs from the stored entry
 - **THEN** Core rejects the entry and withholds the model
+
+#### Scenario: Provider-only catalog does not block a valid restore
+- **WHEN** the supplied catalog is `providers-only` and an entry exists whose outage proof components all re-prove
+- **THEN** Core restores the entry and never uses a provider record from the provider-only payload
 
 ### Requirement: Per-model withholding reasons
 Core SHALL report, for every withheld model, the complete set of reasons rather than a single collapsed label, distinguishing at least: unresolved identity, unmatched identity, unavailable metadata, incomplete metadata, unresolved authoritative conflict, and illegal metadata. Withholding one model SHALL NOT affect any other model of the same endpoint.
