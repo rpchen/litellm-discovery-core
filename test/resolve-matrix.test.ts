@@ -869,6 +869,30 @@ describe("review fixes: identity and serving proof", () => {
     }
   });
 
+  test("issue 2/G23: equivalent records reached through different wire ids pick one representative regardless of order", () => {
+    // Two deployments of one group hit two DIFFERENT but fact-identical
+    // records (same relation, limits, modalities, tools, reasoning, price).
+    // The group must resolve to ONE deterministic representative — same
+    // recordID and same proof under deployment reordering.
+    const record = (id: string) => ({ id, canonical_model_id: "labA/x", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } });
+    const doc = catalog(
+      { "labA/x": entry() },
+      { P: { x: record("x"), "x-alt": record("x-alt") } },
+    );
+    const mk = () => ({
+      data: [
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, models_dev_provider: "P" } },
+        { model_name: "m", litellm_params: { model: "x-alt" }, model_info: { mode: "chat", ...FULL, models_dev_provider: "P" } },
+      ],
+    });
+    const forward = resolveModel(groupOf(mk(), "m"), doc, {});
+    const reordered = resolveModel(groupOf({ data: [...mk().data].reverse() }, "m"), doc, {});
+    expect(forward.serving.status).toBe("declared");
+    expect(reordered.serving.status).toBe("declared");
+    expect(forward.serving.recordID).toBe(reordered.serving.recordID);
+    expect(JSON.stringify(forward.proof)).toBe(JSON.stringify(reordered.proof));
+  });
+
   test("issue 3: exact records naming different canonical identities never merge", () => {
     // Two exact candidates (route + base_model) point at records whose facts
     // are identical but whose canonical identities differ. The group must

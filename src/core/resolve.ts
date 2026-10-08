@@ -378,7 +378,11 @@ function resolveServing(
       reason: "exact serving records for one group name different canonical identities or carry materially different facts",
     };
   }
-  const representative = perDeployment.flat()[0]!;
+  // Deterministic representative (G23): lowest record id across ALL
+  // deployments' candidates, never the first deployment's pick — equivalent
+  // records reached through different wire ids must yield the same proof
+  // under deployment reordering.
+  const representative = perDeployment.flat().sort((a, b) => a.id.localeCompare(b.id, "en"))[0]!;
   return { status: "declared", providerID, recordID: representative.id, record: representative.record };
 }
 
