@@ -21,11 +21,12 @@
  * resolved discrepancy; cross-deployment disagreement is an unresolved
  * conflict; partially declared LiteLLM stays unknown.
  *
- * Dimension isolation: `max_input_tokens` is input capacity and NEVER
- * becomes `limit.context`, except in the LiteLLM-only branch (no canonical,
- * no serving) where it is the sole context declaration for private models
- * (R11, backward compatibility). In canonical/serving branches it is never
- * compared to context and never fills context.
+ * Dimension isolation (invariant, no exceptions): `max_input_tokens` is
+ * input capacity and NEVER becomes `limit.context` — in the canonical and
+ * serving branches it is never compared to context, and in the LiteLLM-only
+ * branch (no canonical, no serving) there is no context key at all, so a
+ * private model without a context-semantic declaration stays missing and is
+ * withheld (design Risks "LiteLLM-only 更严格", G30).
  */
 import { createHash } from "node:crypto";
 import { normalizeModelsDevCatalog, type NormalizedCatalog } from "./catalog-input.js";
@@ -218,9 +219,11 @@ function resolveDeploymentIdentity(
       routeResult = result;
     }
   }
-  // base_model decides the deployment identity; a different route result is
-  // diagnostic only.
-  if (baseResult) {
+  // D3.2 precedence: a base_model with a unique proof decides the deployment;
+  // a different route result is diagnostic only. An ambiguous base_model
+  // decides as ambiguous (fail closed; the route cannot override it).
+  // A zero-match base_model is NOT a decision: the route keeps its chance.
+  if (baseResult && (baseResult.canonicalID !== undefined || baseResult.ambiguous)) {
     const routeDiffers = routeResult !== undefined &&
       (routeResult.canonicalID ?? null) !== (baseResult.canonicalID ?? null);
     return {
@@ -294,11 +297,15 @@ function servingRecordCandidates(
       }
     }
   }
-  return result;
+  return result.sort((a, b) => a.id.localeCompare(b.id, "en"));
 }
 
 function publicationCriticalFacts(record: Record<string, unknown>): string {
+  // Identity relation is publication-critical: exact serving records naming
+  // DIFFERENT canonical identities are never the same record, even when every
+  // capability and price matches. Facts-equal is not identity-equal (D3.3).
   return JSON.stringify({
+    canonical_model_id: typeof record.canonical_model_id === "string" ? record.canonical_model_id : null,
     limit: record.limit ?? null,
     modalities: record.modalities ?? null,
     tool_call: record.tool_call ?? null,
@@ -314,11 +321,22 @@ function resolveServing(
   perDeploymentLookups: string[][],
 ): ResolvedServing {
   const declared = group.deployments.map((deployment) =>
-    optionalString(deployment.modelInfo.models_dev_provider),
+    optionalString(deployment.modelInfo.models_dev_provider)?.toLowerCase(),
   );
-  const distinct = [...new Set(declared.filter((value): value is string => value !== undefined).map((v) => v.toLowerCase()))];
+  const present = declared.filter((value): value is string => value !== undefined);
+  const distinct = [...new Set(present)];
   if (distinct.length > 1) {
-    return { status: "unproven", reason: `deployments declare different models_dev_provider values (${distinct.join(", ")})` };
+    // Order-independent message (G23).
+    return { status: "unproven", reason: `deployments declare different models_dev_provider values (${[...distinct].sort().join(", ")})` };
+  }
+  if (present.length < group.deployments.length) {
+    // D4: proven iff EVERY deployment of the group declares the same provider.
+    // A partial declaration is not a group proof; the group then resolves
+    // through the canonical/LiteLLM branches exactly like an undeclared group.
+    return {
+      status: "unproven",
+      reason: `only ${present.length} of ${group.deployments.length} deployments declare models_dev_provider; a partial declaration is not a group proof`,
+    };
   }
   const providerName = distinct[0];
   if (!providerName) return { status: "unproven" };
@@ -330,10 +348,16 @@ function resolveServing(
   const models = isRecord((providerEntry[1] as Record<string, unknown>).models)
     ? ((providerEntry[1] as Record<string, unknown>).models as Record<string, unknown>)
     : {};
-  // Every deployment must resolve to the same record.
+  // Deterministic group record selection (D4, order-independent):
+  // - every deployment must hold at least one exact candidate, otherwise the
+  //   SKU stays unresolved no matter which deployment is listed first;
+  // - the publication-critical facts (INCLUDING canonical_model_id) of ALL
+  //   candidates of ALL deployments must form ONE equivalence class, otherwise
+  //   the group is serving-ambiguous and fails closed — never first-wins and
+  //   never decided by record order;
+  // - the representative record is the deterministically lowest record id.
   const perDeployment = perDeploymentLookups.map((keys) => servingRecordCandidates(models, keys));
-  const first = perDeployment[0] ?? [];
-  if (first.length === 0) {
+  if (perDeployment.some((list) => list.length === 0)) {
     // Relation-only check: does the provider hold records whose
     // canonical_model_id names the canonical identity? Those prove identity
     // only (handled by the caller), never the SKU.
@@ -343,27 +367,19 @@ function resolveServing(
       reason: `provider ${providerID} holds no record matching the wire id; relation-only records never resolve the SKU`,
     };
   }
-  // Multiple exact candidates with materially different facts -> ambiguous.
-  const facts = new Set(first.map((item) => publicationCriticalFacts(item.record)));
-  if (facts.size > 1) {
-    return { status: "serving-ambiguous", providerID, reason: `provider ${providerID} holds materially different exact records for the wire id` };
+  const factClasses = new Set<string>();
+  for (const list of perDeployment) {
+    for (const item of list) factClasses.add(publicationCriticalFacts(item.record));
   }
-  const recordID = first[0]!.id;
-  const record = first[0]!.record;
-  for (const other of perDeployment.slice(1)) {
-    if (other.length === 0) {
-      return {
-        status: "serving-record-unresolved",
-        providerID,
-        reason: `one deployment of the group has no exact record in provider ${providerID}`,
-      };
-    }
-    const otherFacts = new Set(other.map((item) => publicationCriticalFacts(item.record)));
-    if (otherFacts.size > 1 || ![...otherFacts].every((fact) => facts.has(fact))) {
-      return { status: "serving-ambiguous", providerID, reason: "deployments of one group resolve to different serving records" };
-    }
+  if (factClasses.size > 1) {
+    return {
+      status: "serving-ambiguous",
+      providerID,
+      reason: "exact serving records for one group name different canonical identities or carry materially different facts",
+    };
   }
-  return { status: "declared", providerID, recordID, record };
+  const representative = perDeployment.flat()[0]!;
+  return { status: "declared", providerID, recordID: representative.id, record: representative.record };
 }
 
 // ---------------------------------------------------------------------------
@@ -570,14 +586,18 @@ export function resolveModel(
   const perDeploymentLookups = perDeployment.map((item) => item.lookupKeys);
   let serving = resolveServing(group, catalog, perDeploymentLookups);
 
-  // D3.3/D4: relation-only records under a proven provider prove the
-  // underlying canonical identity but never the SKU. When serving is
-  // unresolved yet the provider holds relation records naming a registry key,
-  // that key may serve as serving-relation identity evidence.
-  if (identity.status === "unproven" && serving.providerID) {
-    const relationIdentity = relationIdentityForGroup(group, catalog, serving.providerID, perDeploymentLookups);
-    if (relationIdentity) {
-      identity = { status: "proven", canonicalModelID: relationIdentity, evidence: "serving-relation", parse, routeDiffers };
+  // D3.3 serving-relation identity: only the record deterministically
+  // selected for the group (resolved by parsed lookup keys, D4) can prove the
+  // underlying canonical identity. Relation-only records that do NOT match the
+  // deployment's wire id are never candidates — scanning the whole provider
+  // would infer identity from unrelated SKUs (review issue 1).
+  if (identity.status === "unproven" && serving.status === "declared" && serving.record) {
+    const relation = typeof serving.record.canonical_model_id === "string" ? serving.record.canonical_model_id : undefined;
+    const registryKey = relation
+      ? Object.keys(catalog.models).find((key) => registryKeyLower(key) === registryKeyLower(relation))
+      : undefined;
+    if (registryKey) {
+      identity = { status: "proven", canonicalModelID: registryKey, evidence: "serving-relation", parse, routeDiffers };
     }
   }
   // Canonical/provider contradiction: both sides deterministic, differ ->
@@ -617,32 +637,6 @@ export function resolveModel(
   );
 }
 
-function relationIdentityForGroup(
-  group: DeploymentGroup,
-  catalog: NormalizedCatalog,
-  providerID: string,
-  perDeploymentLookups: string[][],
-): string | undefined {
-  const provider = catalog.providers[providerID];
-  if (!isRecord(provider) || !isRecord((provider as Record<string, unknown>).models)) return undefined;
-  const models = (provider as Record<string, unknown>).models as Record<string, unknown>;
-  const byKey = new Map<string, string>();
-  for (const key of Object.keys(catalog.models)) byKey.set(registryKeyLower(key), key);
-  const found = new Set<string>();
-  for (const record of Object.values(models)) {
-    if (!isRecord(record)) continue;
-    const relation = typeof (record as Record<string, unknown>).canonical_model_id === "string"
-      ? ((record as Record<string, unknown>).canonical_model_id as string)
-      : undefined;
-    if (!relation) continue;
-    const registryKey = byKey.get(registryKeyLower(relation));
-    if (!registryKey) continue;
-    found.add(registryKey);
-  }
-  if (found.size === 1) return [...found][0];
-  return undefined;
-}
-
 function collectOperatorConfigurationKeys(group: DeploymentGroup): string[] {
   const keys = new Set<string>();
   for (const deployment of group.deployments) {
@@ -671,25 +665,11 @@ function resolveWithoutCatalog(
   const withEffort: ReasoningLevelsState = operatorDefaultEffort
     ? { ...levels, operatorDefaultEffort }
     : levels;
-  // R11: LiteLLM-only private models declare context via max_input_tokens
-  // (the sole context key LiteLLM offers). Canonical/serving branches never
-  // substitute across dimensions.
-  const litellmContext = litellmDeclaredValue(group, ["max_input_tokens"]);
-  const withContext = litellmContext.consistent && litellmContext.value !== undefined && litellmContext.value > 0
-    ? {
-      ...fields,
-      context: {
-        field: "limit.context",
-        basis: "litellm-declared" as const,
-        value: litellmContext.value,
-        status: "selected" as const,
-        resolution: "LiteLLM-only model: max_input_tokens is the private-model context declaration (R11)",
-        discrepancy: false,
-        conflict: false,
-      },
-    }
-    : fields;
-  const withIllegal = applyIllegality(group, undefined, undefined, withContext);
+  // Dimension isolation (no exception): max_input_tokens never becomes
+  // limit.context, so a LiteLLM-only group without a context-semantic
+  // declaration stays context-missing and is withheld (G30 / design Risks
+  // "LiteLLM-only 更严格").
+  const withIllegal = applyIllegality(group, undefined, undefined, fields);
   const withTier = applyTierCap(group, withIllegal, options.contextTierCap);
   const identity: ResolvedIdentity = { status: "unproven", evidence: "none", parse: {} };
   const serving: ResolvedServing = { status: "unproven" };
@@ -1293,11 +1273,11 @@ function finishResolution(
   if (identity.status === "proven" || servingUsable.status === "declared") {
     fields = resolveBranchFields(group, servingRecord, registryValid);
   } else {
-    // Unproven identity, no usable serving: LiteLLM-only branch with the
-    // R11 context exception (max_input_tokens as private-model context).
+    // Unproven identity, no usable serving: LiteLLM-only branch. Dimension
+    // isolation has no exception here — max_input_tokens is input capacity
+    // and never a context declaration, so context stays missing (G30) and the
+    // group is withheld unless a valid LKG restores it.
     fields = resolveBranchFields(group, undefined, undefined);
-    const ctx = resolveLiteLLMOnlyContext(group);
-    if (ctx) fields = { ...fields, context: ctx };
   }
   fields = applyIllegality(group, servingRecord, registryValid, fields);
 
@@ -1341,20 +1321,6 @@ function finishResolution(
     digests,
     release,
   );
-}
-
-function resolveLiteLLMOnlyContext(group: DeploymentGroup): FieldResolutionWithBasis | undefined {
-  const lit = litellmDeclaredValue(group, ["max_input_tokens"]);
-  if (!lit.consistent || lit.value === undefined || !(lit.value > 0)) return undefined;
-  return {
-    field: "limit.context",
-    basis: "litellm-declared",
-    value: lit.value,
-    status: "selected",
-    resolution: "LiteLLM-only model: max_input_tokens is the private-model context declaration (R11)",
-    discrepancy: false,
-    conflict: false,
-  };
 }
 
 /**
@@ -1707,6 +1673,9 @@ function buildProof(
       deploymentID: deploymentStableID(deployment as { modelInfo: Record<string, unknown> }, lookupKeys),
       normalizedInputs,
       identityKind,
+      // Carried BEFORE sorting so a reorder can never attach one
+      // deployment's declaration to another's evidence item (review 6c).
+      declared: (optionalString(deployment.modelInfo.models_dev_provider) ?? "").toLowerCase(),
       ...(identityKind === "canonical"
         ? { canonicalModelID: identity.canonicalModelID!, canonicalEvidenceKind: identity.evidence === "none" ? "registry-unique" as const : (identity.evidence as "qualified-deployment" | "registry-unique" | "serving-relation") }
         : {}),
@@ -1732,16 +1701,16 @@ function buildProof(
   const anyLitellm = Object.values(fieldBasis).includes("litellm-declared");
 
   const proof: LKGProof = {
-    deploymentEvidence: sorted,
+    deploymentEvidence: sorted.map(({ declared, ...item }) => item),
     ...(anyCanonical && digests.registryDigest ? { registryDigest: digests.registryDigest } : {}),
     ...(serving.status === "declared" && serving.record && digests.recordDigest
       ? {
         serving: {
           providerID: serving.providerID!,
           recordID: serving.recordID!,
-          declarations: sorted.map((item, index) => ({
+          declarations: sorted.map((item) => ({
             deploymentID: item.deploymentID,
-            declared: (optionalString(group.deployments[index]!.modelInfo.models_dev_provider) ?? "").toLowerCase(),
+            declared: item.declared,
           })),
           recordDigest: digests.recordDigest,
         },
@@ -1756,7 +1725,12 @@ function buildProof(
 }
 
 function litellmDeclaredMaterial(group: DeploymentGroup): unknown {
-  return group.deployments.map((deployment) => ({
+  // Per-deployment declared material, order-independent (review 6b): sorting
+  // the serialized entries keeps the digest stable when deployments are
+  // reordered. Mirrored pricing keys follow the SAME precedence as the price
+  // resolution (D8/G18c/G44: litellm_params first, model_info fallback), so a
+  // price that actually decides also decides the fingerprint (review 6a).
+  const entries = group.deployments.map((deployment) => ({
     max_input_tokens: deployment.modelInfo.max_input_tokens ?? null,
     max_output_tokens: deployment.modelInfo.max_output_tokens ?? deployment.modelInfo.max_tokens ?? null,
     supports_function_calling: deployment.modelInfo.supports_function_calling ?? null,
@@ -1766,11 +1740,12 @@ function litellmDeclaredMaterial(group: DeploymentGroup): unknown {
     supports_audio_input: deployment.modelInfo.supports_audio_input ?? null,
     supports_video_input: deployment.modelInfo.supports_video_input ?? null,
     supports_audio_output: deployment.modelInfo.supports_audio_output ?? null,
-    input_cost_per_token: deployment.modelInfo.input_cost_per_token ?? deployment.litellmParams.input_cost_per_token ?? null,
-    output_cost_per_token: deployment.modelInfo.output_cost_per_token ?? deployment.litellmParams.output_cost_per_token ?? null,
-    cache_read_input_token_cost: deployment.modelInfo.cache_read_input_token_cost ?? deployment.litellmParams.cache_read_input_token_cost ?? null,
-    cache_creation_input_token_cost: deployment.modelInfo.cache_creation_input_token_cost ?? deployment.litellmParams.cache_creation_input_token_cost ?? null,
+    input_cost_per_token: deployment.litellmParams.input_cost_per_token ?? deployment.modelInfo.input_cost_per_token ?? null,
+    output_cost_per_token: deployment.litellmParams.output_cost_per_token ?? deployment.modelInfo.output_cost_per_token ?? null,
+    cache_read_input_token_cost: deployment.litellmParams.cache_read_input_token_cost ?? deployment.modelInfo.cache_read_input_token_cost ?? null,
+    cache_creation_input_token_cost: deployment.litellmParams.cache_creation_input_token_cost ?? deployment.modelInfo.cache_creation_input_token_cost ?? null,
   }));
+  return entries.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b), "en"));
 }
 
 // ---------------------------------------------------------------------------

@@ -329,8 +329,13 @@ describe("publication: group limit evidence", () => {
 
   test("max_input_tokens never becomes context; disagreement affects input only", () => {
     const same = assessModelConfiguration(two("m", { ...base, max_input_tokens: 128000 }, { max_input_tokens: 128000 }), {}, options)
-    // LiteLLM-only: max_input_tokens IS the private-model context declaration.
-    expect(same.context).toMatchObject({ value: 128000, valid: true })
+    // Dimension isolation has NO LiteLLM-only exception (G30 / design Risks
+    // "LiteLLM-only 更严格"): max_input_tokens is input capacity only, so a
+    // group without a context-semantic declaration stays context-missing and
+    // is withheld; it never becomes limit.context.
+    expect(same.context).toMatchObject({ valid: false })
+    expect(same.fieldBasis?.["limit.context"]).toBe("unknown")
+    expect(same.publishable).toBe(false)
 
     const differing = assessModelConfiguration(two("m", { ...base, max_input_tokens: 128000 }, { max_input_tokens: 64000 }), {}, options)
     expect(differing.conflicts.map((item) => item.field)).toContain("limit.input")

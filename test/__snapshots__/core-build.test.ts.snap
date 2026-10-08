@@ -6,11 +6,13 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
+        "pdf",
       ],
       "output": [
         "text",
       ],
-      "tools": false,
+      "tools": true,
     },
     "cost": {
       "cacheRead": 0,
@@ -35,6 +37,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
+        "pdf",
       ],
       "output": [
         "text",
@@ -165,9 +169,9 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "glm-5.3",
     "limit": {
-      "context": 1000000,
+      "context": 200000,
       "input": 1000000,
-      "output": 131072,
+      "output": 32000,
     },
     "name": "glm-5.3",
     "protocol": "responses",
@@ -223,7 +227,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "glm-fallback",
     "limit": {
-      "context": 128000,
+      "context": 0,
       "input": 128000,
       "output": 16000,
     },
@@ -238,6 +242,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -267,6 +272,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -296,6 +302,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -325,6 +332,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -354,6 +362,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -383,6 +392,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -457,7 +467,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "limit": {
       "context": 262144,
       "input": 262144,
-      "output": 65536,
+      "output": 32768,
     },
     "name": "kimi-k2.6",
     "protocol": "responses",
@@ -486,7 +496,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "limit": {
       "context": 262144,
       "input": 262144,
-      "output": 262144,
+      "output": 32768,
     },
     "name": "kimi-k2.7-code",
     "protocol": "responses",
@@ -528,6 +538,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
       ],
       "output": [
         "text",
@@ -557,6 +568,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
+        "image",
+        "video",
       ],
       "output": [
         "text",
@@ -658,7 +671,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "multi-endpoint-model",
     "limit": {
-      "context": 128000,
+      "context": 0,
       "input": 128000,
       "output": 16000,
     },
@@ -687,7 +700,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "qwen3.7-plus",
     "limit": {
-      "context": 1000000,
+      "context": 0,
       "input": 1000000,
       "output": 64000,
     },
@@ -716,7 +729,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "responses-only-model",
     "limit": {
-      "context": 128000,
+      "context": 0,
       "input": 128000,
       "output": 16000,
     },
@@ -774,7 +787,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "tiered-pricing-model",
     "limit": {
-      "context": 256000,
+      "context": 0,
       "input": 256000,
       "output": 64000,
     },

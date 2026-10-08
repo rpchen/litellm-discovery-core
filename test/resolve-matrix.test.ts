@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test";
 import { normalizeModelsDevCatalog } from "../src/core/catalog-input.ts";
 import { parseWireID } from "../src/core/wire-id.ts";
 import { groupLiteLLMDeployments } from "../src/core/litellm.ts";
+import { buildModelSpecs } from "../src/core/build.ts";
 import { resolveModel } from "../src/core/resolve.ts";
 import { diagnoseModelSpecs } from "../src/core/diagnostics.ts";
 import {
@@ -328,8 +329,13 @@ describe("field resolution matrix", () => {
       { R: { x: { id: "x", limit: { context: 1, output: 2 }, tool_call: false } } },
     );
     const assessment = assessModelConfiguration(groupOf(litellmModel("m", { model: "x" }, FULL), "m"), doc, options);
-    expect(assessment.publishable).toBe(true);
-    expect(assessment.fieldBasis?.["limit.context"]).toBe("litellm-declared");
+    // Unproven records never create conflicts — and under dimension isolation
+    // (G30) the group is LiteLLM-only, so context stays missing and the model
+    // is withheld; the reseller record never fills it.
+    expect(assessment.publishable).toBe(false);
+    expect(assessment.status).toBe("discovered-incomplete");
+    expect(assessment.fieldBasis?.["limit.context"]).toBe("unknown");
+    expect(assessment.conflicts).toEqual([]);
   });
 
   test("G13c: cross-deployment disagreement is an unresolved conflict", () => {
@@ -668,19 +674,42 @@ describe("LKG schema 8 proof composition", () => {
     expect(validation.valid).toBe(false);
   });
 
-  test("G41/G42: litellm-only and serving-only captures are legal", () => {
+  test("G41: the litellm-only form never publishes, so it can never capture", () => {
+    // Dimension isolation (G30): a group with no canonical identity and no
+    // proven serving record has NO context key at all — max_input_tokens is
+    // input capacity — so it stays discovered-incomplete, is withheld, and
+    // `identityKind: "litellm-only"` is structurally uncapturable. The
+    // schema kind remains defined for forward compatibility; a stored proof
+    // claiming it must fail closed (G43).
     const privateLitellm = litellmModel("p", { model: "p" }, FULL);
     const privateDoc = catalog({});
-    const pGroup = groupOf(privateLitellm, "p");
     const pPublication = buildPublicationResult(privateLitellm, privateDoc, options);
+    expect(pPublication.publishable).toEqual([]);
+    expect(pPublication.blocked.map((item) => item.spec.id)).toEqual(["p"]);
+    expect(() => createLastKnownGoodEntry(
+      groupOf(privateLitellm, "p"), undefined, pPublication.blocked[0]!.spec, Date.now(),
+      capturedPublicationVerdict(pPublication.blocked[0]!.assessment, pPublication.blocked[0]!.spec),
+      privateDoc, options,
+    )).toThrow(/configured/);
+  });
+
+  test("G42: serving-only captures stay legal", () => {
+    const servingDoc = catalog(
+      {},
+      { P: { p: { id: "p", limit: { context: 100, input: 90, output: 10 }, modalities: { input: ["text"], output: ["text"] }, tool_call: true, reasoning: false } } },
+    );
+    const servingLitellm = litellmModel("p", { model: "p" }, { ...FULL, models_dev_provider: "P" });
+    const pGroup = groupOf(servingLitellm, "p");
+    const pPublication = buildPublicationResult(servingLitellm, servingDoc, options);
     expect(pPublication.publishable.length).toBe(1);
     const pEntry = createLastKnownGoodEntry(
       pGroup, undefined, pPublication.publishable[0]!.spec, Date.now(),
       capturedPublicationVerdict(pPublication.publishable[0]!.assessment, pPublication.publishable[0]!.spec),
-      privateDoc, options,
+      servingDoc, options,
     );
-    expect(pEntry.proof.deploymentEvidence[0]!.identityKind).toBe("litellm-only");
+    expect(pEntry.proof.deploymentEvidence[0]!.identityKind).toBe("serving-only");
     expect(pEntry.proof.registryDigest).toBeUndefined();
+    expect(pEntry.proof.serving?.providerID).toBe("P");
   });
 
   test("G43: inconsistent proof kinds fail closed", () => {
@@ -730,8 +759,16 @@ describe("group consistency", () => {
     );
     const assessment = assessModelConfiguration(groupOf(litellmModel("m", { model: "x" }, FULL), "m"), doc, options);
     expect(assessment.resolvedIdentity?.status).toBe("unproven");
-    expect(assessment.publishable).toBe(true);
-    expect(assessment.fieldBasis?.["limit.context"]).toBe("litellm-declared");
+    // G9 + G30: the relation record is not declared (no serving proof), so
+    // the group is LiteLLM-only; context stays missing and the reseller
+    // record never publishes anything.
+    expect(assessment.publishable).toBe(false);
+    expect(assessment.fieldBasis?.["limit.context"]).toBe("unknown");
+    const spec = buildModelSpecs(
+      { data: [{ model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL } }] },
+      doc, options,
+    )[0]!;
+    expect(spec.limit.context).toBe(0);
   });
 
   test("illegal declared values fail in every catalog branch, including providers-only", () => {
@@ -741,5 +778,253 @@ describe("group consistency", () => {
       expect(assessment.status).toBe("invalid-metadata");
       expect(assessment.illegalFields).toContain("limit.output");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review-fix adversarial coverage (issues 1-6): identity relation scoping,
+// group serving proof, identity-critical record facts, base_model zero-match
+// fallthrough, dimension isolation, and LKG fingerprint stability.
+// ---------------------------------------------------------------------------
+
+describe("review fixes: identity and serving proof", () => {
+  test("issue 1: relation identity never infers from unrelated provider SKUs", () => {
+    // Provider P holds many relation records naming DIFFERENT registry keys.
+    // Even if they converged to one key, no record matches the group's wire
+    // id, so nothing may prove identity. Old code scanned the whole provider
+    // and would have "proven" labA/x from the x-free SKU.
+    const doc = catalog(
+      { "labA/x": entry() },
+      {
+        P: {
+          "x-free": { id: "x-free", canonical_model_id: "labA/x", limit: { context: 5, output: 5 } },
+          "un-related": { id: "un-related", canonical_model_id: "labA/x", limit: { context: 5, output: 5 } },
+          "other": { id: "other", canonical_model_id: "labA/y", limit: { context: 5, output: 5 } },
+        },
+      },
+    );
+    const litellm = litellmModel("m", { model: "zzz" }, { ...FULL, models_dev_provider: "P" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.serving.status).toBe("serving-record-unresolved");
+    expect(resolved.identity.status).toBe("unproven");
+    // G30: LiteLLM-only group withholds.
+    expect(resolved.publishable).toBe(false);
+  });
+
+  test("issue 1: relation identity is proven by the resolved record only (G4 shape)", () => {
+    const doc = catalog(
+      { "labA/x": entry() },
+      {
+        P: {
+          "x-sku": { id: "x-sku", canonical_model_id: "labA/x", limit: { context: 100, output: 10 } },
+          // An unrelated SKU under the same provider must not disturb the proof.
+          "other-sku": { id: "other-sku", canonical_model_id: "labB/other", limit: { context: 7, output: 7 } },
+        },
+      },
+    );
+    const litellm = litellmModel("m", { model: "x-sku" }, { ...FULL, models_dev_provider: "P" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.serving.status).toBe("declared");
+    expect(resolved.identity.status).toBe("proven");
+    expect(resolved.identity.canonicalModelID).toBe("labA/x");
+    expect(resolved.identity.evidence).toBe("serving-relation");
+  });
+
+  test("issue 2: partial models_dev_provider declaration is not a group proof", () => {
+    const doc = catalog(
+      {},
+      { P: { x: { id: "x", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    );
+    const data = {
+      data: [
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, models_dev_provider: "P" } },
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL } },
+      ],
+    };
+    const declared = resolveModel(groupOf(data, "m"), doc, {});
+    // Not every deployment declares: serving stays unproven in BOTH orders,
+    // and the P record never supplies facts.
+    expect(declared.serving.status).toBe("unproven");
+    expect(declared.fields["limit.context"]!.basis).not.toBe("serving");
+    const reordered = resolveModel(groupOf({ data: [...data.data].reverse() }, "m"), doc, {});
+    expect(reordered.serving.status).toBe("unproven");
+    expect(reordered.fields["limit.context"]!.basis).not.toBe("serving");
+  });
+
+  test("issue 2: all-declared groups prove serving in every order", () => {
+    const doc = catalog(
+      {},
+      { P: { x: { id: "x", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+    );
+    const mk = () => ({
+      data: [
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, models_dev_provider: "P" } },
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, models_dev_provider: "P" } },
+      ],
+    });
+    for (const group of [groupOf(mk(), "m"), groupOf({ data: [...mk().data].reverse() }, "m")]) {
+      const resolved = resolveModel(group, doc, {});
+      expect(resolved.serving.status).toBe("declared");
+      expect(resolved.fields["limit.context"]!.value).toBe(100);
+    }
+  });
+
+  test("issue 3: exact records naming different canonical identities never merge", () => {
+    // Two exact candidates (route + base_model) point at records whose facts
+    // are identical but whose canonical identities differ. The group must
+    // fail closed, never pick by record order.
+    const recordX = { id: "x", canonical_model_id: "labA/x", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } };
+    const recordY = { id: "y", canonical_model_id: "labA/y", limit: { context: 100, output: 10 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } };
+    const doc = catalog({}, { P: { x: recordX, y: recordY } });
+    const litellm = litellmModel("m", { model: "x" }, { ...FULL, base_model: "y", models_dev_provider: "P" });
+    const forward = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(forward.serving.status).toBe("serving-ambiguous");
+    expect(forward.status).toBe("ambiguous");
+    expect(forward.publishable).toBe(false);
+    const swapped = resolveModel(groupOf({ data: [{ model_name: "m", litellm_params: { model: "y" }, model_info: { mode: "chat", ...FULL, base_model: "x", models_dev_provider: "P" } }] }, "m"), doc, {});
+    expect(swapped.serving.status).toBe("serving-ambiguous");
+    expect(swapped.publishable).toBe(false);
+  });
+
+  test("issue 5: zero-match base_model falls through to the route", () => {
+    // base_model `nothing` matches no registry entry; the route `x` proves
+    // registry-unique. The deployment identity must come from the route.
+    const doc = catalog({ "labA/x": entry() });
+    const litellm = litellmModel("m", { model: "x" }, { ...FULL, base_model: "nothing" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.identity.status).toBe("proven");
+    expect(resolved.identity.canonicalModelID).toBe("labA/x");
+    expect(resolved.identity.evidence).toBe("registry-unique");
+    expect(resolved.publishable).toBe(true);
+  });
+
+  test("issue 5: ambiguous base_model still decides (route cannot override)", () => {
+    const doc = catalog({ "labA/x": entry(), "labB/x": entry() });
+    const litellm = litellmModel("m", { model: "labA/x" }, { ...FULL, base_model: "x" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.identity.status).toBe("ambiguous");
+    expect(resolved.publishable).toBe(false);
+    const reorderedDoc = catalog({ "labB/x": entry(), "labA/x": entry() });
+    const reordered = resolveModel(groupOf(litellm, "m"), reorderedDoc, {});
+    expect(reordered.identity.status).toBe("ambiguous");
+  });
+
+  test("issue 5: proven base_model wins over a different route (diagnostic only)", () => {
+    const doc = catalog({ "labA/base": entry(), "labA/route": entry() });
+    const litellm = litellmModel("m", { model: "labA/route" }, { ...FULL, base_model: "labA/base" });
+    const resolved = resolveModel(groupOf(litellm, "m"), doc, {});
+    expect(resolved.identity.status).toBe("proven");
+    expect(resolved.identity.canonicalModelID).toBe("labA/base");
+    expect(resolved.identity.routeDiffers).toBe(true);
+  });
+});
+
+describe("review fixes: LKG proof stability (issue 6)", () => {
+  const servingDoc = catalog(
+    { "labA/x": entry({ limit: { context: 10000, input: 9000, output: 1000 } }) },
+    { P: { x: { id: "x", canonical_model_id: "labA/x", limit: { context: 10000, input: 9000, output: 1000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } } },
+  );
+
+  function twoDeploymentBody(priceParams: Record<string, unknown>, order: "ab" | "ba") {
+    const a = { model_name: "m", litellm_params: { model: "x", ...priceParams }, model_info: { mode: "chat", ...FULL, id: "dep-a", models_dev_provider: "P" } };
+    const b = { model_name: "m", litellm_params: { model: "x", ...priceParams }, model_info: { mode: "chat", ...FULL, id: "dep-b", models_dev_provider: "P" } };
+    return { data: order === "ab" ? [a, b] : [b, a] };
+  }
+
+  test("price fingerprint follows the deciding source: params override model_info (issue 6a)", () => {
+    // Capture: litellm_params price 1e-6 overrides model_info 3e-6 and is the
+    // published cost (D8/G18c/G44). The fingerprint must hash the SAME
+    // deciding source. Later, model_info's price changes while the deciding
+    // litellm_params price does not: a params-first fingerprint stays valid
+    // (the published cost is unchanged); an info-first fingerprint would
+    // spuriously reject.
+    const mk = (infoPrice: number) => ({
+      data: [
+        { model_name: "m", litellm_params: { model: "x", input_cost_per_token: 1e-6 }, model_info: { mode: "chat", ...FULL, id: "dep-a", models_dev_provider: "P", input_cost_per_token: infoPrice } },
+        { model_name: "m", litellm_params: { model: "x", input_cost_per_token: 1e-6 }, model_info: { mode: "chat", ...FULL, id: "dep-b", models_dev_provider: "P", input_cost_per_token: infoPrice } },
+      ],
+    })
+    const group = groupOf(mk(3e-6), "m");
+    const publication = buildPublicationResult(mk(3e-6), servingDoc, options);
+    const live = publication.publishable[0]!;
+    expect(live.spec.cost.input).toBe(1); // params price decides
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), servingDoc, options);
+    const evolvedInfo = groupOf(mk(9e-6), "m");
+    const stillDecidedByParams = validateLastKnownGood(entry, evolvedInfo, undefined, Date.now(), options, servingDoc);
+    expect(stillDecidedByParams.valid).toBe(true);
+
+    // And the mirror case: changing the DECIDING params price rejects.
+    const changedParams = {
+      data: [
+        { model_name: "m", litellm_params: { model: "x", input_cost_per_token: 5e-6 }, model_info: { mode: "chat", ...FULL, id: "dep-a", models_dev_provider: "P", input_cost_per_token: 3e-6 } },
+        { model_name: "m", litellm_params: { model: "x", input_cost_per_token: 5e-6 }, model_info: { mode: "chat", ...FULL, id: "dep-b", models_dev_provider: "P", input_cost_per_token: 3e-6 } },
+      ],
+    };
+    const rejected = validateLastKnownGood(entry, groupOf(changedParams, "m"), undefined, Date.now(), options, servingDoc);
+    expect(rejected.valid).toBe(false);
+  });
+
+  test("deployment reorder never invalidates an otherwise identical entry", () => {
+    const body = twoDeploymentBody({}, "ab");
+    const group = groupOf(body, "m");
+    const publication = buildPublicationResult(body, servingDoc, options);
+    const live = publication.publishable[0]!;
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), servingDoc, options);
+    const reordered = groupOf(twoDeploymentBody({}, "ba"), "m");
+    const validation = validateLastKnownGood(entry, reordered, undefined, Date.now(), options, servingDoc);
+    expect(validation.valid).toBe(true);
+  });
+
+  test("serving declarations stay attached to their own deployment after sorting", () => {
+    // Deployment A declares P; deployment B declares nothing... then both
+    // must declare P to prove serving. Instead verify the proof keeps
+    // per-deployment declarations correct: distinct wire ids per deployment
+    // sorted by model_info.id keep their own declaration in the proof.
+    const body = {
+      data: [
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, id: "dep-b", models_dev_provider: "P" } },
+        { model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, id: "dep-a", models_dev_provider: "P" } },
+      ],
+    };
+    const group = groupOf(body, "m");
+    const publication = buildPublicationResult(body, servingDoc, options);
+    const live = publication.publishable[0]!;
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), servingDoc, options);
+    // Sorted evidence order: dep-a first. Each declaration must be its own.
+    expect(entry.proof.deploymentEvidence.map((item) => item.deploymentID)).toEqual(["model_info.id:dep-a", "model_info.id:dep-b"]);
+    const declarations = entry.proof.serving!.declarations;
+    expect(declarations.map((item) => item.deploymentID)).toEqual(["model_info.id:dep-a", "model_info.id:dep-b"]);
+    expect(declarations.every((item) => item.declared === "p")).toBe(true);
+  });
+
+  test("evidence change (base_model) invalidates the entry", () => {
+    const body = twoDeploymentBody({}, "ab");
+    const group = groupOf(body, "m");
+    const publication = buildPublicationResult(body, servingDoc, options);
+    const live = publication.publishable[0]!;
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), servingDoc, options);
+    const changedEvidence = {
+      data: [{ model_name: "m", litellm_params: { model: "x" }, model_info: { mode: "chat", ...FULL, id: "dep-a", base_model: "other", models_dev_provider: "P" } }],
+    };
+    const validation = validateLastKnownGood(entry, groupOf(changedEvidence, "m"), undefined, Date.now(), options, servingDoc);
+    expect(validation.valid).toBe(false);
+  });
+
+  test("forged litellm-only proof with registryDigest fails closed (G43 extension)", () => {
+    const body = twoDeploymentBody({}, "ab");
+    const group = groupOf(body, "m");
+    const publication = buildPublicationResult(body, servingDoc, options);
+    const live = publication.publishable[0]!;
+    const entry = createLastKnownGoodEntry(group, undefined, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), servingDoc, options);
+    const forged = structuredClone(entry) as typeof entry & {
+      proof: { deploymentEvidence: Array<{ identityKind: string; [key: string]: unknown }>; [key: string]: unknown };
+    };
+    forged.proof.deploymentEvidence[0]!.identityKind = "litellm-only";
+    expect(validateLastKnownGood(forged, group, undefined, Date.now(), options, servingDoc).valid).toBe(false);
+    const forgedTwo = structuredClone(entry) as typeof entry & {
+      proof: { deploymentEvidence: Array<{ identityKind: string; [key: string]: unknown }>; [key: string]: unknown };
+    };
+    forgedTwo.proof.deploymentEvidence[0]!.identityKind = "serving-only";
+    expect(validateLastKnownGood(forgedTwo, group, undefined, Date.now(), options, servingDoc).valid).toBe(false);
   });
 });

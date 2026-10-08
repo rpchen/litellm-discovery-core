@@ -53,7 +53,7 @@
 - `normalizeModelsDevCatalog(input)` → `{ kind: "complete", models, providers } | { kind: "providers-only", providers } | { kind: "unavailable" }`。
   - `complete`：顶层有 `providers`、`models` 两个对象，`models` 的 key 为 `<lab>/<model>`；**未来新增的其它顶层 key 一律忽略**（不因 `generatedAt`、`schemaVersion` 等新增字段把整个 catalog 判坏）。
   - 判定**穷举三态**（对任意输入恰好命中其一）：`providers`+`models` 皆有效对象 → `complete`；是遗留 provider map 形状（多个 provider 值含 `models` 对象）→ `providers-only`；其余一切——空、非对象、**只有 `models`（models-only）**、`providers`/`models` 之一非对象——→ `unavailable`。
-- `providers-only` 与 `unavailable` 同等对待：不做 canonical 解析，不选任何 provider 记录；LiteLLM 声明完整的模型按 LiteLLM-only 路径发布，其余 `metadata-unavailable`（LKG 可恢复）。`models-only`（无 providers）对 serving/canonical 都无法提供可用层，归 `unavailable`。
+- `providers-only` 与 `unavailable` 同等对待：不做 canonical 解析，不选任何 provider 记录；无 canonical identity 时 context 无从声明（G30 维度隔离），全部按 `metadata-unavailable` withheld（有效 LKG 可恢复）。`models-only`（无 providers）对 serving/canonical 都无法提供可用层，归 `unavailable`。
 - 所有公共入口接受 `unknown` 并内部归一化，签名不变。
 
 ### D3 Wire-ID 解析与 canonical identity
@@ -106,6 +106,8 @@ registry 无条目时：
 canonical registry absent
   ├─ serving provider proven + serving record selected  → 使用该 serving 记录（D6 serving 列）
   ├─ LiteLLM 自身声明完整（limits、tools、reasoning、modalities 皆 known）→ LiteLLM-only / private 路径
+  │    （但 context 无 LiteLLM 键可声明——G30 维度隔离：此形态 context missing → withheld，
+  │     仅有效 LKG 可恢复；见 Risks「LiteLLM-only 更严格」）
   └─ otherwise → withheld（incomplete-metadata / identity-unmatched）
 ```
 
@@ -247,7 +249,7 @@ interface LastKnownGoodEntryV8 {
 }
 ```
 
-- **identityKind 覆盖全部可发布形态**：`canonical`（canonicalModelID + canonicalEvidenceKind 必填）、`litellm-only`（R10b/R11：registry 无 canonical match、LiteLLM gated facts 完整）、`serving-only`（R10c：registry 无 canonical match、`models_dev_provider` 声明且 serving record resolved；serving facts 由 record 提供，identity 由 serving-relation 或 provider+wire-id 证明）。R10b/R10c/R11 与 R1–R9 在同一 schema 下合法 capture——**single resolver 成功发布 ⇒ capture 必能构造合法 proof**（gate 与 capture 不漂移）。
+- **identityKind 覆盖与结构可达性（规范冲突裁决，review issue 4）**：`canonical`（canonicalModelID + canonicalEvidenceKind 必填）、`litellm-only`（R10b/R11 形态：registry 无 canonical match、无 serving 证明）、`serving-only`（R10c：registry 无 canonical match、`models_dev_provider` 声明且 serving record resolved；serving facts 由 record 提供，identity 由 serving-relation 或 provider+wire-id 证明）。**按 D6 维度隔离不变量（Revision 3 ⑥）**，R10b/R11 形态永远 context missing → withheld，因此 `litellm-only` identityKind **结构上不可捕获**（schema 保留该 kind 供前向兼容；存储中出现即按伪造 fail closed）；本条原文「R10b/R11 在同一 schema 下合法 capture」与 Revision 3 ⑥ 矛盾，以 Revision 3 ⑥/D6/Risks/Migration 4 为准修正。gate 与 capture 不漂移的表述不变：single resolver 成功发布 ⇒ capture 必能构造合法 proof。
 - **Group-wide 重证明（evidence multiset）**：`deploymentID` = LiteLLM `model_info.id`（live 20/20 有值），否则由该 deployment 全部 identity 证据 multiset 派生；`normalizedInputs` 是候选值 multiset。恢复要求排序后 multiset 逐项相等（deploymentID 集合、normalizedInputs、identityKind、canonicalModelID）；两个 route 相同但证据不同的 deployment 永远派生不同 multiset 键。
 - `registryDigest`/`recordDigest`：被使用事实的稳定摘要（limit、modalities、tool_call、reasoning；serving 另含 reasoning_options、cost）；按 basis 可选，未参与者不写入。
 - **整体判定，绝不按字段拼接**：恢复要么发布整份 `spec`，要么 fail closed。

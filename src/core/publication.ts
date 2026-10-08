@@ -1050,7 +1050,11 @@ function emptyEnforcementFingerprint(): string {
 }
 
 function liveLitellmFingerprintOf(group: DeploymentGroup): string {
-  return `sha256:${stableDigestOf(group.deployments.map((deployment) => ({
+  // Must stay byte-identical to litellmDeclaredMaterial in resolve.ts (same
+  // key precedence: mirrored pricing params BEFORE model_info, matching the
+  // D8 price resolution; entries sorted so deployment reorders keep the
+  // digest stable).
+  const entries = group.deployments.map((deployment) => ({
     max_input_tokens: deployment.modelInfo.max_input_tokens ?? null,
     max_output_tokens: deployment.modelInfo.max_output_tokens ?? deployment.modelInfo.max_tokens ?? null,
     supports_function_calling: deployment.modelInfo.supports_function_calling ?? null,
@@ -1060,11 +1064,12 @@ function liveLitellmFingerprintOf(group: DeploymentGroup): string {
     supports_audio_input: deployment.modelInfo.supports_audio_input ?? null,
     supports_video_input: deployment.modelInfo.supports_video_input ?? null,
     supports_audio_output: deployment.modelInfo.supports_audio_output ?? null,
-    input_cost_per_token: deployment.modelInfo.input_cost_per_token ?? deployment.litellmParams.input_cost_per_token ?? null,
-    output_cost_per_token: deployment.modelInfo.output_cost_per_token ?? deployment.litellmParams.output_cost_per_token ?? null,
-    cache_read_input_token_cost: deployment.modelInfo.cache_read_input_token_cost ?? deployment.litellmParams.cache_read_input_token_cost ?? null,
-    cache_creation_input_token_cost: deployment.modelInfo.cache_creation_input_token_cost ?? deployment.litellmParams.cache_creation_input_token_cost ?? null,
-  })))}`;
+    input_cost_per_token: deployment.litellmParams.input_cost_per_token ?? deployment.modelInfo.input_cost_per_token ?? null,
+    output_cost_per_token: deployment.litellmParams.output_cost_per_token ?? deployment.modelInfo.output_cost_per_token ?? null,
+    cache_read_input_token_cost: deployment.litellmParams.cache_read_input_token_cost ?? deployment.modelInfo.cache_read_input_token_cost ?? null,
+    cache_creation_input_token_cost: deployment.litellmParams.cache_creation_input_token_cost ?? deployment.modelInfo.cache_creation_input_token_cost ?? null,
+  }));
+  return `sha256:${stableDigestOf(entries.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b), "en")))}`;
 }
 
 /**

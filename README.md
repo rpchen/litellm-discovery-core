@@ -46,8 +46,11 @@ merge 全在 Core。
 - **未证明记录零供给**：无论 canonical 是否存在，未证明的 provider 记录
   （OpenCode、OpenRouter、unique、first-party、同名精确匹配、变体）都不提供
   任何发布事实（limits、modalities、tools、reasoning、档位、价格、release）。
-  未登记模型只能经已声明 serving 记录或完整 LiteLLM 声明发布，否则 withheld；
-  同名记录只作为诊断候选（OpenCode → OpenRouter → 其余排序）列出可用的声明。
+  未登记模型只能经已声明 serving 记录发布；仅靠 LiteLLM 声明时 context 无法
+  声明（G30）→ withheld。同名记录只作为诊断候选
+  （OpenCode → OpenRouter → 其余排序）列出可用的声明。serving provider 证明
+  是**组级**证明：组内所有 deployment 必须声明同一 `models_dev_provider`，
+  部分声明按未证明处理。
 - **字段级 resolution matrix**：每字段独立按分支解析——serving 已证明且记录有值
   → serving；否则 canonical 有值 → canonical；否则 LiteLLM 全员一致声明 →
   `litellm-declared`；否则 unknown。serving 记录是最终 serving 视图（models.dev
@@ -56,9 +59,9 @@ merge 全在 Core。
   `max_input_tokens` → input 为 `litellm-declared`），否则 unknown。
   与 serving/canonical base 不同的 LiteLLM 声明记为 resolved discrepancy；
   跨 deployment 显式不一致记为 unresolved conflict。
-- **无跨维度替代**：`model_info.max_input_tokens` 是 input capacity，永不当作
-  `limit.context`（canonical/serving 分支无 context 证据即 missing → withheld；
-  私有 LiteLLM-only 模型仍可用它声明 context）。`limit.input` 缺失即 unknown，
+- **无跨维度替代**：`model_info.max_input_tokens` 是 input capacity，**任何分支**
+  （含 LiteLLM-only）都永不当作 `limit.context`：无 context 证据即 missing →
+  withheld（G30）。`limit.input` 缺失即 unknown，
   绝不等于 context（非 gated，不 withheld）。
 - **Proven Runtime Enforcement（空证明集）**：全部非价格 `litellm_params` 键
   （含 `max_input_tokens`、`max_tokens` 系、`reasoning_effort`、modality flags、
@@ -109,16 +112,18 @@ merge 全在 Core。
 - **无 proven enforcement**：`litellm_params` 非价格键不再收窄任何字段（含
   `max_input_tokens`）；运维者若依赖旧收窄行为，需改用 LiteLLM 描述性声明或
   等待晋升 delta。
-- **LiteLLM-only 更严格**：canonical 未证明、无 serving 且无真实 context 语义声明
-  的模型由「拿 `max_input_tokens` 当 context」改为 withheld（私有模型用
-  `max_input_tokens` 声明 context 的 R11 路径保留）。
+- **LiteLLM-only 更严格**：canonical 未证明、无 serving 的私有模型，`max_input_tokens`
+  只是 input capacity，**绝不充当 `limit.context`**（维度隔离无 LiteLLM-only 例外，
+  G30/design Risks）：无 context 语义声明即 context missing → withheld；此前 main
+  「拿 `max_input_tokens` 当 context」的发布路径（旧 R11 lenient 语义）已按冻结设计
+  撤销，outage/providers-only 期间同样只有有效 LKG 可恢复。
 - **serving 缺字段不回填**：resolved serving 缺字段（如 `base_model_omit` 删除的
   `limit.input`）不再用 canonical 回填；有同维度 LiteLLM 声明则补缺，否则 unknown。
 - **LKG 一次性 fail closed**：升级后首轮 outage 期间旧 v7 条目不恢复，下一轮 live
   自动重捕获为 v8。
 - **`catalog.json` 迁移**：adapter 默认 URL 改为 `https://models.dev/catalog.json`；
   自建 provider-only（`api.json` 形状）镜像按 D2 fail closed（不做 canonical 解析，
-  LiteLLM 完整者仍发布，其余 `metadata-unavailable` + LKG 可恢复），仅作诊断提示。
+  无 canonical identity 即 context missing → 全部 withheld，有效 LKG 可恢复），仅作诊断提示。
 
 ### Evidence source authority 与本轮语义
 
@@ -142,7 +147,7 @@ evidence collection
 | identity | registry 精确命中（qualified-deployment / registry-unique / serving-relation） | —（`model_name`、family、前缀永不作证据） | route adapter 段、`custom_llm_provider`（仅 parse metadata） |
 | serving provider | `models_dev_provider` 全员一致声明 + provider 存在 | — | route 段、`custom_llm_provider`、`api_base` 永不证明 |
 | serving record | provider 内 key/id 精确命中 wire id | — | relation-only 记录（变体）永不解析 SKU |
-| context | serving `limit.context` → registry `limit.context` | —（无 LiteLLM context 键；私有 LiteLLM-only 用 `max_input_tokens` 声明） | `litellm_params.max_input_tokens`（不收窄、不比较） |
+| context | serving `limit.context` → registry `limit.context` | —（无 LiteLLM context 键；`max_input_tokens` 在任何分支都不充当 context） | `litellm_params.max_input_tokens`（不收窄、不比较） |
 | output | serving → registry `limit.output` | `model_info.max_output_tokens` / `max_tokens` | `litellm_params.max_tokens` 系（不收窄） |
 | input capacity | serving → registry `limit.input`，否则同维度 LiteLLM 补缺 | `model_info.max_input_tokens` | `litellm_params.max_input_tokens`（不收窄） |
 | input/output modalities | serving → registry 完整集合 | 每维度 flag 全员显式声明才 known | `litellm_params` 同名键（不增删） |

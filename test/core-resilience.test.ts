@@ -186,10 +186,33 @@ describe("resilience: partial catalog", () => {
     return { data }
   }
 
+  /**
+   * Registry entries for the publishable fixtures. The `custom/ok-*` and
+   * `custom/late` routes are qualified values WITHOUT adapter parse evidence,
+   * so the registry must carry the full wire id as its key for the group to
+   * prove canonical identity; otherwise the models are LiteLLM-only, context
+   * stays missing under the dimension-isolation invariant (G30), and nothing
+   * publishes. This keeps the partition math below about partitioning, not
+   * about identity.
+   */
+  function okRegistry(): Record<string, unknown> {
+    const models: Record<string, unknown> = {}
+    for (let index = 0; index < 18; index += 1) {
+      models[`custom/ok-${index}`] = { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+    }
+    models["custom/late"] = { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+    models["custom/ok"] = { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } }
+    return models
+  }
+
   test("18 of 20 models publish immediately; the other 2 are withheld with reasons", () => {
     // Registry holds duplicate bare ids so the shared-name model is
     // genuinely identity-ambiguous even without provider records.
-    const catalog = shape({ "a/shared": { limit: { context: 1, output: 1 } }, "b/shared": { limit: { context: 1, output: 1 } } })
+    const catalog = shape({
+      "a/shared": { limit: { context: 1, output: 1 } },
+      "b/shared": { limit: { context: 1, output: 1 } },
+      ...okRegistry(),
+    })
     const body = { data: [...(twentyModels().data as unknown[]), { model_name: "shared", litellm_params: { model: "shared" }, model_info: { mode: "chat", ...complete } }] }
     const result = buildPublicationResult(body, catalog, options)
     expect(result.publishable.length).toBe(18)
@@ -218,7 +241,16 @@ describe("resilience: partial catalog", () => {
   })
 
   test("a withheld model recovering is published automatically without user approval", () => {
-    const first = buildPublicationResult({ data: [{ model_name: "ok", litellm_params: { model: "custom/ok" }, model_info: { mode: "chat", ...complete } }, { model_name: "late", litellm_params: { model: "custom/late" }, model_info: { mode: "chat" } }] }, {}, options)
+    // First round: `late` has no registry entry yet, so it is genuinely
+    // context-missing (LiteLLM-only, G30) and withheld. Second round adds the
+    // canonical entry plus complete declarations: nothing else is required
+    // to publish it.
+    const bareRegistry = shape({ "custom/ok": { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } })
+    const withLate = shape({
+      "custom/ok": { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } },
+      "custom/late": { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } },
+    })
+    const first = buildPublicationResult({ data: [{ model_name: "ok", litellm_params: { model: "custom/ok" }, model_info: { mode: "chat", ...complete } }, { model_name: "late", litellm_params: { model: "custom/late" }, model_info: { mode: "chat" } }] }, bareRegistry, options)
     expect(first.publishable.map((entry) => entry.spec.id)).toEqual(["ok"])
     const before = catalogFromPublication(first, { discovered: 2 })
     expect(before.withheld.map((entry) => entry.id)).toEqual(["late"])
@@ -228,7 +260,7 @@ describe("resilience: partial catalog", () => {
     // The same model becomes complete: nothing else is required to publish it.
     const second = buildPublicationResult(
       { data: [{ model_name: "ok", litellm_params: { model: "custom/ok" }, model_info: { mode: "chat", ...complete } }, { model_name: "late", litellm_params: { model: "custom/late" }, model_info: { mode: "chat", ...complete } }] },
-      {},
+      withLate,
       options,
     )
     const after = catalogFromPublication(second, { discovered: 2, previouslyPublished: new Set(["ok"]) })
@@ -247,7 +279,7 @@ describe("resilience: partial catalog", () => {
           { model_name: "brand-new", litellm_params: { model: "custom/brand-new" }, model_info: { mode: "chat" } },
         ],
       },
-      {},
+      shape({ "custom/ok-0": { limit: { context: 128_000, output: 32_000 }, tool_call: true, reasoning: false, modalities: { input: ["text"], output: ["text"] } } }),
       options,
     )
     const facts = catalogFromPublication(result, { discovered: 3, previouslyPublished })

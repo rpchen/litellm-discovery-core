@@ -297,14 +297,21 @@ describe("R10 unregistered private model", () => {
     expect(resolved.diagnosticCandidates.map((item) => item.providerID)).toEqual(["opencode", "openrouter"]);
   });
 
-  test("complete LiteLLM declarations publish as litellm-declared", () => {
+  test("complete LiteLLM declarations still withhold without context proof", () => {
+    // R10b under the frozen design (G30 / Risks "LiteLLM-only 更严格",
+    // Migration item 4): a private model with no canonical identity and no
+    // proven serving record has NO context key — max_input_tokens is input
+    // capacity — so even complete LiteLLM declarations leave context
+    // missing and the model withheld. Behavior change vs pre-change main;
+    // do not revert without an approved OpenSpec delta.
     const litellm = R10_LITELLM_COMPLETE();
     const { assessment } = assessed(litellm, R10_CATALOG, "acme-private-1");
-    expect(assessment.publishable).toBe(true);
-    expect(assessment.fieldBasis?.["limit.context"]).toBe("litellm-declared");
+    expect(assessment.publishable).toBe(false);
+    expect(assessment.status).toBe("discovered-incomplete");
+    expect(assessment.fieldBasis?.["limit.context"]).toBe("unknown");
     const spec = buildModelSpecs(litellm, R10_CATALOG, options)[0]!;
-    expect(spec.limit.context).toBe(50000);
-    // Reseller values never appear.
+    expect(spec.limit.context).toBe(0);
+    // Reseller values never appear either way.
     expect(spec.limit.context).not.toBe(100000);
     expect(spec.limit.context).not.toBe(200000);
   });
@@ -321,12 +328,22 @@ describe("R10 unregistered private model", () => {
 });
 
 describe("R11 private LiteLLM-only", () => {
-  test("complete LiteLLM declarations publish as litellm-declared", () => {
+  test("LiteLLM declarations alone never satisfy context; the model withholds", () => {
+    // R11 under the frozen design (G30 / Risks "LiteLLM-only 更严格",
+    // Migration item 4 — behavior change, do not revert without an approved
+    // OpenSpec delta): a private model with no models.dev records at all has
+    // no context-semantic declaration, so `max_input_tokens` stays input
+    // capacity only and the group is withheld (context missing). This row
+    // previously documented the lenient main behavior ("configured with
+    // max_input_tokens as context"); the design's Revision 3 ⑥ / Revision 4 ②
+    // / D6 invariant / Migration item 4 supersede it.
     const litellm = R11_LITELLM();
     const { assessment } = assessed(litellm, R11_CATALOG, "acme-private-2");
-    expect(assessment.publishable).toBe(true);
+    expect(assessment.publishable).toBe(false);
+    expect(assessment.status).toBe("discovered-incomplete");
+    expect(assessment.fieldBasis?.["limit.context"]).toBe("unknown");
     const spec = buildModelSpecs(litellm, R11_CATALOG, options)[0]!;
-    expect(spec.limit).toEqual({ context: 32000, input: 32000, output: 8000 });
+    expect(spec.limit).toEqual({ context: 0, input: 32000, output: 8000 });
   });
 });
 

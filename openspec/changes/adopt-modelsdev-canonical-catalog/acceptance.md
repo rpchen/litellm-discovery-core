@@ -2,7 +2,9 @@
 
 每一行在实施阶段必须映射到至少一个自动化测试（testing-standard §1）。`R*` 使用从 live catalog（2026-10-07 13:11 UTC）裁剪出的真实 schema fixture；`G*` 使用遵循真实 models.dev schema 的合成 catalog；禁止模型特判或白名单——`R*` 只是 `G*` 规则在真实数据上的实例。
 
-记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；**非价格** `litellm_params` 键当前均为 operator configuration（D7a 空证明集）：永不产生档位、pin、narrowing 或 LKG 指纹；`MirroredPricingParams` 的 7 个价格键是 Operator-Declared Pricing（design D8），只产生价格事实；basis 记号见 design D6/D7a；R4/R4b/R4c、R9b 为**行为变化测试**（注释引用 design Risks，禁止回改为旧值）。
+记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；**非价格** `litellm_params` 键当前均为 operator configuration（D7a 空证明集）：永不产生档位、pin、narrowing 或 LKG 指纹；`MirroredPricingParams` 的 7 个价格键是 Operator-Declared Pricing（design D8），只产生价格事实；basis 记号见 design D6/D7a；R4/R4b/R4c、R9b、R10b/R11 为**行为变化测试**（注释引用 design Risks，禁止回改为旧值）。
+
+**规范冲突裁决（review issue 4，2026-10-08）**：原 R10b/R11 行「LiteLLM 值 / configured，basis litellm-declared」与 G30、design D6 跨维度替代禁止不变量、design Revision 3 ⑥（删除 `max_input_tokens → context` 替代，LiteLLM-only 无 context 即 withheld）、Revision 4 ②、Risks「[LiteLLM-only 更严格]」与 Migration 4 行为变化清单直接矛盾。按设计真源（五处一致陈述）裁决：**strict 生效**——`max_input_tokens` 在任何分支（含 LiteLLM-only）都只是 input capacity，绝不作 context；LiteLLM-only 私有模型无 context 即 withheld。R10b/R11/G21/G41 行已按裁决修正；这不是改变已批准的产品规则，而是消除验收矩阵与已冻结设计之间的矛盾（第一轮实现误按 lenient 侧实现，本修正将其对齐设计）。
 
 ## R — 真实回归（live endpoint 形态，裁剪 fixture）
 
@@ -25,9 +27,9 @@
 | R9 gpt-5.6-sol | route `gpt-5.6-sol`；LiteLLM `max_input_tokens` 922000 | `openai/gpt-5.6-sol` | unproven | 1050000/922000/128000 | unknown | configured；0 context/input discrepancy；价格=LiteLLM | 选 `openai/gpt-5.6`，伪 discrepancy，6 档 |
 | R9b gpt-6-luna | route `gpt-6-luna`；`litellm_params.reasoning_effort: max`（operator configuration） | `openai/gpt-6-luna` | unproven | 1050000/922000/128000 | unknown；`reasoning_effort` 只进诊断 | configured；无可选档位；**行为变化测试**：当前错误发布 6 档（含被请求覆盖的 default），注释引用 design Risks，禁止回改 | 6 档（被 pin 覆盖） |
 | R10 private + 同名 reseller | route `acme-private-1`；registry 无；OpenCode、OpenRouter 均有同名记录；LiteLLM 无 limit | unproven | unproven | — | — | withheld（incomplete-metadata）；两条记录只列为诊断候选 | — |
-| R10b 同上 + LiteLLM 完整 | LiteLLM 声明全部 gated 字段 | unproven | unproven | LiteLLM 值 | unknown | configured，basis litellm-declared；reseller 值不出现 | — |
+| R10b 同上 + LiteLLM 完整 | LiteLLM 声明全部 gated 字段（含 input/output/tools/reasoning/modalities） | unproven | unproven | context **missing**（无 LiteLLM context 键；不拿 `max_input_tokens` 当 context——G30/design Risks「LiteLLM-only 更严格」） | unknown | **withheld（discovered-incomplete）**——**行为变化测试**：pre-change main 用 `max_input_tokens` 当 context 发布；design Migration 4 冻结为 withheld，注释引用 design Risks，禁止回改 | — |
 | R10c 同上 + `models_dev_provider: opencode` | — | unproven（OpenCode 记录无 relation） | declared | OpenCode 值 | 来自 OpenCode | configured，basis serving | — |
-| R11 private, LiteLLM-only | route `acme-private-2`；无任何 models.dev 记录；LiteLLM 完整 | unproven | unproven | LiteLLM 值 | unknown | configured，basis litellm-declared | configured |
+| R11 private, LiteLLM-only | route `acme-private-2`；无任何 models.dev 记录；LiteLLM 完整 | unproven | unproven | context missing（同 R10b/G30；`max_input_tokens` 仅为 input capacity） | unknown | **withheld（discovered-incomplete）**——**行为变化测试**（同 R10b）；此行原文「configured，basis litellm-declared」与 G30/D6 不变量/design Revision 3 ⑥、Revision 4 ②、Risks「LiteLLM-only 更严格」、Migration 4 相矛盾，按设计真源修正，禁止回改 | configured |
 
 ## G — 通用对抗矩阵（合成真实 schema catalog）
 
@@ -82,7 +84,7 @@
 | G20f | LKG registry digest | live registry entry 内禀值变化 | reject |
 | G20g | schema 7 / 缺 proof / 未知 basis | — | fail closed |
 | G20h | providers-only + LKG | proof 不变 | 恢复；不使用 provider 记录 |
-| G21 | catalog 形状 | complete / providers-only / 空 / 非对象 / 只有 `models` | 正常 / 不做 canonical 解析、LiteLLM 完整者发布、其余 metadata-unavailable / unavailable ×3 |
+| G21 | catalog 形状 | complete / providers-only / 空 / 非对象 / 只有 `models` | 正常 / 不做 canonical 解析（G30：LiteLLM-only 无 context 键，context missing → 全部 metadata-unavailable，LKG 可恢复）、其余 metadata-unavailable / unavailable ×3 |
 | G22 | single resolver | 任意 fixture | `buildModelSpecs` == `diagnoseModelSpecs().models` == publishable `spec`；captured == spec |
 | G23 | 确定性 | 打乱 providers/models key 与 deployment 顺序 | 结果逐字节相同 |
 | G24 | 无 heuristic | registry `labA/x-pro`；route `x` | 0 命中 |
@@ -102,7 +104,7 @@
 | G38 | LKG evidence multiset | 两个 deployment route 相同但 base_model/models_dev_provider 证据不同，其一改变 | multiset 不等 → 整份 reject |
 | G39 | catalog models-only | 顶层只有 `models` | unavailable；LiteLLM-only + LKG 路径 |
 | G40 | provider 证明 ≠ record 证明 | `models_dev_provider: gatewayX`；gatewayX 只有 `x-free`（relation→`labA/x`）；wire id `x` | record unresolved；整组按 serving-unproven 解析；`x-free` 不提供任何 fact；诊断 `serving-record-unresolved` |
-| G41 | LKG litellm-only capture | R11 形态 configured 后 capture | identityKind=litellm-only、无 canonicalModelID、无 registryDigest；合法 capture |
+| G41 | LKG litellm-only capture 不可达 | R11 形态按 G30 永远 withheld，永远不产生 capture；`identityKind=litellm-only` 保留在 schema 供前向兼容，结构上不可捕获；存储中出现的 litellm-only proof 一律按伪造 fail closed（G43） |
 | G42 | LKG serving-only capture | R10c 形态 configured 后 capture | identityKind=serving-only、无 canonicalModelID、无 registryDigest、有 serving 声明+recordDigest；合法 capture |
 | G43 | LKG proof 类型不一致 | identityKind=litellm-only 却有 registryDigest；或 canonical 无 canonicalModelID | fail closed（forged） |
 | G44 | Operator-Declared Pricing | `litellm_params.input_cost_per_token` 与 `model_info.input_cost_per_token` 不同 | 用 `litellm_params`（镜像键优先）；价格键永不 narrowing 任何能力字段 |

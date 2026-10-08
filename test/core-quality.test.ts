@@ -13,6 +13,7 @@ import {
   selectModelsDevRecord,
   type DeploymentGroup,
 } from "../src/index.ts"
+import { buildPublicationResult } from "../src/core/publication.ts"
 
 const options = { contextTierCap: false, protocolOverrides: {} }
 
@@ -125,8 +126,11 @@ describe("PR8 discovery quality", () => {
     }, catalog, options)[0]!
     expect(constrained.limit).toEqual({ context: 1000000, input: 900000, output: 128000 })
 
-    // Without a trusted canonical record the descriptive declarations are
-    // the only evidence and the published limits fall back to them.
+    // Without a trusted canonical record the descriptive declarations are the
+    // only evidence — but dimension isolation has NO LiteLLM-only exception
+    // (G30): max_input_tokens never becomes limit.context. The private group
+    // resolves context-missing (0) with input intact, so the publication
+    // partition / operational-limits guard withholds it from the host.
     const liteLLMOnly = buildModelSpecs({
       data: [{
         model_name: "private-limit-model",
@@ -134,7 +138,16 @@ describe("PR8 discovery quality", () => {
         model_info: { mode: "chat", max_input_tokens: 1200000, max_output_tokens: 64000 },
       }],
     }, catalog, options)[0]!
-    expect(liteLLMOnly.limit).toEqual({ context: 1200000, input: 1200000, output: 64000 })
+    expect(liteLLMOnly.limit).toEqual({ context: 0, input: 1200000, output: 64000 })
+    const liteLLMOnlyPublication = buildPublicationResult({
+      data: [{
+        model_name: "private-limit-model",
+        litellm_params: { model: "custom/private-limit-model" },
+        model_info: { mode: "chat", max_input_tokens: 1200000, max_output_tokens: 64000 },
+      }],
+    }, catalog, options)
+    expect(liteLLMOnlyPublication.publishable).toEqual([])
+    expect(liteLLMOnlyPublication.blocked.map((entry) => entry.spec.id)).toEqual(["private-limit-model"])
   })
 
   test("multi-deployment capabilities use conservative intersection and pricing uses highest LiteLLM declaration", () => {
