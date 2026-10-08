@@ -20,6 +20,16 @@
 基线来自 Pi `a3d7487`，并与 OpenCode `96b00f5` 对照。PR1 保留既有模型过滤、保守合并、models.dev 选择优先级、协议冲突回退、价格换算和阶梯上下文截断规则。发现与抽取无关的问题留在来源仓库的后续变更中。
 
 
+## ADR-004：models.dev canonical catalog 采纳（canonical registry + serving proof）
+
+- **状态**：实施中（OpenSpec `adopt-modelsdev-canonical-catalog`，Core 先行，Pi/OpenCode 各自 change 跟进）
+- **决定**：adapter 生产从 `api.json` 迁到 `catalog.json`（同 snapshot、同 TTL epoch、同 failure domain）；Core 新增 `catalog-input`（穷举三态）、`wire-id`（解析零证明力）、`resolve`（唯一 resolver）三个模块并重写 identity/serving/field-matrix/LKG；事实严格分层（canonical identity、intrinsic、serving、Proven Runtime Enforcement、Operator-Declared Pricing、LiteLLM descriptive、parse metadata）；未证明记录零供给；字段级分支算法（serving-absence 永不回填 canonical）；Proven Runtime Enforcement 证明集从空开始（逐键晋升需 exact source path + 负向突破测试的 OpenSpec delta）；推理档位仅已证明 serving `reasoning_options`；价格逐组件（声明 → proven serving cost → unknown）；Single resolver（`buildModelSpecs`/assessment/diagnostics/LKG 全派生）；LKG schema 8 group-wide proof composition（identityKind 三态、整体重证明、绝不按字段拼接、v≤7 fail closed）。
+- **关闭 Q1**：serving 未证明时不发布任何档位；`litellm_params.reasoning_effort` 是 operator configuration（请求可覆盖），不是 pin。
+- **保留 Q2**：provider-only（`api.json` 形状）自建镜像按 D2 fail closed（不做 canonical 解析，LiteLLM 完整者仍发布），仅诊断提示改用 catalog 形状。
+- **行为变化**：DeepSeek 384000/393216 双证明恢复、档位 unknown、kimi-k3 131072、无 proven enforcement、LiteLLM-only 收紧、serving 缺字段不回填、schema 8 一次性 fail closed（详见 README 迁移说明与 design Risks）。
+- **理由**：审计证明旧消费模型与 models.dev 真实三层数据模型结构性不一致（S2 52.6% 误 withheld、变体经 relation 当选、first-party serving 当内禀、未证明档位/价格入库）；一次性对齐后 catalogue-wide 断言（S2 零误杀、零未证明贡献、零变体当选、值等于矩阵）在 live 全量（447 canonical，2026-10-08）与离线子集同时成立。
+
+
 ## 开发代码索引（2026-10-02）
 
 已显式选择索引并入库；结构查询优先使用图谱与 coverage。Release 使用固定 0.11.0/full 从不可变 tag SHA 生成附件并回读验证；用户确认客户端下次启动同步发布快照，工作图谱另按当前源码刷新。新仓库不自动索引，不改变插件运行时依赖、discovery 语义、dist/provenance 或发行授权。详细流程见 docs/codebase-memory.md。

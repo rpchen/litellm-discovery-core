@@ -6,19 +6,17 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
       "cacheWrite": 0,
-      "input": 3,
-      "output": 15,
+      "input": 0,
+      "output": 0,
     },
     "id": "claude-bedrock",
     "limit": {
@@ -28,36 +26,15 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "name": "claude-bedrock",
     "protocol": "messages",
-    "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1759104000000,
-    "variants": [
-      {
-        "id": "high",
-        "settings": {
-          "thinking": {
-            "budgetTokens": 16000,
-            "type": "enabled",
-          },
-        },
-      },
-      {
-        "id": "max",
-        "settings": {
-          "thinking": {
-            "budgetTokens": 64000,
-            "type": "enabled",
-          },
-        },
-      },
-    ],
+    "reasoningSupported": "unknown",
+    "releaseUnit": "none",
+    "released": 0,
+    "variants": [],
   },
   {
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
@@ -67,8 +44,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "cost": {
       "cacheRead": 0,
       "cacheWrite": 0,
-      "input": 3,
-      "output": 15,
+      "input": 0,
+      "output": 0,
     },
     "id": "claude-db",
     "limit": {
@@ -78,29 +55,10 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "name": "claude-db",
     "protocol": "messages",
-    "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1759104000000,
-    "variants": [
-      {
-        "id": "high",
-        "settings": {
-          "thinking": {
-            "budgetTokens": 16000,
-            "type": "enabled",
-          },
-        },
-      },
-      {
-        "id": "max",
-        "settings": {
-          "thinking": {
-            "budgetTokens": 64000,
-            "type": "enabled",
-          },
-        },
-      },
-    ],
+    "reasoningSupported": "unknown",
+    "releaseUnit": "none",
+    "released": 0,
+    "variants": [],
   },
   {
     "capabilities": {
@@ -164,7 +122,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
       ],
       "output": [
         "text",
@@ -208,24 +165,21 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "glm-5.3",
     "limit": {
-      "context": 200000,
-      "input": 200000,
-      "output": 32000,
+      "context": 1000000,
+      "input": 1000000,
+      "output": 131072,
     },
     "name": "glm-5.3",
     "protocol": "responses",
     "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1770854400000,
+    "releaseUnit": "none",
+    "released": 0,
     "variants": [],
   },
   {
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
-        "audio",
       ],
       "output": [
         "text",
@@ -259,7 +213,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
@@ -276,16 +230,14 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "name": "glm-fallback",
     "protocol": "chat",
     "reasoningSupported": "unknown",
-    "releaseUnit": "unix-ms",
-    "released": 1735689600000,
+    "releaseUnit": "none",
+    "released": 0,
     "variants": [],
   },
   {
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
@@ -300,8 +252,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "gpt-5.6-luna",
     "limit": {
-      "context": 272000,
-      "input": 272000,
+      "context": 1050000,
+      "input": 1050000,
       "output": 128000,
     },
     "name": "gpt-5.6-luna",
@@ -315,8 +267,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
@@ -331,8 +281,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "gpt-5.6-sol",
     "limit": {
-      "context": 272000,
-      "input": 272000,
+      "context": 1050000,
+      "input": 1050000,
       "output": 128000,
     },
     "name": "gpt-5.6-sol",
@@ -346,8 +296,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
@@ -362,8 +310,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "gpt-5.6-terra",
     "limit": {
-      "context": 272000,
-      "input": 272000,
+      "context": 1050000,
+      "input": 1050000,
       "output": 128000,
     },
     "name": "gpt-5.6-terra",
@@ -377,8 +325,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
@@ -393,8 +339,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "gpt-6-astra",
     "limit": {
-      "context": 272000,
-      "input": 272000,
+      "context": 922000,
+      "input": 922000,
       "output": 128000,
     },
     "name": "gpt-6-astra",
@@ -408,8 +354,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "pdf",
       ],
       "output": [
         "text",
@@ -424,8 +368,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "gpt-6-luna",
     "limit": {
-      "context": 272000,
-      "input": 272000,
+      "context": 922000,
+      "input": 922000,
       "output": 128000,
     },
     "name": "gpt-6-luna",
@@ -439,7 +383,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
       ],
       "output": [
         "text",
@@ -454,53 +397,16 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "gpt-6-sol",
     "limit": {
-      "context": 272000,
-      "input": 272000,
+      "context": 922000,
+      "input": 922000,
       "output": 128000,
     },
     "name": "gpt-6-sol",
     "protocol": "responses",
     "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1777593600000,
-    "variants": [
-      {
-        "id": "none",
-        "settings": {
-          "reasoningEffort": "none",
-        },
-      },
-      {
-        "id": "low",
-        "settings": {
-          "reasoningEffort": "low",
-        },
-      },
-      {
-        "id": "medium",
-        "settings": {
-          "reasoningEffort": "medium",
-        },
-      },
-      {
-        "id": "high",
-        "settings": {
-          "reasoningEffort": "high",
-        },
-      },
-      {
-        "id": "xhigh",
-        "settings": {
-          "reasoningEffort": "xhigh",
-        },
-      },
-      {
-        "id": "max",
-        "settings": {
-          "reasoningEffort": "max",
-        },
-      },
-    ],
+    "releaseUnit": "none",
+    "released": 0,
+    "variants": [],
   },
   {
     "capabilities": {
@@ -510,7 +416,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
@@ -535,8 +441,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "video",
       ],
       "output": [
         "text",
@@ -558,28 +462,14 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "name": "kimi-k2.6",
     "protocol": "responses",
     "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1773532800000,
-    "variants": [
-      {
-        "id": "low",
-        "settings": {
-          "reasoningEffort": "low",
-        },
-      },
-      {
-        "id": "high",
-        "settings": {
-          "reasoningEffort": "high",
-        },
-      },
-    ],
+    "releaseUnit": "none",
+    "released": 0,
+    "variants": [],
   },
   {
     "capabilities": {
       "input": [
         "text",
-        "image",
       ],
       "output": [
         "text",
@@ -609,7 +499,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
       ],
       "output": [
         "text",
@@ -639,9 +528,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "audio",
-        "video",
       ],
       "output": [
         "text",
@@ -671,8 +557,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "video",
       ],
       "output": [
         "text",
@@ -694,28 +578,9 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "name": "mimo-v2.6-pro",
     "protocol": "chat",
     "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1771545600000,
-    "variants": [
-      {
-        "id": "low",
-        "settings": {
-          "reasoningEffort": "low",
-        },
-      },
-      {
-        "id": "medium",
-        "settings": {
-          "reasoningEffort": "medium",
-        },
-      },
-      {
-        "id": "high",
-        "settings": {
-          "reasoningEffort": "high",
-        },
-      },
-    ],
+    "releaseUnit": "none",
+    "released": 0,
+    "variants": [],
   },
   {
     "capabilities": {
@@ -764,35 +629,16 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "minimax-m3",
     "limit": {
-      "context": 512000,
-      "input": 512000,
+      "context": 1000000,
+      "input": 1000000,
       "output": 131072,
     },
     "name": "minimax-m3",
     "protocol": "responses",
     "reasoningSupported": "supported",
-    "releaseUnit": "unix-ms",
-    "released": 1768003200000,
-    "variants": [
-      {
-        "id": "low",
-        "settings": {
-          "reasoningEffort": "low",
-        },
-      },
-      {
-        "id": "medium",
-        "settings": {
-          "reasoningEffort": "medium",
-        },
-      },
-      {
-        "id": "high",
-        "settings": {
-          "reasoningEffort": "high",
-        },
-      },
-    ],
+    "releaseUnit": "none",
+    "released": 0,
+    "variants": [],
   },
   {
     "capabilities": {
@@ -802,7 +648,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
@@ -827,8 +673,6 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "capabilities": {
       "input": [
         "text",
-        "image",
-        "video",
       ],
       "output": [
         "text",
@@ -850,8 +694,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     "name": "qwen3.7-plus",
     "protocol": "chat",
     "reasoningSupported": "unknown",
-    "releaseUnit": "unix-ms",
-    "released": 1769904000000,
+    "releaseUnit": "none",
+    "released": 0,
     "variants": [],
   },
   {
@@ -862,7 +706,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
@@ -891,7 +735,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
@@ -901,9 +745,9 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "shared-route",
     "limit": {
-      "context": 200000,
-      "input": 200000,
-      "output": 32000,
+      "context": 0,
+      "input": 0,
+      "output": 0,
     },
     "name": "shared-route",
     "protocol": "chat",
@@ -920,7 +764,7 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
       "output": [
         "text",
       ],
-      "tools": true,
+      "tools": false,
     },
     "cost": {
       "cacheRead": 0,
@@ -930,8 +774,8 @@ exports[`buildModelSpecs 输出与 fixtures 的完整快照一致 1`] = `
     },
     "id": "tiered-pricing-model",
     "limit": {
-      "context": 256000,
-      "input": 256000,
+      "context": 1000000,
+      "input": 1000000,
       "output": 64000,
     },
     "name": "tiered-pricing-model",
