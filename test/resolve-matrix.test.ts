@@ -733,4 +733,13 @@ describe("group consistency", () => {
     expect(assessment.publishable).toBe(true);
     expect(assessment.fieldBasis?.["limit.context"]).toBe("litellm-declared");
   });
+
+  test("illegal declared values fail in every catalog branch, including providers-only", () => {
+    const illegal = litellmModel("m", { model: "x" }, { ...FULL, max_output_tokens: 0 });
+    for (const doc of [{}, { labA: { models: { x: { id: "x" } } } }]) {
+      const assessment = assessModelConfiguration(groupOf(illegal, "m"), doc, options);
+      expect(assessment.status).toBe("invalid-metadata");
+      expect(assessment.illegalFields).toContain("limit.output");
+    }
+  });
 });

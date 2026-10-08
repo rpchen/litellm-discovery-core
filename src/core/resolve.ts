@@ -1553,9 +1553,14 @@ function assembleResolved(
     reasons.push(identity.reason ?? serving.reason ?? "identity-ambiguous");
   } else if (catalogKind !== "complete") {
     // LiteLLM-complete publishes; the rest are metadata-unavailable.
+    // Illegal declared values fail in every branch (never masked).
     const gated: FieldResolutionWithBasis[] = [fields.context, fields.output, fields.tools, fields.reasoning, fields.inputModalities, fields.outputModalities];
     const blocked = gated.some((f) => f.basis === "unknown" || f.conflict);
-    if (conflicts.length > 0) {
+    if (gated.some((f) => f.status === "illegal")) {
+      status = "invalid-metadata";
+      publishable = false;
+      reasons.push("illegal-metadata");
+    } else if (conflicts.length > 0) {
       status = "invalid-metadata";
       publishable = false;
       reasons.push("authoritative-conflict");
