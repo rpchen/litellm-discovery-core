@@ -16,7 +16,7 @@ describe("discovery diagnostics", () => {
         {
           model_name: "gpt-diagnostic",
           litellm_params: {
-            model: "openai/gpt-diagnostic",
+            model: "gpt-diagnostic",
             api_key: "sk-core-secret",
             api_base: "https://private.example/v1",
           },
@@ -24,6 +24,13 @@ describe("discovery diagnostics", () => {
             supported_endpoints: ["/v1/responses", "/v1/chat/completions"],
             max_input_tokens: 200000,
             max_output_tokens: 12000,
+            supports_function_calling: true,
+            supports_reasoning: false,
+            supports_vision: true,
+            supports_pdf_input: false,
+            supports_audio_input: false,
+            supports_video_input: false,
+            supports_audio_output: false,
             input_cost_per_token: 0.000001,
             output_cost_per_token: 0.000002,
             debug_error: "upstream failed with sk-core-secret at https://private.example",
@@ -36,21 +43,35 @@ describe("discovery diagnostics", () => {
         },
       ],
     }
+    // Catalog shape (D2): canonical registry + serving records. No serving
+    // provider is declared, so the openai record stays unproven and supplies
+    // no facts; identity proves via the bare registry id.
     const catalog = {
-      openai: {
-        models: {
-          "gpt-diagnostic": {
-            id: "gpt-diagnostic",
-            release_date: "2026-05-01",
-            tool_call: true,
-            modalities: { input: ["text", "image"], output: ["text"] },
-            reasoning_options: [{ type: "effort", values: ["low", "high"] }],
-            limit: { context: 300000, output: 16000 },
-            cost: {
-              input: 3,
-              output: 6,
-              cache_read: 0.5,
-              cache_write: 0.75,
+      models: {
+        "labA/gpt-diagnostic": {
+          limit: { context: 300000, output: 16000 },
+          modalities: { input: ["text", "image"], output: ["text"] },
+          tool_call: true,
+          reasoning: false,
+          release_date: "2026-05-01",
+        },
+      },
+      providers: {
+        openai: {
+          models: {
+            "gpt-diagnostic": {
+              id: "gpt-diagnostic",
+              release_date: "2026-05-01",
+              tool_call: true,
+              modalities: { input: ["text", "image"], output: ["text"] },
+              reasoning_options: [{ type: "effort", values: ["low", "high"] }],
+              limit: { context: 300000, output: 16000 },
+              cost: {
+                input: 3,
+                output: 6,
+                cache_read: 0.5,
+                cache_write: 0.75,
+              },
             },
           },
         },
@@ -67,20 +88,25 @@ describe("discovery diagnostics", () => {
       deployments: 1,
       filteredEntries: 1,
       models: 1,
-      modelsDevMatched: 1,
-      modelsDevUnmatched: 0,
+      modelsDevMatched: 0,
+      modelsDevUnmatched: 1,
       protocolFallbacks: 0,
     })
 
     const diagnostic = result.diagnostics.models[0]!
-    expect(diagnostic.modelsDev).toEqual({
-      matched: true,
-      providerID: "openai",
-      modelID: "gpt-diagnostic",
-      // The deployment routes openai/gpt-diagnostic: the qualified namespace
-      // plus the same-namespace direct record proves canonical-original.
-      selectionSource: "canonical-original",
+    // No serving provider declared: no record is matched, canonical identity
+    // is proven from the registry instead.
+    expect(diagnostic.modelsDev).toEqual({ matched: false })
+    expect(diagnostic.quality.identity.canonicalModelID).toBe("labA/gpt-diagnostic")
+    expect(diagnostic.quality.identity.canonicalEvidence).toBe("registry-unique")
+    expect(diagnostic.quality.identity.canonicalStatus).toBe("proven")
+    expect(diagnostic.quality.serving).toMatchObject({ status: "unproven" })
+    expect(diagnostic.quality.fieldBasis).toMatchObject({
+      "limit.context": "canonical",
+      "limit.input": "litellm-declared",
+      "limit.output": "canonical",
     })
+    expect(diagnostic.quality.reasoningLevelsState).toBe("unknown")
     expect(diagnostic.protocol).toMatchObject({
       value: "responses",
       reason: "supported-endpoints",
@@ -88,22 +114,19 @@ describe("discovery diagnostics", () => {
     })
     expect(diagnostic.provenance).toEqual({
       protocol: { source: "litellm", detail: "supported_endpoints" },
-      reasoning: { source: "models.dev", detail: "reasoning_options" },
+      reasoning: { source: "litellm", detail: "supports_reasoning" },
       capabilities: {
-        tools: { source: "models.dev" },
-        input: { source: "models.dev" },
-        output: { source: "models.dev" },
-      },
-      context: { source: "models.dev", detail: "limit.context" },
-      outputLimit: { source: "litellm" },
-      pricing: {
-        // The record is canonical-original (rule B); LiteLLM prices still win
-        // where declared, and the undeclared cache dimensions keep their
-        // documented fallback/ignored wording relative to each key's policy.
+        tools: { source: "litellm" },
         input: { source: "litellm" },
         output: { source: "litellm" },
-        cacheRead: { source: "models.dev" },
-        cacheWrite: { source: "models.dev" },
+      },
+      context: { source: "models.dev", detail: "limit.context" },
+      outputLimit: { source: "models.dev", detail: "limit.output" },
+      pricing: {
+        input: { source: "litellm" },
+        output: { source: "litellm" },
+        cacheRead: { source: "default", detail: "missing price metadata maps to zero" },
+        cacheWrite: { source: "default", detail: "missing price metadata maps to zero" },
       },
       release: { source: "models.dev" },
     })
@@ -210,15 +233,22 @@ describe("discovery diagnostics", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Canonical identity / metadata provider / selection source visibility
-// (fix-canonical-provider-selection-precedence)
+// Canonical identity / serving visibility (adopt-modelsdev-canonical-catalog)
 // ---------------------------------------------------------------------------
-import { DEEPSEEK_V4_1_FLASH_CATALOG } from "./fixtures/models-dev-catalog-fixtures.ts"
 
 describe("selection diagnostics", () => {
   const optionsNoTier = { contextTierCap: false, protocolOverrides: {} } as const
 
-  test("canonical original selection reports identity, provider, and source separately", () => {
+  function shape(models: Record<string, unknown>, providers: Record<string, unknown>) {
+    return {
+      models,
+      providers: Object.fromEntries(
+        Object.entries(providers).map(([provider, records]) => [provider, { models: records }]),
+      ),
+    }
+  }
+
+  test("canonical-only identity reports registry proof without a record match", () => {
     const litellm = {
       data: [{
         model_name: "deepseek-v4.1-flash",
@@ -226,70 +256,66 @@ describe("selection diagnostics", () => {
         model_info: { mode: "responses", base_model: "deepseek-v4.1-flash" },
       }],
     }
-    const diagnosed = diagnoseModelSpecs(litellm, DEEPSEEK_V4_1_FLASH_CATALOG, optionsNoTier)
+    const doc = shape(
+      { "deepseek/deepseek-v4.1-flash": { limit: { context: 1000000, output: 384000 } } },
+      {
+        deepseek: {
+          "deepseek-flash": { id: "deepseek-flash", canonical_model_id: "deepseek/deepseek-v4.1-flash", limit: { context: 1000000, output: 393216 } },
+        },
+      },
+    )
+    const diagnosed = diagnoseModelSpecs(litellm, doc, optionsNoTier)
     const model = diagnosed.diagnostics.models.find((item) => item.id === "deepseek-v4.1-flash")!
-    expect(model.modelsDev).toMatchObject({
-      matched: true,
-      providerID: "deepseek",
-      selectionSource: "canonical-original",
-    })
-    // The record that served the identity carries its own canonical_model_id
-    // relation, so the identity provenance names the provider relation.
-    expect(model.quality.identity.identityProvenance).toBe("provider-relation")
+    expect(model.modelsDev).toEqual({ matched: false })
+    expect(model.quality.identity.canonicalModelID).toBe("deepseek/deepseek-v4.1-flash")
+    expect(model.quality.identity.canonicalEvidence).toBe("registry-unique")
+    expect(model.quality.serving).toMatchObject({ status: "unproven" })
   })
 
-  test("fallback selection keeps the canonical identity intact in diagnostics", () => {
+  test("declared serving provider reports the resolved record", () => {
     const litellm = {
       data: [{
         model_name: "vendor-foo",
-        litellm_params: { model: "openai/vendor-foo" },
-        model_info: { mode: "chat" },
+        litellm_params: { model: "vendor-foo" },
+        model_info: { mode: "chat", models_dev_provider: "vendor" },
       }],
     }
-    const catalog = {
-      vendor: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", limit: { context: 1, output: 1 } } } },
-      opencode: { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", limit: { context: 1, output: 1 } } } },
-      "other-reseller": { models: { "vendor-foo": { id: "vendor-foo", canonical_model_id: "vendor/vendor-foo", limit: { context: 1, output: 1 } } } },
-    }
-    const diagnosed = diagnoseModelSpecs(litellm, { opencode: catalog.opencode, "other-reseller": catalog["other-reseller"], vendorfoo: { models: { "unused": { id: "unused" } } } } as never, optionsNoTier)
+    const doc = shape(
+      {},
+      { vendor: { "vendor-foo": { id: "vendor-foo", limit: { context: 1, output: 1 } } } },
+    )
+    const diagnosed = diagnoseModelSpecs(litellm, doc, optionsNoTier)
     const model = diagnosed.diagnostics.models.find((item) => item.id === "vendor-foo")!
     expect(model.modelsDev).toMatchObject({
       matched: true,
-      providerID: "opencode",
-      selectionSource: "opencode-fallback",
+      providerID: "vendor",
+      selectionSource: "explicit-provider",
     })
-    // The canonical identity candidate list stays the deployment's own names:
-    // the fallback provider never renames it.
+    expect(model.quality.serving).toMatchObject({ status: "declared", providerID: "vendor", recordID: "vendor-foo" })
+    // Unproven same-name reseller records stay diagnostic candidates only.
     expect(model.candidates).toContain("vendor-foo")
-    expect(model.quality.identity.canonicalCandidates).toContain("vendor-foo")
   })
 
-  test("provider-relation identity provenance is reported for relation-matched records", () => {
+  test("serving-record-unresolved lists selectable relation SKUs as candidates", () => {
     const litellm = {
       data: [{
         model_name: "rel-model",
-        litellm_params: { model: "canonicalvendor/rel-model" },
-        model_info: { mode: "chat" },
+        litellm_params: { model: "rel-model" },
+        model_info: { mode: "chat", models_dev_provider: "canonicalvendor" },
       }],
     }
-    const catalog = {
-      canonicalvendor: {
-        models: {
-          "rel-model": {
-            id: "rel-model",
-            canonical_model_id: "canonicalvendor/rel-model",
-            limit: { context: 50_000, output: 5_000 },
-            tool_call: true,
-            reasoning: false,
-            modalities: { input: ["text"], output: ["text"] },
-          },
+    const doc = shape(
+      { "canonicalvendor/rel-model": { limit: { context: 50000, output: 5000 } } },
+      {
+        canonicalvendor: {
+          "rel-model-alias": { id: "rel-model-alias", canonical_model_id: "canonicalvendor/rel-model", limit: { context: 50000, output: 5000 } },
         },
       },
-    }
-    const diagnosed = diagnoseModelSpecs(litellm, catalog, optionsNoTier)
+    )
+    const diagnosed = diagnoseModelSpecs(litellm, doc, optionsNoTier)
     const model = diagnosed.diagnostics.models.find((item) => item.id === "rel-model")!
-    expect(model.modelsDev).toMatchObject({ providerID: "canonicalvendor", selectionSource: "canonical-original" })
-    // The direct-id match upgrades to the record's relation proof context.
-    expect(model.quality.identity.matchKind).toBe("relation")
+    expect(model.modelsDev).toEqual({ matched: false })
+    expect(model.quality.serving).toMatchObject({ status: "serving-record-unresolved" })
+    expect(model.quality.diagnosticCandidates?.map((item) => item.recordID)).toContain("rel-model-alias")
   })
 })

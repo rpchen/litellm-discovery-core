@@ -1,84 +1,103 @@
-import { describe, expect, test } from "bun:test"
-import litellm from "./fixtures/litellm-model-info.json" with { type: "json" }
-import modelsDev from "./fixtures/models-dev.json" with { type: "json" }
-import { mapCapabilities } from "../src/core/capabilities.ts"
-import { groupLiteLLMDeployments } from "../src/core/litellm.ts"
-import { selectModelsDevRecord } from "../src/core/modelsdev.ts"
+/**
+ * Legacy `mapCapabilities` projection contract (adopt-modelsdev-canonical-catalog,
+ * task 6.3 rewrite). The publication path derives every value from the single
+ * resolver; this module is a thin projection for direct callers:
+ * - context comes only from the record (never from max_input_tokens);
+ * - no `litellm_params` key narrows anything (D7a empty proven set);
+ * - operator-declared pricing reads `litellm_params` before `model_info`;
+ * - unproven records are never passed in by the resolver path.
+ *
+ * Rewritten cases (old → new, with reasons):
+ * - 多部署最小上限 → input/output 取最小声明值；context 仅记录值（维度隔离，
+ *   旧测试把 max_input_tokens 当 context 已删除）。
+ * - 272k/512k 阶梯 → 仍截断记录 context（BuildOption 行为保留）；无记录时为 0
+ *  （旧测试用 LiteLLM 值当 context 已删除）。
+ * - 显式 false 覆盖模态 → 改为 litellm_params false 不再移除（operator
+ *   configuration，无 enforcement 证明）。
+ * - 工具默认支持 → 改为无声明时 false（unknown 永不默认 true）。
+ */
+import { describe, expect, test } from "bun:test";
+import { mapCapabilities } from "../src/core/capabilities.ts";
+import { groupLiteLLMDeployments } from "../src/core/litellm.ts";
+import type { SelectedModelRecord } from "../src/core/modelsdev.ts";
 
-const groups = groupLiteLLMDeployments(litellm)
-function mapped(modelName: string, contextTierCap = true) {
-  const group = groups.find((item) => item.modelName === modelName)!
-  return mapCapabilities(group, selectModelsDevRecord(group, modelsDev), contextTierCap)
+function record(overrides: Record<string, unknown> = {}): SelectedModelRecord {
+  return {
+    providerID: "P",
+    modelID: "x",
+    record: {
+      limit: { context: 200000, input: 150000, output: 32000 },
+      modalities: { input: ["text", "image"], output: ["text"] },
+      tool_call: true,
+      cost: { input: 2, output: 10 },
+      ...overrides,
+    },
+    selectionSource: "explicit-provider",
+  };
 }
 
-describe("能力映射", () => {
-  test("多部署按交集与最小上限保守合并", () => {
-    const result = mapped("shared-route")
-    // One deployment declares 200k/32k; the other 400k/128k → min for limits.
-    expect(result.limit.context).toBe(200000)
-    expect(result.limit.output).toBe(32000)
-  })
+function group(modelName: string, deployments: Array<{ params?: Record<string, unknown>; info?: Record<string, unknown> }>) {
+  return groupLiteLLMDeployments({
+    data: deployments.map((item) => ({
+      model_name: modelName,
+      litellm_params: { model: modelName, ...(item.params ?? {}) },
+      model_info: { mode: "chat", ...(item.info ?? {}) },
+    })),
+  })[0]!;
+}
 
-  test("LiteLLM 值优先、价格换算为每百万 token", () => {
-    const result = mapped("gpt-6-sol")
-    expect(result.cost).toEqual({ input: 2, output: 10, cacheRead: 0, cacheWrite: 0 })
-  })
+describe("能力映射（legacy projection）", () => {
+  test("多部署 input/output 取最小声明值，context 仅记录值", () => {
+    const g = group("m", [
+      { info: { max_input_tokens: 200000, max_output_tokens: 32000 } },
+      { info: { max_input_tokens: 400000, max_output_tokens: 128000 } },
+    ]);
+    const result = mapCapabilities(g, undefined, false);
+    expect(result.limit.input).toBe(200000);
+    expect(result.limit.output).toBe(32000);
+    // Dimension isolation: no record, no context — never from max_input_tokens.
+    expect(result.limit.context).toBe(0);
+  });
 
-  test("272k 与 512k 阶梯截断，可关闭", () => {
-    expect(mapped("gpt-6-sol").limit.context).toBe(272000)
-    expect(mapped("minimax-m3").limit.context).toBe(512000)
-    expect(mapped("gpt-6-sol", false).limit.context).toBe(922000)
-  })
+  test("记录 context 优先；价格换算为每百万 token 且 litellm_params 优先", () => {
+    const g = group("m", [
+      { params: { input_cost_per_token: 5e-7 }, info: { max_input_tokens: 200000, max_output_tokens: 32000, input_cost_per_token: 2e-7, output_cost_per_token: 10e-7 } },
+    ]);
+    const result = mapCapabilities(g, record(), false);
+    expect(result.limit.context).toBe(200000);
+    expect(result.cost.input).toBeCloseTo(0.5, 10);
+    expect(result.cost.output).toBe(1);
+  });
 
-  test("tiered_pricing 首个非零起点截断", () => {
-    expect(mapped("tiered-pricing-model").limit.context).toBe(256000)
-    expect(mapped("tiered-pricing-model", false).limit.context).toBe(1000000)
-  })
+  test("contextTierCap 截断记录 context，可关闭", () => {
+    const g = group("m", [
+      { info: { max_input_tokens: 922000, max_output_tokens: 128000, input_cost_per_token_above_272k_tokens: 1 } },
+    ]);
+    expect(mapCapabilities(g, record({ limit: { context: 1000000, output: 128000 } }), true).limit.context).toBe(272000);
+    expect(mapCapabilities(g, record({ limit: { context: 1000000, output: 128000 } }), false).limit.context).toBe(1000000);
+  });
 
-  test("无阶梯字段时保持原上限", () => {
-    expect(mapped("deepseek-v4.1-flash").limit.context).toBe(1000000)
-  })
+  test("记录模态集合决定 direction；litellm_params false 不再移除", () => {
+    const g = group("m", [{ params: { supports_vision: false }, info: {} }]);
+    const result = mapCapabilities(g, record(), false);
+    // D7a: operator-configuration keys narrow nothing.
+    expect(result.capabilities.input).toEqual(["text", "image"]);
+  });
 
-  test("models.dev 模态在 LiteLLM 未声明时按显式记录补充（无 family 特判）", () => {
-    expect(mapped("qwen3.7-plus").capabilities.input).toEqual(["text", "image", "video"])
-  })
+  test("无记录且 LiteLLM 未声明模态时仅 text", () => {
+    const g = group("m", [{ info: {} }]);
+    expect(mapCapabilities(g, undefined, false).capabilities.input).toEqual(["text"]);
+  });
 
-  test("可信 models.dev 内禀模态集合决定 direction，描述性声明不能新增", () => {
-    // mimo-v2.6-pro declares audio/video itself while the trusted record only
-    // lists text/image/video: the authoritative intrinsic set decides and the
-    // descriptive declarations are retained as a resolved discrepancy by the
-    // publication assessment (never as a host capability).
-    const result = mapped("mimo-v2.6-pro")
-    expect(result.capabilities.input).toEqual(["text", "image", "video"])
-  })
+  test("无声明时工具为 false（unknown 永不默认 true）", () => {
+    const g = group("m", [{ info: {} }]);
+    expect(mapCapabilities(g, undefined, false).capabilities.tools).toBe(false);
+  });
 
-  test("显式 false 覆盖 models.dev 模态", () => {
-    const group = groups.find((item) => item.modelName === "glm-5.3")!
-    const result = mapCapabilities(group, selectModelsDevRecord(group, modelsDev), true)
-    expect(result.capabilities.input).toEqual(["text"])
-  })
-
-  test("LiteLLM 缺失输出上限时回退 models.dev", () => {
-    const group = groupLiteLLMDeployments({
-      data: [
-        {
-          model_name: "missing-fields-model",
-          litellm_params: { model: "openai/missing-fields-model" },
-          model_info: { mode: "chat" },
-        },
-      ],
-    })[0]!
-    const result = mapCapabilities(group, selectModelsDevRecord(group, modelsDev), true)
-    expect(result.limit.output).toBe(65536)
-  })
-
-  test("工具调用默认支持", () => {
-    expect(mapped("deepseek-v4.1-flash").capabilities.tools).toBeTrue()
-  })
-
-  test("异常字段按缺失处理并回退默认值", () => {
-    const result = mapped("invalid-fields")
-    expect(result.limit).toEqual({ context: 0, input: 0, output: 0 })
-    expect(result.capabilities.tools).toBeTrue()
-  })
-})
+  test("异常字段按缺失处理", () => {
+    const g = group("m", [{ info: { max_input_tokens: "abc", max_output_tokens: -5 } }]);
+    const result = mapCapabilities(g, undefined, false);
+    expect(result.limit).toEqual({ context: 0, input: 0, output: 0 });
+    expect(result.capabilities.tools).toBe(false);
+  });
+});
