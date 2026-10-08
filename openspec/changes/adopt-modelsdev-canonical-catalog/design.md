@@ -269,7 +269,7 @@ interface LastKnownGoodEntryV8 {
 | 情形 | canonical identity | 字段 basis | effective context / input / output | discrepancy / conflict | levels | price | publishability / LKG proof |
 |---|---|---|---|---|---|---|---|
 | **A** serving 未证明 | `minimax/MiniMax-M3`（registry-unique，经 base_model tail） | context/output/tools/reasoning/modalities = canonical；registry 无 `limit.input` → **input 由 LiteLLM 同维度补缺**（`max_input_tokens` = 1000000，basis litellm-declared） | 1048576 / 1000000 / 512000 | input：base = litellm-declared 1000000（与声明一致，无 discrepancy）；output 131072 vs 512000 → resolved discrepancy；context 无 LiteLLM 声明可比较 | unknown | LiteLLM（input/output）；其余组件 unknown | configured；proof = canonical + constraint/litellm 指纹 |
-| **B** `models_dev_provider: minimax`（provider + exact record `MiniMax-M3`，tail 精确命中） | 同上；inline first-party 与 C 一致 | context/output = serving；serving 记录有 `limit.input`（1000000）→ input = serving | 1000000 / 1000000 / 512000 | input 一致；output 131072 vs 512000 → discrepancy | known-empty（toggle） | LiteLLM 组件优先，cacheRead = MiniMax 0.06 | configured；proof = canonical + serving(minimax) |
+| **B** `models_dev_provider: minimax`（provider + exact record `MiniMax-M3`，bare parsed-key 精确命中） | 同上；inline first-party 与 C 一致 | context/output = serving；serving 记录有 `limit.input`（1000000）→ input = serving | 1000000 / 1000000 / 512000 | input 一致；output 131072 vs 512000 → discrepancy | known-empty（toggle） | LiteLLM 组件优先，cacheRead = MiniMax 0.06 | configured；proof = canonical + serving(minimax) |
 | **C** `models_dev_provider: opencode`（provider + exact record `minimax-m3` 精确命中；relation 一致） | 同上；relation 一致 | context/output = serving(opencode)；serving 记录无 `limit.input` → absence policy：LiteLLM 同维度补缺（input = 1000000，litellm-declared），不回填 canonical | 512000 / 1000000 / 128000 | input：1000000（litellm-declared，无比较对象不一致）；output 131072 vs 128000 → discrepancy | known-empty（`[]`） | LiteLLM 组件优先，cacheRead = OpenCode 0.06 | configured；proof = canonical + serving(opencode) |
 | **D** A + `litellm_params.max_input_tokens 900000`（operator configuration，D7a 证明集为空） | 同 A | 同 A（无任何收窄） | 1048576 / 1000000 / 512000 | `litellm_params.max_input_tokens` 只进诊断，不收窄、不产生 discrepancy；descriptive 差异同 A | unknown | 同 A | configured；enforcement fingerprint（空）不因该键变化失效；**若未来该键通过 D7a 晋升，本行按新 delta 重算** |
 
@@ -277,8 +277,8 @@ interface LastKnownGoodEntryV8 {
 
 - **[值变保守]** kimi-k3 output 1048576 → 131072、deepseek 393216 → 384000。→ 只有 **serving provider 与 exact serving record（SKU）都被证明**（声明 `models_dev_provider` 且 wire id 精确命中该 provider 的 serving record）才恢复 393216；仅声明 provider 而无 exact SKU（DeepSeek 真实 catalog 只有 relation-only SKU）仍是 384000。README/诊断说明。
 - **[推理档位消失]** live 当前有 13 个模型发布可选档位。serving 未证明时全部变为 levels unknown。→ 声明 `models_dev_provider`；不放松证据规则。
-- **[DeepSeek 输出值变化（显式确认）]** `deepseek-v4.1-flash`/`deepseek-v4-pro` 从 serving SKU 的 393216 变为 canonical 384000（serving 未证明）；声明 `models_dev_provider: deepseek` 才可能采用 first-party serving 393216。这与前一阶段保护的 393216 regression 是明确的用户可见行为变化，按 acceptance R4/R4b 双场景固定，写入 migration/release notes；任何人不得把其中一侧行为改回旧值而不走 delta。
-- **[无任何 proven enforcement]** D7a 证明集为空：所有 `litellm_params` 键只进诊断，不收窄任何字段（包括 `max_input_tokens`）。已声明 enforcement 键的运维者会看到行为变化（不再收窄）；README 说明晋升门槛与未来 delta 路径。
+- **[DeepSeek 输出值变化（显式确认）]** `deepseek-v4.1-flash`/`deepseek-v4-pro` 从 serving SKU 的 393216 变为 canonical 384000（serving 未证明）。**provider 声明本身不足以恢复 393216**：deepseek 真实 catalog 只有 relation-only SKU（`deepseek-flash` 等），仅声明 `models_dev_provider: deepseek` 仍是 384000；只有 provider 声明 **且** wire id 精确命中某条 SKU record（如 `custom_llm_provider: deepseek` + route `deepseek/deepseek-flash`）才采用该 SKU 的 393216。这与前一阶段保护的 393216 regression 是明确的用户可见行为变化，按 acceptance R4/R4b 双场景固定，写入 migration/release notes；任何人不得把其中一侧行为改回旧值而不走 delta。
+- **[无任何 proven enforcement]** D7a 证明集为空：**非价格** `litellm_params` 键只进诊断，不收窄任何字段（包括 `max_input_tokens`）；7 个价格键按 Operator-Declared Pricing 独立处理（D8）。已声明 enforcement 键的运维者会看到行为变化（不再收窄）；README 说明晋升门槛与未来 delta 路径。
 - **[LiteLLM-only 更严格]** LiteLLM-only（canonical 未证明、无 serving）且无真实 context 语义声明时，模型由「拿 `max_input_tokens` 当 context」改为 withheld。live 20 个 deployment 中无此形态（均有 canonical 匹配）；影响集中在私有模型。
 - **[serving 缺字段不回填]** 已证明 serving 缺 `limit.input`（可能被 `base_model_omit` 删除，真实数据 64 条）时保持缺失，不再回填 canonical。→ 与 models.dev 生成器语义一致。
 - **[未登记模型更严格]** registry 无条目、LiteLLM 声明不完整、无 serving 声明的私有模型由「reseller 补值」改为 withheld。live 影响 0；诊断列出可声明的候选。
@@ -292,7 +292,7 @@ interface LastKnownGoodEntryV8 {
 1. Core：本 change 实施（tasks §1–§7），PR → main，产出稳定 SHA。
 2. Pi、OpenCode：各自 OpenSpec change（引用本 change）→ `build:dist` 取同一 Core SHA → `catalog.json`、LKG v8、诊断字段 → 真实宿主 E2E → PR。
 3. 回滚：adapter 回退旧 dist；v8 entry 被旧版视为 schema-incompatible（fail closed，安全）。
-4. 行为变化清单（README/release notes 必须逐条说明）：DeepSeek 384000/393216（R4/R4b/R4c——恢复 393216 需要 provider + exact SKU 双重证明）、推理档位 unknown、无 proven enforcement、kimi-k3 output 131072、LiteLLM-only 无 context 即 withheld、serving 缺字段不回填 canonical（允许同维度 LiteLLM 补缺，否则 unknown）。
+4. 行为变化清单（README/release notes 必须逐条说明）：DeepSeek 384000/393216（R4/R4b/R4c——恢复 393216 需要 provider + exact SKU 双重证明；A/B/C 唯一差异是 serving SKU proof）、推理档位 unknown、无 proven enforcement、kimi-k3 output 131072、LiteLLM-only 无 context 即 withheld、serving 缺字段不回填 canonical（允许同维度 LiteLLM 补缺，否则 unknown）。
 
 ## Downstream impact
 

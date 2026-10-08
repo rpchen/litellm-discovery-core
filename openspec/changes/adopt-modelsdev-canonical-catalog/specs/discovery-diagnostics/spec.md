@@ -36,7 +36,7 @@ Every field names its basis — `serving`, `canonical`, `litellm-declared`, `enf
 - **THEN** diagnostics state that reasoning levels are unknown because no serving provider is proven, without reporting a withheld reason
 
 #### Scenario: fallback-serving resolution names its origin
-- **WHEN** a field value comes from LiteLLM declarations or is narrowed by a runtime constraint while unproven provider records exist
+- **WHEN** a field value comes from LiteLLM declarations or from a key promoted by the runtime enforcement matrix while unproven provider records exist
 - **THEN** the field basis is `litellm-declared` (no key is `enforcement-narrowed` until a promotion delta exists), the message names that source, and no unproven provider record is presented as having decided the value
 
 #### Scenario: endpoint default effort is explained

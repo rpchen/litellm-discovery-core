@@ -7,7 +7,7 @@ Core SHALL record, for every publication-critical field, which source decided it
 
 #### Scenario: Provenance is recorded per evidence item
 - **WHEN** a publication-critical field is resolved
-- **THEN** Core reports the selected value, the selecting source, and every contributing evidence item with its origin (`canonical-intrinsic`, `serving-override`, `litellm-declared`, `descriptive-metadata`, `deployment-constraint`, `derived`, or `unknown-provenance`)
+- **THEN** Core reports the selected value, the selecting source, and every contributing evidence item with its origin (`canonical-intrinsic`, `serving`, `litellm-declared`, `operator-declared-pricing`, `descriptive-metadata`, `proven-runtime-enforcement` (no instance until a promotion delta), or `unknown-provenance`)
 
 #### Scenario: Intrinsic truth is authoritative once identity is resolved
 - **WHEN** canonical identity is proven and the registry entry declares a field that a LiteLLM `model_info` declaration contradicts
@@ -41,7 +41,7 @@ Core SHALL keep proven runtime enforcement as a distinct fact class. Only `litel
 - **THEN** Core resolves the field from the field resolution matrix alone, keeps the model publishable when otherwise complete, and lists the key in diagnostics as operator configuration
 
 ### Requirement: Trusted Last Known Good reuse
-Core SHALL reuse a previously verified complete configuration while live enrichment is unavailable, under all of the following: the entry was captured from a resolution that passed the current publication gate; the live group's own stable identity evidence is provable and unchanged; schema version is compatible (schema 8); every component of the entry's proof composition re-proves (deployment input, serving declaration, runtime constraint and LiteLLM fingerprints, and with a live catalog the registry and serving record digests); and no canonical intrinsic fact, proven serving fact, or proven runtime constraint contradicts the entry. Age SHALL NOT be a validity condition. LKG SHALL NOT resurrect a model the current LiteLLM directory does not serve, and a mismatch SHALL fail closed as withheld.
+Core SHALL reuse a previously verified complete configuration while live enrichment is unavailable, under all of the following: the entry was captured from a resolution that passed the current publication gate; the live group's own stable identity evidence is provable and unchanged; schema version is compatible (schema 8); every component of the entry's proof composition re-proves (deployment evidence multiset, serving declaration, proven runtime enforcement and LiteLLM fingerprints, and with a live catalog the registry and serving record digests); and no canonical intrinsic fact, proven serving fact, or proven runtime constraint contradicts the entry. Age SHALL NOT be a validity condition. LKG SHALL NOT resurrect a model the current LiteLLM directory does not serve, and a mismatch SHALL fail closed as withheld.
 
 #### Scenario: Outage with a valid snapshot keeps the model available
 - **WHEN** the metadata source is temporarily unavailable, LiteLLM still serves the same model, stable identity is unchanged, and an entry whose outage proof components all re-prove exists

@@ -193,4 +193,4 @@ LiteLLM 没有任何可声明「endpoint 接受的可选档位集合」的字段
 - **删除 `limit.input = context` 推导**：models.dev schema/README 只定义 `input` 为 optional 最大输入 token，无 absent==context consumer contract；64 条 linked serving 记录缺 input（含 requesty/hy3 的 `base_model_omit`），推导会撤销显式删除；input 缺失即 unknown。
 - catalog 判定改穷举三态；models-only 归 `unavailable`。
 - LKG deployment 证明改 evidence multiset + 持久化 `model_info.id`（live 20/20 有值）。
-- DeepSeek 393216→384000 行为变化以 R4/R4b 双场景显式固定，并列入 migration notes。
+- DeepSeek 393216→384000 行为变化以 R4/R4b/R4c 三场景显式固定（rev6），并列入 migration notes。

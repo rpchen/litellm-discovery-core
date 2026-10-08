@@ -2,7 +2,7 @@
 
 每一行在实施阶段必须映射到至少一个自动化测试（testing-standard §1）。`R*` 使用从 live catalog（2026-10-07 13:11 UTC）裁剪出的真实 schema fixture；`G*` 使用遵循真实 models.dev schema 的合成 catalog；禁止模型特判或白名单——`R*` 只是 `G*` 规则在真实数据上的实例。
 
-记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；`litellm_params` 所有键当前均为 operator configuration（D7a 空证明集）：永不产生档位、pin、narrowing 或 LKG 指纹；basis 记号见 design D6/D7a；R4/R4b、R9b 为**行为变化测试**（注释引用 design Risks，禁止回改为旧值）。
+记号：`levels` = 推理档位状态（`unknown` / `known[...]`）；**非价格** `litellm_params` 键当前均为 operator configuration（D7a 空证明集）：永不产生档位、pin、narrowing 或 LKG 指纹；`MirroredPricingParams` 的 7 个价格键是 Operator-Declared Pricing（design D8），只产生价格事实；basis 记号见 design D6/D7a；R4/R4b/R4c、R9b 为**行为变化测试**（注释引用 design Risks，禁止回改为旧值）。
 
 ## R — 真实回归（live endpoint 形态，裁剪 fixture）
 
@@ -15,8 +15,8 @@
 | R3c + `models_dev_provider: opencode` | — | 同上 | declared，record resolved（精确 wire id；`canonical_model_id` 一致） | 512000/1000000/128000（serving 记录无 `limit.input` → serving-absence policy：LiteLLM 同维度补缺，不回填 canonical） | known[] | configured；output discrepancy；cacheRead 来自 OpenCode | — |
 | R3d + `litellm_params.max_input_tokens: 900000`、`max_tokens: 65536`（均 operator configuration，D7a 空证明集） | — | 同上 | unproven | 1048576/**1000000**/512000（两键都不收窄；input 仍 = LiteLLM `model_info.max_input_tokens` 补缺；`max_tokens` 不改 output） | unknown | configured；两键只进诊断，不产生 discrepancy/conflict | — |
 | R4 deepseek-v4.1-flash（A：serving 未证明） | route + `base_model=deepseek-v4.1-flash`；`allowed_openai_params:[reasoning_effort]` | `deepseek/deepseek-v4.1-flash` | unproven | 1000000/1000000（registry 无 `limit.input` → LiteLLM 补缺，litellm-declared）/384000 | unknown（allowed_openai_params 不生成档位） | **configured，output=384000（canonical）**——**行为变化测试**：前一阶段冻结的 393216 是 serving SKU 值，仅 serving 证明后可用；注释引用 design Risks，禁止回改 | configured 1000000/393216，档位 low/high/max |
-| R4b deepseek-v4.1-flash（B：provider proven，SKU unresolved） | 同上 + `models_dev_provider: deepseek`（真实 catalog：deepseek 仅有 `deepseek-flash`/`deepseek-v4-flash`/`deepseek-v4-flash-vision-exp` 三条 relation-only SKU，无 `deepseek-v4.1-flash` exact record） | 同上 | declared，record **unresolved**（`serving-record-unresolved`） | 1000000/1000000/**384000**（canonical）；relation SKU 不提供 facts | unknown（relation 记录档位不可用） | configured，output=384000；provider price 不可用（LiteLLM 价格优先）；诊断列出三条可精确命中的 SKU | — |
-| R4c deepseek-v4.1-flash（C：provider + exact SKU proven） | `litellm_params.model = deepseek/deepseek-flash`、`base_model = deepseek-v4.1-flash`、`models_dev_provider: deepseek` | 同上 | declared，record resolved（wire id `deepseek-flash` 精确命中 deepseek SKU） | 1000000/**unknown**/393216（serving） | 来自 `deepseek-flash` 记录 | configured，output=393216（serving override）；**行为变化测试**：与 R4/R4b 的差异是 SKU 级证据差异，注释引用 design Risks，禁止回改 |
+| R4b deepseek-v4.1-flash（B：provider proven，SKU unresolved） | 同 R4 + `models_dev_provider: deepseek`，**路由仍是裸 `deepseek-v4.1-flash`**（真实 catalog：deepseek 仅有 `deepseek-flash`/`deepseek-v4-flash`/`deepseek-v4-flash-vision-exp` 三条 relation-only SKU record，无 `deepseek-v4.1-flash` exact record，也无同名 key） | 同上 | declared，record **unresolved**（`serving-record-unresolved`） | 1000000/1000000/**384000**（canonical）；relation SKU 不提供 facts | unknown（relation 记录档位不可用） | configured，output=384000；provider price 不可用（LiteLLM 价格优先）；诊断列出三条可精确命中的 SKU | — |
+| R4c deepseek-v4.1-flash（C：provider + exact SKU proven） | `litellm_params.model = deepseek/deepseek-flash`、**`custom_llm_provider: deepseek`**（adapter parse 证据，否则 qualified 路由不产生 bare lookup key）、`base_model = deepseek-v4.1-flash`、`models_dev_provider: deepseek`；LiteLLM metadata 同 R4（`model_info.max_input_tokens: 1000000`） | 同上 | declared，record **resolved**（parse：`custom_llm_provider=deepseek` 与首段一致 → remainder `deepseek-flash` → bare parsed-key 精确命中 deepseek 的 `deepseek-flash` SKU record） | 1000000/1000000（serving 记录无 `limit.input` → serving-absence policy：LiteLLM 同维度补缺，litellm-declared）/393216（serving） | 来自 `deepseek-flash` 记录 | configured，output=393216（serving override）；**A/B/C 的唯一差异是 serving SKU proof**；**行为变化测试**：与 R4/R4b 的差异是 SKU 级证据差异，注释引用 design Risks，禁止回改 | — |
 | R5 glm-5.3-flash | route `glm-5.3-flash` | `zhipuai/glm-5.3-flash` | unproven | 1000000/1000000/131072 | unknown | configured；modalities 来自 registry | configured，档位 low/high/max |
 | R6 kimi-k3 | route `kimi-k3`；LiteLLM 1048576/1048576 | `moonshotai/kimi-k3` | unproven | 1048576/1048576/131072 | unknown | configured；output discrepancy | configured 1048576/**1048576** |
 | R6b + `models_dev_provider: moonshotai` | — | 同上 | declared | 1048576/1048576/1048576 | known[low,high,max] | configured；output basis serving | — |
@@ -36,7 +36,7 @@
 | G1 | 唯一裸 canonical | registry `labA/x`；route `x` | proven `registry-unique` |
 | G2 | 重复裸 canonical | registry `labA/x`、`labB/x`；route `x` | ambiguous；不落到后续候选；withheld `identity-ambiguous` |
 | G2b | 重复裸 + 限定路由 | 同 G2；route `labB/x` | proven `qualified-deployment` = `labB/x` |
-| G3 | qualified after adapter | route `openrouter/labA/x` | proven `labA/x`；serving unproven；parse metadata `openrouter` |
+| G3 | qualified after adapter（需 parse 证据） | route `openrouter/labA/x`、`custom_llm_provider: openrouter`（缺 `custom_llm_provider` 时只能试 full `openrouter/labA/x`，不得擅自 strip） | proven `labA/x`（remainder 精确命中）；serving unproven；parse metadata `openrouter` |
 | G3b | adapter 段只作 parse metadata | route `openai/x`，`custom_llm_provider: openai`，registry 只有 `labA/x` | identity `labA/x`；serving unproven；`openai` 不出现在任何 basis/evidence |
 | G3c | 默认 adapter 不推断 serving | route `labA/x`，无可见 api_base | identity proven；serving unproven |
 | G3d | 首段既可能是 adapter 也可能是 lab | route `labA/x`，registry 有 `labA/x` | full 精确命中 → identity；不证明 serving |
@@ -49,7 +49,7 @@
 | G9 | reseller base_model | R/`x` `canonical_model_id=labA/x`，serving 未证明 | 不提供 identity、不提供 facts |
 | G10 | free/fast 变体 | registry `labA/x`；R/`x-free`、R/`x:thinking`、R/`x-fast` relation→`labA/x`；route `x` | 变体记录永不被选 |
 | G10b | 运维者路由变体（未登记） | route `x-free`（registry 无）；R/`x-free` relation→`labA/x`；无声明；LiteLLM 无 limit | withheld；R/`x-free` 只作诊断候选；relation 不反证 identity |
-| G11 | 多 reseller 变体（已声明） | `models_dev_provider: R`；R 有 `x`、`x-fast` relation→`labA/x`，wire id `x` | 选 R/`x`；若 wire id 无精确命中且 relation 记录实质不同 → serving-ambiguous withheld |
+| G11 | exact 候选与 relation 变体（已声明） | `models_dev_provider: R`；R 有 exact-key record `x` 与 relation 变体 `x-fast`、`x:thinking`（均 relation→`labA/x`），wire id `x` | record resolved = R/`x`（exact parsed-key）；变体不参与；若**多条 exact parsed-key 候选**实质不同 → serving-ambiguous withheld；**只有 relation 候选而无 exact** → serving-record-unresolved（无论 1 条/多条/事实同异） |
 | G12 | 缺 relation 字段 | reseller 记录无 `canonical_model_id`、id 等于 registry 裸 id；serving 未证明 | 记录不提供任何证据 |
 | G12b | 声明 provider 不存在 | `models_dev_provider: nope` | declared-unmatched；按 serving 未证明解析 + warning |
 | G12c | 声明 provider 存在但无记录 | `models_dev_provider: P`，P 无匹配 | declared-unmatched |
@@ -74,7 +74,7 @@
 | G19c | modalities 完整集合 | registry `text,image`；LiteLLM `supports_audio_input: true` | audio unsupported；discrepancy |
 | G19d | modalities 对象缺失 | registry 无 `modalities`；LiteLLM 只有 `supports_vision` | unknown；withheld |
 | G19e | release date | serving 未证明 | canonical release_date；reseller 日期不出现 |
-| G20 | LKG outage（canonical 组成） | basis canonical/derived；catalog unavailable；proof 不变 | configured-lkg |
+| G20 | LKG outage（canonical 组成） | basis canonical + litellm-declared；catalog unavailable；proof 不变 | configured-lkg |
 | G20b | LKG 混合组成 | context canonical、output serving、price litellm-declared；只改 LiteLLM 价格 | 整份 reject |
 | G20c | LKG serving 声明 | 声明不变 → 恢复；移除/改变 → reject | — |
 | G20d | LKG enforcement 指纹（空） | 任意 `litellm_params` 键（`max_input_tokens`/`reasoning_effort`/`max_tokens`）改变 | 仍有效（fingerprint 为空；operator-configuration 键不进指纹） |
