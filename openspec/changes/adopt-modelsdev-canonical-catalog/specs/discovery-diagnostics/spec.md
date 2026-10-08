@@ -39,7 +39,7 @@ Every field names its basis — `serving`, `canonical`, `litellm-declared`, `enf
 - **WHEN** a field value comes from LiteLLM declarations or from a key promoted by the runtime enforcement matrix while unproven provider records exist
 - **THEN** the field basis is `litellm-declared` (no key is `enforcement-narrowed` until a promotion delta exists), the message names that source, and no unproven provider record is presented as having decided the value
 
-#### Scenario: endpoint default effort is explained
+#### Scenario: configured effort is explained
 - **WHEN** a deployment declares `litellm_params.reasoning_effort`
 - **THEN** diagnostics report it as operator configuration that requests may override, never as a pin, a level set, or a narrowed value
 

@@ -168,7 +168,7 @@ Core SHALL resolve every publication field independently by branch: when the ser
 - **THEN** Core records no discrepancy for context or input
 
 ### Requirement: Runtime enforcement matrix
-Core SHALL maintain a frozen per-key classification for LiteLLM `litellm_params` keys and SHALL NOT treat the presence of a key as proof of enforcement. The proven set of `hard-enforced` keys SHALL start empty: Core SHALL NOT narrow any field from `litellm_params` until a key is promoted by evidence. A key is promoted to `hard-enforced` only through an OpenSpec delta that provides both (1) an exact source path showing that LiteLLM reads that deployment key and rejects or rewrites a request that tries to break it, and (2) an automated negative test proving a deployment carrying the key refuses or rewrites a request that attempts to exceed it. Until promotion, every `litellm_params` key is classified `operator configuration`: it SHALL NOT narrow any field, SHALL NOT produce facts, SHALL NOT pin or produce reasoning levels, SHALL NOT enter the LKG enforcement fingerprint, and SHALL appear in diagnostics only as a configured key. `model_info.*` keys (including `max_input_tokens`, `max_output_tokens`, `supports_*`, `litellm_provider`, `key`, `supports_*_reasoning_effort`, `reasoning_effort_levels`) are `declared-observable`: they supply LiteLLM declarations for the field matrix and diagnostics but SHALL NOT narrow anything and SHALL NOT prove identity.
+Core SHALL maintain a frozen per-key classification for non-pricing LiteLLM `litellm_params` keys — the seven `MirroredPricingParams` keys (`input_cost_per_token`, `output_cost_per_token`, `input_cost_per_character`, `output_cost_per_character`, `cache_read_input_token_cost`, `cache_creation_input_token_cost`, `tiered_pricing`) are excluded from this classification and are governed exclusively by the Price authority requirement as operator-declared pricing — and SHALL NOT treat the presence of a key as proof of enforcement. The proven set of `hard-enforced` keys SHALL start empty: Core SHALL NOT narrow any field from `litellm_params` until a key is promoted by evidence. A key is promoted to `hard-enforced` only through an OpenSpec delta that provides both (1) an exact source path showing that LiteLLM reads that deployment key and rejects or rewrites a request that tries to break it, and (2) an automated negative test proving a deployment carrying the key refuses or rewrites a request that attempts to exceed it. Until promotion, every non-pricing `litellm_params` key is classified `operator configuration`: it SHALL NOT narrow any field, SHALL NOT produce capability facts, SHALL NOT pin or produce reasoning levels, SHALL NOT enter the LKG enforcement fingerprint, and SHALL appear in diagnostics only as a configured key. The pricing keys excluded above are operator-declared pricing facts under the Price authority requirement and are unaffected by this classification. `model_info.*` keys (including `max_input_tokens`, `max_output_tokens`, `supports_*`, `litellm_provider`, `key`, `supports_*_reasoning_effort`, `reasoning_effort_levels`) are `declared-observable`: they supply LiteLLM declarations for the field matrix and diagnostics but SHALL NOT narrow anything and SHALL NOT prove identity.
 
 #### Scenario: No litellm_params key narrows a value
 - **WHEN** a deployment declares `litellm_params.max_input_tokens: 900000` or `max_tokens: 65536` and the resolved canonical input is 1048576 or the output base is 512000
@@ -179,8 +179,8 @@ Core SHALL maintain a frozen per-key classification for LiteLLM `litellm_params`
 - **THEN** Core reports reasoning levels unknown, emits no variants, records the value in diagnostics as operator configuration, and never publishes selectable levels derived from it
 
 #### Scenario: Unlisted keys are unused
-- **WHEN** a deployment carries a `litellm_params` key the frozen matrix does not list
-- **THEN** the key contributes no value, no narrowing, and no conflict
+- **WHEN** a deployment carries a non-pricing `litellm_params` key the frozen matrix does not list
+- **THEN** the key contributes no value, no narrowing, and no conflict; the `MirroredPricingParams` pricing keys are not subject to this rule because the Price authority requirement governs them
 
 #### Scenario: Promotion requires evidence
 - **WHEN** an implementation proposes to classify a `litellm_params` key as `hard-enforced`
@@ -191,7 +191,7 @@ Core SHALL maintain a frozen per-key classification for LiteLLM `litellm_params`
 - **THEN** that does not prove the corresponding `litellm_params` key is enforced, and Core does not treat it as such, because LiteLLM mirrors only pricing keys from `litellm_params` into the resolved `model_info`
 
 ### Requirement: Reasoning controls authority
-Core SHALL treat reasoning support as a field of the resolution matrix and selectable reasoning levels as a separate, non-gated fact with states `unknown` and `known` (possibly empty). Levels SHALL come only from the `reasoning_options` of a proven serving record. `litellm_params.reasoning_effort` is an operator default that a request may override, so it SHALL NOT pin effort, produce levels, or narrow them. A canonical `reasoning: true`, first-party or other unproven provider records, `model_info.supports_*_reasoning_effort`, `model_info.reasoning_effort_levels`, `model_info.supported_openai_params`, and `litellm_params.allowed_openai_params` SHALL NOT produce levels and are diagnostic only. With no serving proof Core SHALL report levels unknown and emit no variants without withholding the model.
+Core SHALL treat reasoning support as a field of the resolution matrix and selectable reasoning levels as a separate, non-gated fact with states `unknown` and `known` (possibly empty). Levels SHALL come only from the `reasoning_options` of a proven serving record. `litellm_params.reasoning_effort` is operator configuration that a request may override, so it SHALL NOT pin effort, produce levels, or narrow them. A canonical `reasoning: true`, first-party or other unproven provider records, `model_info.supports_*_reasoning_effort`, `model_info.reasoning_effort_levels`, `model_info.supported_openai_params`, and `litellm_params.allowed_openai_params` SHALL NOT produce levels and are diagnostic only. With no serving proof Core SHALL report levels unknown and emit no variants without withholding the model.
 
 #### Scenario: Unproven serving has no selectable levels
 - **WHEN** canonical identity is proven, reasoning is supported, no serving provider is declared, and the lab's own provider record publishes effort values
@@ -201,9 +201,9 @@ Core SHALL treat reasoning support as a field of the resolution matrix and selec
 - **WHEN** a declared serving record publishes effort values
 - **THEN** Core emits exactly those variants for the resolved protocol
 
-#### Scenario: Endpoint default effort is diagnostic only
+#### Scenario: Configured effort is diagnostic only
 - **WHEN** a deployment declares `litellm_params.reasoning_effort: max` and a proven serving record publishes `reasoning_options` with several effort values
-- **THEN** Core publishes the serving record's variants and records the declared default effort in diagnostics, without removing or pinning any level
+- **THEN** Core publishes the serving record's variants and records the configured effort in diagnostics, without removing or pinning any level
 
 #### Scenario: Forwarded parameter is not a level set
 - **WHEN** a deployment declares `litellm_params.allowed_openai_params` containing `reasoning_effort` and `model_info.supports_xhigh_reasoning_effort: true`

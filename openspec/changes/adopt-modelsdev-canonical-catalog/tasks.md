@@ -72,7 +72,7 @@
 
 - [ ] 6.1 `scripts/audit-modelsdev-catalog.ts`（live，非阻断 manual/scheduled）与离线 fixture 版断言
   - 验收：acceptance §C、`Catalogue-wide regression evidence`
-- [ ] 6.2 R1–R11 真实回归测试（R4/R4b/R4c 为 DeepSeek 三态行为变化测试）；G1–G44 合成矩阵（含 G19b/G19b2、G40–G44）；每个 delta Scenario → 测试映射表（PR 描述）；R4/R4b DeepSeek 双场景作为**行为变化**测试固定（注释引用 design Risks，禁止回改）
+- [ ] 6.2 R1–R11 真实回归测试（R4/R4b/R4c 为 DeepSeek 三态行为变化测试）；G1–G44 合成矩阵（含 G19b/G19b2、G40–G44）；每个 delta Scenario → 测试映射表（PR 描述）；R4/R4b/R4c DeepSeek 三场景作为**行为变化**测试固定（注释引用 design Risks，禁止回改）
 - [ ] 6.3 旧测试逐条审查：依赖 rule B / canonical-original-as-authority / relation fan-out / 虚构 relation 字段 / `max_input_tokens` 收窄或作 context / `reasoning_effort` pin / serving 缺字段回填 的用例按新规范改写，并在 PR 列出被改写用例与理由
 
 ## 7. 文档与治理（Core）
