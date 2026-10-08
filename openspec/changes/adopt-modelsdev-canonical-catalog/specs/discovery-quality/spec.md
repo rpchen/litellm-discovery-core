@@ -51,23 +51,23 @@ Core SHALL preserve separate context, input, and output token-limit meanings and
 - **THEN** Core keeps the input fact unknown and never derives it from the total context
 
 ### Requirement: record-level selection determinism
-Within a proven serving provider, Core SHALL select the serving record by exact wire id first; otherwise, among records whose `canonical_model_id` equals the canonical identity, Core SHALL pick deterministically only when their serving publication-critical facts (limits, modalities, tool/reasoning verdicts, reasoning options, cost) are equivalent, and SHALL keep the provider match set unresolved when they differ materially. Neither catalog object iteration order nor the first record may decide, and a shortest-id tie-break SHALL never override an exact wire id match.
+Within a proven serving provider, Core SHALL resolve the serving record only through an exact parsed-key match (full form, then adapter-evidenced remainder, then bare form) against the deployment's lookup keys. A record matched only through `canonical_model_id` proves the underlying canonical identity but never the served SKU, regardless of whether its facts are equivalent to another relation record, so a provider with only relation candidates yields a `serving-record-unresolved` group that resolves from canonical or LiteLLM branches and uses no provider facts. When several records match the same parsed key exactly, Core SHALL pick deterministically only when their serving publication-critical facts (limits, modalities, tool/reasoning verdicts, reasoning options, cost) are equivalent, and SHALL report `serving-ambiguous` when they differ materially. Neither catalog object iteration order nor the first record may decide, and a shortest-id tie-break SHALL never override an exact parsed-key match.
 
 #### Scenario: equivalent serving records ignore record order
-- **WHEN** a proven provider holds several records relation-pointing at the canonical identity, none matches the wire id exactly, and their serving publication-critical facts are identical
+- **WHEN** several records of a proven provider match the deployment's parsed lookup key exactly and their serving publication-critical facts are identical
 - **THEN** reordering the provider's `models` object keys selects the same record with the same provenance
 
 #### Scenario: material record conflicts fail closed on every order
-- **WHEN** a proven provider holds several relation records whose limits, capability facts, reasoning options, or cost differ materially and none matches the wire id
+- **WHEN** several records of a proven provider match the same parsed lookup key exactly and their limits, capability facts, reasoning options, or cost differ materially
 - **THEN** the group is reported `serving-ambiguous` and withheld regardless of record order
 
 #### Scenario: conflicting original records never fall through to a reseller
-- **WHEN** the declared serving provider holds several records relation-pointing at the canonical identity whose serving publication-critical facts conflict and none matches the wire id
+- **WHEN** the declared serving provider holds several exact-parsed-key candidates whose serving publication-critical facts conflict
 - **THEN** Core reports the group `serving-ambiguous`/withheld and never selects another provider's record, including OpenCode or OpenRouter
 
-#### Scenario: exact wire id wins over a shorter relation record
-- **WHEN** a proven provider holds `x-sol` matching the wire id and a shorter record `x` whose `canonical_model_id` names the same canonical model
-- **THEN** Core selects `x-sol`
+#### Scenario: relation-only candidates never resolve the SKU
+- **WHEN** the declared serving provider holds only records matched through `canonical_model_id` (one or several, with identical or differing facts) and none matches the deployment's parsed lookup keys exactly
+- **THEN** Core reports `serving-record-unresolved`, resolves the group from canonical or LiteLLM branches, and uses no provider facts, no provider price, and no provider reasoning levels
 
 ### Requirement: runtime constraints never conflict with serving metadata
 Resolution SHALL separate LiteLLM descriptive declarations from proven runtime enforcement. A key promoted through the runtime enforcement matrix of the `modelsdev-catalog` capability narrows the effective value of its own dimension and never participates in same-level conflict judgment, whatever the base (proven serving, canonical, or LiteLLM-declared). The proven set starts empty, so until a promotion delta merges, no `litellm_params` key narrows anything; `litellm_params.max_tokens`, `max_output_tokens`, and `max_completion_tokens` are request-overridable operator configuration and never cap the output. Unproven provider records never form a base and therefore never conflict with anything.

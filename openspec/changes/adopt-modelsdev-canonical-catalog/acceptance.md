@@ -14,8 +14,9 @@
 | R3b + `models_dev_provider: minimax` | — | 同上 | declared，record resolved（精确 wire id） | 1000000/1000000/512000（serving 记录有 `limit.input` → input = serving） | known[]（toggle） | configured；context/output basis serving；output discrepancy | invalid-metadata |
 | R3c + `models_dev_provider: opencode` | — | 同上 | declared，record resolved（精确 wire id；`canonical_model_id` 一致） | 512000/1000000/128000（serving 记录无 `limit.input` → serving-absence policy：LiteLLM 同维度补缺，不回填 canonical） | known[] | configured；output discrepancy；cacheRead 来自 OpenCode | — |
 | R3d + `litellm_params.max_input_tokens: 900000`、`max_tokens: 65536`（均 operator configuration，D7a 空证明集） | — | 同上 | unproven | 1048576/**1000000**/512000（两键都不收窄；input 仍 = LiteLLM `model_info.max_input_tokens` 补缺；`max_tokens` 不改 output） | unknown | configured；两键只进诊断，不产生 discrepancy/conflict | — |
-| R4 deepseek-v4.1-flash（serving 未证明） | route + `base_model=deepseek-v4.1-flash`；`allowed_openai_params:[reasoning_effort]` | `deepseek/deepseek-v4.1-flash` | unproven | 1000000/**unknown**/384000（registry 无 `limit.input`，不推导） | unknown（allowed_openai_params 不生成档位） | **configured，output=384000（canonical）**——**行为变化测试**：前一阶段冻结的 393216 是 serving SKU 值，仅 serving 证明后可用；注释引用 design Risks，禁止回改 | configured 1000000/393216，档位 low/high/max |
-| R4b deepseek-v4.1-flash（serving 显式证明） | 同上 + `models_dev_provider: deepseek` | 同上 | declared（deepseek 内 parsed-key/relation 精确命中） | 1000000/1000000/**393216**（first-party serving） | 来自 first-party 记录 | configured，output=393216（serving override） | — |
+| R4 deepseek-v4.1-flash（A：serving 未证明） | route + `base_model=deepseek-v4.1-flash`；`allowed_openai_params:[reasoning_effort]` | `deepseek/deepseek-v4.1-flash` | unproven | 1000000/1000000（registry 无 `limit.input` → LiteLLM 补缺，litellm-declared）/384000 | unknown（allowed_openai_params 不生成档位） | **configured，output=384000（canonical）**——**行为变化测试**：前一阶段冻结的 393216 是 serving SKU 值，仅 serving 证明后可用；注释引用 design Risks，禁止回改 | configured 1000000/393216，档位 low/high/max |
+| R4b deepseek-v4.1-flash（B：provider proven，SKU unresolved） | 同上 + `models_dev_provider: deepseek`（真实 catalog：deepseek 仅有 `deepseek-flash`/`deepseek-v4-flash`/`deepseek-v4-flash-vision-exp` 三条 relation-only SKU，无 `deepseek-v4.1-flash` exact record） | 同上 | declared，record **unresolved**（`serving-record-unresolved`） | 1000000/1000000/**384000**（canonical）；relation SKU 不提供 facts | unknown（relation 记录档位不可用） | configured，output=384000；provider price 不可用（LiteLLM 价格优先）；诊断列出三条可精确命中的 SKU | — |
+| R4c deepseek-v4.1-flash（C：provider + exact SKU proven） | `litellm_params.model = deepseek/deepseek-flash`、`base_model = deepseek-v4.1-flash`、`models_dev_provider: deepseek` | 同上 | declared，record resolved（wire id `deepseek-flash` 精确命中 deepseek SKU） | 1000000/**unknown**/393216（serving） | 来自 `deepseek-flash` 记录 | configured，output=393216（serving override）；**行为变化测试**：与 R4/R4b 的差异是 SKU 级证据差异，注释引用 design Risks，禁止回改 |
 | R5 glm-5.3-flash | route `glm-5.3-flash` | `zhipuai/glm-5.3-flash` | unproven | 1000000/1000000/131072 | unknown | configured；modalities 来自 registry | configured，档位 low/high/max |
 | R6 kimi-k3 | route `kimi-k3`；LiteLLM 1048576/1048576 | `moonshotai/kimi-k3` | unproven | 1048576/1048576/131072 | unknown | configured；output discrepancy | configured 1048576/**1048576** |
 | R6b + `models_dev_provider: moonshotai` | — | 同上 | declared | 1048576/1048576/1048576 | known[low,high,max] | configured；output basis serving | — |
@@ -62,13 +63,14 @@
 | G16 | reasoning 支持、档位已知为空 | serving 记录 `[toggle]` 或 `[]` | supported；levels known[] |
 | G17 | provider-specific 档位 | serving declared P（档位 a,b）；另一 provider 档位 c | variants = a,b |
 | G17b | serving 未证明 | 同上无声明；first-party 有档位 | levels unknown；variants [] |
-| G17c | operator-default effort vs serving 档位 | serving declared 有档位 low/high/max；`litellm_params.reasoning_effort: high` | variants=[low,high,max]（default 只进诊断，不 pin 不删） |
+| G17c | operator-configuration effort vs serving 档位 | serving declared 有档位 low/high/max；`litellm_params.reasoning_effort: high` | variants=[low,high,max]（default 只进诊断，不 pin 不删） |
 | G17d | 非档位证据 | `allowed_openai_params:[reasoning_effort]`、`model_info.supports_xhigh_reasoning_effort: true` | levels unknown |
 | G18 | 价格未证明 | LiteLLM 无价格；serving 未证明；first-party 有 cost | 0 |
 | G18b | 价格逐组件 | LiteLLM 有 input/output；declared P 有 cacheRead | input/output = LiteLLM、cacheRead = P |
 | G18c | `litellm_params` 价格优先 | `litellm_params.input_cost_per_token` 与 `model_info` 不同 | 用 `litellm_params` |
 | G19 | 字段矩阵：canonical 缺字段 | registry 无 `limit.output`；LiteLLM 一致声明 | basis litellm-declared；publishable |
-| G19b | 字段矩阵：serving 缺字段 | serving 记录无 `limit.input`，registry 有 | canonical `limit.input` |
+| G19b | 字段矩阵：serving 缺 input + LiteLLM 有 | serving 记录无 `limit.input`（`base_model_omit`）；registry 有；LiteLLM `max_input_tokens` 有 | input = LiteLLM 补缺（litellm-declared）；**不回填 canonical** |
+| G19b2 | 字段矩阵：serving 缺 input + LiteLLM 无 | serving 与 LiteLLM 均无 `limit.input` | input unknown；不回填 canonical、不 = context |
 | G19c | modalities 完整集合 | registry `text,image`；LiteLLM `supports_audio_input: true` | audio unsupported；discrepancy |
 | G19d | modalities 对象缺失 | registry 无 `modalities`；LiteLLM 只有 `supports_vision` | unknown；withheld |
 | G19e | release date | serving 未证明 | canonical release_date；reseller 日期不出现 |

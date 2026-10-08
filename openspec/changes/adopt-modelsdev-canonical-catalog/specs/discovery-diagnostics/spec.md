@@ -3,17 +3,21 @@
 ## MODIFIED Requirements
 
 ### Requirement: source visibility
-Core SHALL report field-level provenance for protocol, reasoning support and levels, capabilities, context/input/output limits, pricing, and release metadata, and SHALL report as separate observational fields: the canonical model identity and its evidence kind (`qualified-deployment`, `registry-unique`, `serving-relation`, or none), the wire-ID parse metadata (removed route segment, `custom_llm_provider`) labelled as non-evidence, the serving status (`declared`, `declared-unmatched`, `serving-ambiguous`, or `unproven`) with the serving provider and record when present, the reasoning level state (`unknown`, `known`), the operator-default effort when declared, unproven diagnostic candidate records, and the catalog shape (`complete`, `providers-only`, `unavailable`).
+Core SHALL report field-level provenance for protocol, reasoning support and levels, capabilities, context/input/output limits, pricing, and release metadata, and SHALL report as separate observational fields: the canonical model identity and its evidence kind (`qualified-deployment`, `registry-unique`, `serving-relation`, or none), the wire-ID parse metadata (removed route segment, `custom_llm_provider`) labelled as non-evidence, the serving status (`declared`, `declared-unmatched`, `serving-record-unresolved`, `serving-ambiguous`, or `unproven`) with the serving provider and record when present, where `declared` means provider proven and record resolved and `serving-record-unresolved` means provider proven without an exact parsed-key record, the reasoning level state (`unknown`, `known`), the operator-default effort when declared, unproven diagnostic candidate records, and the catalog shape (`complete`, `providers-only`, `unavailable`).
 
-Every field names its basis — `serving`, `canonical`, `litellm-declared`, `derived`, `enforcement-narrowed`, or `unknown` — and every evidence item names its origin class; unproven provider records appear only as diagnostic candidates and never as evidence of a resolved value.
+Every field names its basis — `serving`, `canonical`, `litellm-declared`, `enforcement-narrowed` (only after a promotion delta), or `unknown` — and every evidence item names its origin class; unproven provider records appear only as diagnostic candidates and never as evidence of a resolved value.
 
 #### Scenario: mixed metadata sources
 - **WHEN** LiteLLM supplies limits and prices while models.dev supplies reasoning support and release metadata
 - **THEN** diagnostics distinguish those sources instead of presenting the merged result as a single source
 
 #### Scenario: canonical original selection is explainable
-- **WHEN** discovery resolves canonical identity `deepseek/deepseek-v4.1-flash` and the operator declares `models_dev_provider: deepseek`, selecting the DeepSeek record that relation-points at that identity
-- **THEN** diagnostics report canonical identity `deepseek/deepseek-v4.1-flash`, serving status `declared`, serving provider `deepseek`, and the selected record id; no `canonical-original` selection source is reported
+- **WHEN** discovery resolves canonical identity `deepseek/deepseek-v4.1-flash` and the operator declares `models_dev_provider: deepseek` with a wire id exactly matching a DeepSeek serving record
+- **THEN** diagnostics report canonical identity `deepseek/deepseek-v4.1-flash`, serving status `declared`, serving provider `deepseek`, and the resolved record id; no `canonical-original` selection source is reported
+
+#### Scenario: provider proven without exact SKU is explainable
+- **WHEN** the operator declares `models_dev_provider: deepseek` and the deepseek provider holds only relation-pointing SKUs (`deepseek-flash`, `deepseek-v4-flash`, `deepseek-v4-flash-vision-exp`) while the wire id matches none exactly
+- **THEN** diagnostics report serving status `serving-record-unresolved`, list the relation SKUs as candidates for an exact wire id, and report that no provider facts, price, or reasoning levels are used
 
 #### Scenario: canonical identity without serving proof is explainable
 - **WHEN** discovery resolves a model to canonical identity `deepseek/deepseek-v4.1-flash` through `base_model` and no serving provider is declared
@@ -24,8 +28,8 @@ Every field names its basis — `serving`, `canonical`, `litellm-declared`, `der
 - **THEN** diagnostics report no canonical identity (never `opencode/<id>`), serving status `unproven`, and list `opencode/<id>` only as a diagnostic candidate that a `models_dev_provider: opencode` declaration would select
 
 #### Scenario: declared serving is explainable
-- **WHEN** discovery resolves a model with `models_dev_provider: opencode`
-- **THEN** diagnostics still report the canonical registry identity (never `opencode/<id>`), serving status `declared`, serving provider `opencode`, and the selected record id
+- **WHEN** discovery resolves a model with `models_dev_provider: opencode` and a record whose key exactly matches the wire id
+- **THEN** diagnostics still report the canonical registry identity (never `opencode/<id>`), serving status `declared`, serving provider `opencode`, and the resolved record id
 
 #### Scenario: unknown reasoning levels are explained
 - **WHEN** reasoning is supported but the serving provider is unproven
@@ -37,7 +41,7 @@ Every field names its basis — `serving`, `canonical`, `litellm-declared`, `der
 
 #### Scenario: endpoint default effort is explained
 - **WHEN** a deployment declares `litellm_params.reasoning_effort`
-- **THEN** diagnostics report it as an endpoint default that requests may override, never as a pin, a level set, or a narrowed value
+- **THEN** diagnostics report it as operator configuration that requests may override, never as a pin, a level set, or a narrowed value
 
 ### Requirement: degraded enrichment
 Core SHALL make missing, empty, or registry-less models.dev metadata observable without preventing LiteLLM-only discovery.

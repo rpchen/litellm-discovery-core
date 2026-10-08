@@ -138,7 +138,7 @@ conflict:    跨 deployment LiteLLM 声明显式不一致 → unresolved conflic
 
 **serving provider proven 但 serving record unresolved**（D4）：整组按 serving-unproven 分支解析（canonical → LiteLLM → unknown），诊断标注 `serving-record-unresolved`。
 
-- **serving 已证明 ⇒ serving 记录就是该模型的最终 serving 视图（models.dev 生成期已完成 base merge 与 `base_model_omit` 删除）**。Core 不得重做 models.dev 继承：serving 记录缺失的字段**不回落 canonical**，按该字段自己的缺席语义处理（registry 缺失时 `limit.input` 按推导规则、其余按 unknown；见逐字段表）。真实数据规模：64 条 linked serving 记录缺 `limit.input` 而 canonical 有（audit §7）；live 例子 `providers/requesty/models/hy3.toml` 用 `base_model_omit = ["limit.input"]` 明确删除（`requesty/hy3` serving 无 input，canonical `tencent/hy3` input=192000）。
+- **serving 已证明 ⇒ serving 记录就是该模型的最终 serving 视图（models.dev 生成期已完成 base merge 与 `base_model_omit` 删除）**。Core 不得重做 models.dev 继承：serving 记录缺失的字段**不回落 canonical**，按该字段自己的缺席语义处理（按 per-field serving-absence policy：同维度 LiteLLM 声明可补缺，否则 unknown；见分支算法）。真实数据规模：64 条 linked serving 记录缺 `limit.input` 而 canonical 有（audit §7）；live 例子 `providers/requesty/models/hy3.toml` 用 `base_model_omit = ["limit.input"]` 明确删除（`requesty/hy3` serving 无 input，canonical `tencent/hy3` input=192000）。
 - base 来自 LiteLLM 声明时该字段 basis 为 `litellm-declared`；部分 deployment 未声明 → unknown（不得过滤缺失）。
 - 未证明 provider 记录在任何格子里都不出现。
 
@@ -211,7 +211,7 @@ resolveModel(group, catalog: NormalizedCatalog, options): ResolvedModel
 interface ResolvedModel {
   group; protocol; catalogKind
   identity: { status: "proven"|"unproven"|"ambiguous"|"conflict"; canonicalModelID?; evidence: "qualified-deployment"|"registry-unique"|"serving-relation"|"none"; matchedCandidate?; parse: { adapterSegment?; customLLMProvider? }; discrepancy?; reason? }
-  serving: { status: "declared"|"declared-unmatched"|"serving-ambiguous"|"unproven"; providerID?; recordID?; reason? }
+  serving: { status: "declared"|"declared-unmatched"|"serving-record-unresolved"|"serving-ambiguous"|"unproven"; providerID?; recordID?; reason? }   // declared = provider proven + record resolved；serving-record-unresolved = provider proven、无 exact SKU
   fields: Record<FieldName, FieldResolution & { basis: FieldBasis }>   // FieldBasis = "serving"|"canonical"|"litellm-declared"|"unknown"（"enforcement-narrowed" 预留给 D7a 晋升后的键；当前不产生）
   reasoningLevels: { state: "unknown"|"known"; values; operatorDefaultEffort? }   // operatorDefaultEffort 仅诊断
   diagnosticCandidates: Array<{ providerID; recordID; why }>             // 未证明记录，只诊断
@@ -269,13 +269,13 @@ interface LastKnownGoodEntryV8 {
 | 情形 | canonical identity | 字段 basis | effective context / input / output | discrepancy / conflict | levels | price | publishability / LKG proof |
 |---|---|---|---|---|---|---|---|
 | **A** serving 未证明 | `minimax/MiniMax-M3`（registry-unique，经 base_model tail） | context/output/tools/reasoning/modalities = canonical；registry 无 `limit.input` → **input 由 LiteLLM 同维度补缺**（`max_input_tokens` = 1000000，basis litellm-declared） | 1048576 / 1000000 / 512000 | input：base = litellm-declared 1000000（与声明一致，无 discrepancy）；output 131072 vs 512000 → resolved discrepancy；context 无 LiteLLM 声明可比较 | unknown | LiteLLM（input/output）；其余组件 unknown | configured；proof = canonical + constraint/litellm 指纹 |
-| **B** `models_dev_provider: minimax` | 同上；inline first-party 与 C 一致 | context/output = serving；serving 记录有 `limit.input`（1000000）→ input = serving | 1000000 / 1000000 / 512000 | input 一致；output 131072 vs 512000 → discrepancy | known-empty（toggle） | LiteLLM 组件优先，cacheRead = MiniMax 0.06 | configured；proof = canonical + serving(minimax) |
-| **C** `models_dev_provider: opencode` | 同上；relation 一致 | context/output = serving(opencode)；serving 记录无 `limit.input` → absence policy：LiteLLM 同维度补缺（input = 1000000，litellm-declared），不回填 canonical | 512000 / 1000000 / 128000 | input：1000000（litellm-declared，无比较对象不一致）；output 131072 vs 128000 → discrepancy | known-empty（`[]`） | LiteLLM 组件优先，cacheRead = OpenCode 0.06 | configured；proof = canonical + serving(opencode) |
+| **B** `models_dev_provider: minimax`（provider + exact record `MiniMax-M3`，tail 精确命中） | 同上；inline first-party 与 C 一致 | context/output = serving；serving 记录有 `limit.input`（1000000）→ input = serving | 1000000 / 1000000 / 512000 | input 一致；output 131072 vs 512000 → discrepancy | known-empty（toggle） | LiteLLM 组件优先，cacheRead = MiniMax 0.06 | configured；proof = canonical + serving(minimax) |
+| **C** `models_dev_provider: opencode`（provider + exact record `minimax-m3` 精确命中；relation 一致） | 同上；relation 一致 | context/output = serving(opencode)；serving 记录无 `limit.input` → absence policy：LiteLLM 同维度补缺（input = 1000000，litellm-declared），不回填 canonical | 512000 / 1000000 / 128000 | input：1000000（litellm-declared，无比较对象不一致）；output 131072 vs 128000 → discrepancy | known-empty（`[]`） | LiteLLM 组件优先，cacheRead = OpenCode 0.06 | configured；proof = canonical + serving(opencode) |
 | **D** A + `litellm_params.max_input_tokens 900000`（operator configuration，D7a 证明集为空） | 同 A | 同 A（无任何收窄） | 1048576 / 1000000 / 512000 | `litellm_params.max_input_tokens` 只进诊断，不收窄、不产生 discrepancy；descriptive 差异同 A | unknown | 同 A | configured；enforcement fingerprint（空）不因该键变化失效；**若未来该键通过 D7a 晋升，本行按新 delta 重算** |
 
 ## Risks / Trade-offs
 
-- **[值变保守]** kimi-k3 output 1048576 → 131072、deepseek 393216 → 384000。→ 声明 `models_dev_provider` 恢复 serving 值；README/诊断说明。
+- **[值变保守]** kimi-k3 output 1048576 → 131072、deepseek 393216 → 384000。→ 只有 **serving provider 与 exact serving record（SKU）都被证明**（声明 `models_dev_provider` 且 wire id 精确命中该 provider 的 serving record）才恢复 393216；仅声明 provider 而无 exact SKU（DeepSeek 真实 catalog 只有 relation-only SKU）仍是 384000。README/诊断说明。
 - **[推理档位消失]** live 当前有 13 个模型发布可选档位。serving 未证明时全部变为 levels unknown。→ 声明 `models_dev_provider`；不放松证据规则。
 - **[DeepSeek 输出值变化（显式确认）]** `deepseek-v4.1-flash`/`deepseek-v4-pro` 从 serving SKU 的 393216 变为 canonical 384000（serving 未证明）；声明 `models_dev_provider: deepseek` 才可能采用 first-party serving 393216。这与前一阶段保护的 393216 regression 是明确的用户可见行为变化，按 acceptance R4/R4b 双场景固定，写入 migration/release notes；任何人不得把其中一侧行为改回旧值而不走 delta。
 - **[无任何 proven enforcement]** D7a 证明集为空：所有 `litellm_params` 键只进诊断，不收窄任何字段（包括 `max_input_tokens`）。已声明 enforcement 键的运维者会看到行为变化（不再收窄）；README 说明晋升门槛与未来 delta 路径。
@@ -292,7 +292,7 @@ interface LastKnownGoodEntryV8 {
 1. Core：本 change 实施（tasks §1–§7），PR → main，产出稳定 SHA。
 2. Pi、OpenCode：各自 OpenSpec change（引用本 change）→ `build:dist` 取同一 Core SHA → `catalog.json`、LKG v8、诊断字段 → 真实宿主 E2E → PR。
 3. 回滚：adapter 回退旧 dist；v8 entry 被旧版视为 schema-incompatible（fail closed，安全）。
-4. 行为变化清单（README/release notes 必须逐条说明）：DeepSeek 384000/393216（R4/R4b）、推理档位 unknown、无 proven enforcement、kimi-k3 output 131072、LiteLLM-only 无 context 即 withheld、serving 缺字段不回填。
+4. 行为变化清单（README/release notes 必须逐条说明）：DeepSeek 384000/393216（R4/R4b/R4c——恢复 393216 需要 provider + exact SKU 双重证明）、推理档位 unknown、无 proven enforcement、kimi-k3 output 131072、LiteLLM-only 无 context 即 withheld、serving 缺字段不回填 canonical（允许同维度 LiteLLM 补缺，否则 unknown）。
 
 ## Downstream impact
 

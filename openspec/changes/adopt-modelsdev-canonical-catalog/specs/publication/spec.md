@@ -10,8 +10,8 @@ Core SHALL resolve canonical model identity only against the models.dev canonica
 - **THEN** Core uses the registry entry's limits, modalities, tool and reasoning verdicts with `canonical-intrinsic` provenance and selects no provider record
 
 #### Scenario: Original provider wins
-- **WHEN** canonical identity is proven and the operator declares the lab's own provider (`models_dev_provider`) whose record matches the wire id or relation-points at the canonical identity
-- **THEN** Core selects that record as the serving record and applies its values with `serving-override` provenance; first-party or same-namespace status alone never selects a record
+- **WHEN** canonical identity is proven and the operator declares the lab's own provider (`models_dev_provider`) whose record matches the deployment's parsed lookup key exactly
+- **THEN** Core resolves that record as the serving record and applies its values with `serving` basis; a record that only relation-points at the canonical identity never resolves the SKU, leaves the group `serving-record-unresolved`, and the model resolves from canonical or LiteLLM branches
 
 #### Scenario: Ordered capability fallback
 - **WHEN** the model is absent from the canonical registry and no serving provider is declared

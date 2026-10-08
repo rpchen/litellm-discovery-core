@@ -31,8 +31,8 @@
   - 验收：G3、G3b、G3c、G3d、G26、G27、`Wire-ID parsing carries no authority`
 - [ ] 2.1 `resolveCanonicalIdentity()`：registry 精确证明（full → adapter-evidenced remainder → bare）、`0/1/>1`、base_model 优先、组级一致
   - 验收：G1、G2、G2b、G24、G25、R8
-- [ ] 2.2 `resolveServing()`：`models_dev_provider` 证明、精确 parsed-key 匹配、relation 唯一/等价、serving-ambiguous、declared-unmatched、多 deployment 一致
-  - 验收：G4、G8、G11、G12b、G12c、R3b、R3c、R6b、R10c
+- [ ] 2.2 `resolveServing()`：`models_dev_provider` 证明 provider；record 只由 exact parsed-key 命中 resolve；relation-only 命中仅为 identity 证据（D3.3），record = `serving-record-unresolved`（整组按 serving-unproven 解析）；多条 exact 候选事实实质不同 → serving-ambiguous；无候选 → declared-unmatched；多 deployment 一致
+  - 验收：G4、G8、G11、G12b、G12c、G40、R3b、R3c、R4b、R4c、R6b、R10c
 - [ ] 2.3 canonical/provider 矛盾：两边都是确定性 identity 证据而指向不同 registry key → identity conflict、fail closed；事实相等不构成等价（无 G5a 例外）
   - 验收：G5、G29
 - [ ] 2.4 删除 rule B、`canonical-original` 作为 serving/authority、relation fan-out 选择、OpenCode/OpenRouter/unique 发布供给、`resolveInheritedRecord` 字段继承；未证明同名记录只进 `diagnosticCandidates`；`legacyFamilyCompatibilityProvider` 保持隔离
@@ -40,9 +40,9 @@
 
 ## 3. Effective values（Core）
 
-- [ ] 3.1 字段级 resolution matrix（design D6）：每字段 base 顺序（serving → canonical → litellm-declared → unknown）、**serving view 最终性（缺字段不回填 canonical）**、**canonical 缺 `limit.input` 即 unknown（无 input=context 推导）**、modalities 完整集合/对象缺失语义、维度 like-for-like、LiteLLM-only 无 context 即 withheld
+- [ ] 3.1 字段级 resolution matrix（design D6 分支算法）：serving proven + record resolved 时 per-field serving-absence policy（缺字段不回填 canonical，允许同维度 LiteLLM 补缺，否则 unknown）；record unresolved 时按 serving-unproven 分支；canonical 缺 `limit.input` → 同维度 LiteLLM 补缺 → unknown（无 input=context 推导）；modalities 完整集合/对象缺失语义；维度 like-for-like；LiteLLM-only 无 context 即 withheld
   - 验收：G15、G19、G19b、G19c、G19d、G19e、G28、G30、G34、R9、`Field resolution matrix`、`token-limit semantics`
-- [ ] 3.2 Proven Runtime Enforcement（design D7a）：冻结常量表 = **空证明集** + 晋升门槛（exact source path + 负向突破测试，经 delta 晋升）；全部 `litellm_params` 键归 `operator configuration`，只进诊断；`max_tokens`/`max_output_tokens`/`max_completion_tokens`/`reasoning_effort` 均不收窄、不产生档位
+- [ ] 3.2 Proven Runtime Enforcement（design D7a）：冻结常量表 = **空证明集** + 晋升门槛（exact source path + 负向突破测试，经 delta 晋升）；**非价格** `litellm_params` 键归 `operator configuration`，只进诊断；`max_tokens`/`max_output_tokens`/`max_completion_tokens`/`reasoning_effort` 均不收窄、不产生档位；价格键由 §3.5 单独处理
   - 验收：G14、G14b、G31、G32、G35、G36、R3d、`Runtime enforcement matrix`
 - [ ] 3.3 未登记模型：declared serving → serving；LiteLLM 声明完整（含真实 context 语义）→ litellm-declared；否则 withheld；诊断候选排序 OpenCode → OpenRouter → 其余
   - 验收：G10b、G13b、R10、R10b、R10c、R11、`Unproven provider records never supply publication facts`
@@ -72,12 +72,12 @@
 
 - [ ] 6.1 `scripts/audit-modelsdev-catalog.ts`（live，非阻断 manual/scheduled）与离线 fixture 版断言
   - 验收：acceptance §C、`Catalogue-wide regression evidence`
-- [ ] 6.2 R1–R11 真实回归测试；G1–G39 合成矩阵；每个 delta Scenario → 测试映射表（PR 描述）；R4/R4b DeepSeek 双场景作为**行为变化**测试固定（注释引用 design Risks，禁止回改）
+- [ ] 6.2 R1–R11 真实回归测试（R4/R4b/R4c 为 DeepSeek 三态行为变化测试）；G1–G44 合成矩阵（含 G19b/G19b2、G40–G44）；每个 delta Scenario → 测试映射表（PR 描述）；R4/R4b DeepSeek 双场景作为**行为变化**测试固定（注释引用 design Risks，禁止回改）
 - [ ] 6.3 旧测试逐条审查：依赖 rule B / canonical-original-as-authority / relation fan-out / 虚构 relation 字段 / `max_input_tokens` 收窄或作 context / `reasoning_effort` pin / serving 缺字段回填 的用例按新规范改写，并在 PR 列出被改写用例与理由
 
 ## 7. 文档与治理（Core）
 
-- [ ] 7.1 README：catalog 输入、`models_dev_provider` 作为 serving 声明、**`litellm_params` 键 = operator configuration（无 proven enforcement，晋升门槛说明）**、行为变化清单（含 DeepSeek R4/R4b 与档位 unknown）、迁移说明
+- [ ] 7.1 README：catalog 输入、`models_dev_provider` 作为 serving provider 声明（恢复 serving 值还需 exact SKU 命中）、非价格 `litellm_params` 键 = operator configuration（无 proven enforcement，晋升门槛说明；价格键为 Operator-Declared Pricing 独立处理）、行为变化清单（DeepSeek R4/R4b/R4c、档位 unknown、input 同维度补缺规则）、迁移说明
 - [ ] 7.2 `docs/testing-standard.md` §8：identity precedence 与价格规则改为 canonical registry / serving proof 模型；「runtime constraint」表述改为 Proven Runtime Enforcement（空证明集 + 晋升门槛）；删除 `max_input_tokens` 收窄与 input=context 例外
 - [ ] 7.3 `docs/decisions.md` 新增 ADR（canonical catalog 采纳、fact classes、未证明记录零供给、Q1 关闭、enforcement 空证明集与晋升门槛、Q2 结论）
 - [ ] 7.4 交付门禁：`npm run typecheck`、`bun test`、`npm run build:dist`、`npm run test:package`、`npm run validate:spec`、`npm run test:openspec-closure`

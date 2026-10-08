@@ -26,6 +26,7 @@ models.dev 当前（repo `sst/models.dev@450aa1d`，2026-10-07）显式分成三
 - **事实严格分层**：Canonical Model Identity、Intrinsic Model Facts（只来自 `models.json`）、Serving Provider Facts（provider 证明 + record resolved）、Proven Runtime Enforcement（`litellm_params`，证明集为空，按晋升门槛逐键晋升）、Operator-Declared Pricing（`MirroredPricingParams` 7 个价格键，独立处理）、LiteLLM descriptive、wire-ID parse metadata。
 - **Canonical identity**：只接受确定性证据——限定 deployment identity 精确命中 registry、registry 裸 ID 唯一精确命中、已证明 serving 记录的 `canonical_model_id`；`0 → no proof`、`1 → proven`、`>1 → ambiguous`。禁止 family/name heuristic，禁止 relation fan-out 选 serving 记录。
 - **Serving provider**：只由运维者显式声明（`models_dev_provider`）证明；canonical identity known ≠ serving provider known；LiteLLM 适配器前缀不再证明 namespace。
+- **Serving provider proof ≠ record/SKU proof**：record 只由 parsed wire id 精确命中 resolve；relation-only SKU（如 deepseek 的 `deepseek-flash` 等）不提供 serving facts，`serving-record-unresolved` 时整组按 canonical/LiteLLM 解析。
 - **取消未证明记录的供给资格**：无论 canonical 是否存在，未证明的 provider 记录（OpenCode、OpenRouter、unique、first-party、同名精确匹配、变体）都不能提供任何发布事实；未登记模型只能经已声明 serving 记录或完整 LiteLLM 声明发布，否则 withheld；同名记录只作为诊断候选。
 - **Wire-ID 解析与证据分离**：route adapter 段与 `custom_llm_provider` 只是解析 wire id 的 parse metadata，永不证明 lab、canonical identity 或 serving provider；证明只来自 registry 精确命中与运维者声明。
 - **字段级 resolution matrix**：limit.context/input/output、tools、reasoning support、input/output modalities、reasoning levels、price、release date 逐字段冻结 base 顺序（serving → canonical → litellm-declared → unknown）、缺字段回落、modalities 完整集合语义与 gate 归属。
