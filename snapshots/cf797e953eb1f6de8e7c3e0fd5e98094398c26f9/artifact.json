@@ -1,0 +1,12 @@
+{
+    "schema_version": 2,
+    "commit": "cf797e953eb1f6de8e7c3e0fd5e98094398c26f9",
+    "indexed_at": "2026-10-10T15:30:51Z",
+    "project": "litellm-discovery-core-main-cf797e953eb1f6de8e7c3e0fd5e98094398c26f9",
+    "nodes": 3419,
+    "edges": 5238,
+    "original_size": 12124160,
+    "compressed_size": 1290909,
+    "compression_level": 9,
+    "reconcile_basis": "git-clean-head"
+}
