@@ -1,0 +1,12 @@
+{
+  "catalogURL": "https://models.dev/catalog.json",
+  "retrievedDate": "2026-10-10",
+  "catalogSHA256": "5e7ecfcb5ef30b7142fa3852d7840332ac944fd55f6a9d8d5355104661130331",
+  "upstreamRepository": "https://github.com/anomalyco/models.dev",
+  "observedSourceCommit": "5dd0d3e446b66ceb8edd98e366ee700702377833",
+  "note": "Source commit and deployed catalog observed independently; no claim of exact build provenance.",
+  "subsetSHA256": "2bc675ac81aff60dc1d0165f42bbc79e64d96c32a9e443abd1c27a2785769987",
+  "modelCount": 475,
+  "providerCount": 226,
+  "dataMinimization": "Only public capability fields and explicit registered-model allowlist. No raw local store or real LiteLLM payload."
+}

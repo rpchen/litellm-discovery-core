@@ -1,0 +1,64 @@
+# 58个现行规格全量盘点
+
+每条Requirement的标题、行号、Scenario及精确操作见spec-inventory.json。仅新change的delta改变要求，canonical/archive本轮不改。Purpose中的过时degraded说明已列入tasks，实施时按CLI规则直接修正canonical Purpose；不在delta假装更新Purpose。
+
+| 仓库 | 当前规范 | Requirements / Scenarios | 处理 | 结论 |
+|---|---|---|---|---|
+| litellm-discovery-core | openspec/specs/codebase-memory/spec.md | 19 / 39 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| litellm-discovery-core | openspec/specs/cross-repository-verification/spec.md | 4 / 4 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| litellm-discovery-core | openspec/specs/discovery-core/spec.md | 4 / 4 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/discovery-diagnostics/spec.md | 7 / 16 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/discovery-quality/spec.md | 11 / 21 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/discovery-resilience/spec.md | 8 / 33 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/discovery-snapshot/spec.md | 7 / 11 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/modelsdev-catalog/spec.md | 13 / 65 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/openspec-closure-gate/spec.md | 6 / 26 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| litellm-discovery-core | openspec/specs/project-governance/spec.md | 1 / 1 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| litellm-discovery-core | openspec/specs/publication/spec.md | 12 / 86 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| litellm-discovery-core | openspec/specs/refresh-coordinator/spec.md | 6 / 8 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/build-provenance-validation/spec.md | 3 / 5 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/change-sync/spec.md | 9 / 12 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/codebase-memory/spec.md | 19 / 39 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/core-compatibility/spec.md | 1 / 2 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/diagnostics/spec.md | 1 / 2 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/discovery-quality-integration/spec.md | 3 / 5 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/discovery-resilience-integration/spec.md | 5 / 15 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/discovery-snapshot/spec.md | 4 / 7 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/endpoint-management/spec.md | 9 / 44 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/endpoint-state-consistency/spec.md | 9 / 24 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/litellm-connection/spec.md | 6 / 16 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/model-audit-export/spec.md | 6 / 7 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/model-discovery/spec.md | 10 / 24 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/multi-endpoint-activation/spec.md | 4 / 4 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/openspec-closure-gate/spec.md | 6 / 23 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/pi-integration/spec.md | 5 / 11 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/protocol-routing/spec.md | 6 / 10 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/provider-diagnostics/spec.md | 5 / 6 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/publication/spec.md | 4 / 16 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/refresh-coordinator/spec.md | 4 / 7 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/release-governance/spec.md | 4 / 7 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/runtime-identity/spec.md | 5 / 8 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| pi-litellm-provider | openspec/specs/shared-core-build/spec.md | 4 / 7 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/change-sync/spec.md | 6 / 7 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/codebase-memory/spec.md | 19 / 39 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/conversation-feedback/spec.md | 2 / 11 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/core-compatibility/spec.md | 1 / 2 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/diagnostics-ui/spec.md | 4 / 6 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/discovery-quality-integration/spec.md | 3 / 6 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/discovery-resilience-integration/spec.md | 5 / 13 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/discovery-snapshot/spec.md | 5 / 6 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/distribution/spec.md | 6 / 17 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/endpoint-management/spec.md | 8 / 43 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/endpoint-state-consistency/spec.md | 9 / 24 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/litellm-connection/spec.md | 6 / 8 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/model-audit-export/spec.md | 4 / 16 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/model-discovery/spec.md | 10 / 24 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/multi-endpoint-activation/spec.md | 12 / 16 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/openspec-closure-gate/spec.md | 6 / 23 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/protocol-routing/spec.md | 7 / 13 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/provider-diagnostics/spec.md | 6 / 7 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/publication/spec.md | 4 / 15 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/refresh-coordinator/spec.md | 6 / 7 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/release-governance/spec.md | 3 / 6 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/runtime-identity/spec.md | 11 / 14 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
+| opencode-litellm-provider | openspec/specs/shared-discovery-core/spec.md | 5 / 10 | delta | 本change精确修改或删除冲突要求，其余保留 |

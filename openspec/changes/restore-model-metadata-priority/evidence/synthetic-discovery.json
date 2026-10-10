@@ -1,0 +1,166 @@
+{
+  "kind": "synthetic-from-observed-model-names",
+  "note": "No real routes, deployment ids, provider declaration, URL or keys. Protocol mirrors observed Pi API; canonical references are test assumptions.",
+  "data": [
+    {
+      "model_name": "deepseek-v4-pro",
+      "litellm_params": {
+        "model": "deepseek/deepseek-v4-pro"
+      },
+      "model_info": {
+        "base_model": "deepseek/deepseek-v4-pro",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "deepseek-v4.1-flash",
+      "litellm_params": {
+        "model": "deepseek/deepseek-v4.1-flash"
+      },
+      "model_info": {
+        "base_model": "deepseek/deepseek-v4.1-flash",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "glm-5.3",
+      "litellm_params": {
+        "model": "zhipuai/glm-5.3"
+      },
+      "model_info": {
+        "base_model": "zhipuai/glm-5.3",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "glm-5.3-flash",
+      "litellm_params": {
+        "model": "zhipuai/glm-5.3-flash"
+      },
+      "model_info": {
+        "base_model": "zhipuai/glm-5.3-flash",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "gpt-5.6-luna",
+      "litellm_params": {
+        "model": "openai/gpt-5.6-luna"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-5.6-luna",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-5.6-sol",
+      "litellm_params": {
+        "model": "openai/gpt-5.6-sol"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-5.6-sol",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-5.6-terra",
+      "litellm_params": {
+        "model": "openai/gpt-5.6-terra"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-5.6-terra",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-6-astra",
+      "litellm_params": {
+        "model": "openai/gpt-6-astra"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-6-astra",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-6-luna",
+      "litellm_params": {
+        "model": "openai/gpt-6-luna"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-6-luna",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-6-sol",
+      "litellm_params": {
+        "model": "openai/gpt-6-sol"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-6-sol",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "gpt-6.1-sol",
+      "litellm_params": {
+        "model": "openai/gpt-6.1-sol"
+      },
+      "model_info": {
+        "base_model": "openai/gpt-6.1-sol",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "hy4-preview",
+      "litellm_params": {
+        "model": "tencent/hy4-preview"
+      },
+      "model_info": {
+        "base_model": "tencent/hy4-preview",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "kimi-k2.7-code",
+      "litellm_params": {
+        "model": "moonshotai/kimi-k2.7-code"
+      },
+      "model_info": {
+        "base_model": "moonshotai/kimi-k2.7-code",
+        "mode": "responses"
+      }
+    },
+    {
+      "model_name": "kimi-k3",
+      "litellm_params": {
+        "model": "moonshotai/kimi-k3"
+      },
+      "model_info": {
+        "base_model": "moonshotai/kimi-k3",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "mimo-v2.6-flash",
+      "litellm_params": {
+        "model": "xiaomi/mimo-v2.6-flash"
+      },
+      "model_info": {
+        "base_model": "xiaomi/mimo-v2.6-flash",
+        "mode": "chat"
+      }
+    },
+    {
+      "model_name": "mimo-v2.6-pro",
+      "litellm_params": {
+        "model": "xiaomi/mimo-v2.6-pro"
+      },
+      "model_info": {
+        "base_model": "xiaomi/mimo-v2.6-pro",
+        "mode": "chat"
+      }
+    }
+  ]
+}

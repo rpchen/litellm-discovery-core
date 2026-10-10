@@ -1,0 +1,82 @@
+[
+  {
+    "repository": "rpchen/litellm-provider-workspace",
+    "branchAtBaseline": "main",
+    "commit": "7c90538cd1da2cefd2e65ac9dcd5d1bcad446e9b",
+    "indexCommit": "7c90538cd1da2cefd2e65ac9dcd5d1bcad446e9b",
+    "project": "E-opensource-litellm-provider",
+    "status": "ready",
+    "remoteVerifiedAt": "2026-10-10T09:40:58.243Z",
+    "sha256": {
+      "graph.db.zst": "7bc6da98cd946541b05cf98bfe6a5a40309222964f31abc587e125bcb85e506d",
+      "artifact.json": "b8115f440d12c67005e73b7b0ee53a5d6da341a9188329e66a0fdc4b9fdada77"
+    },
+    "snapshotSHA256": {
+      "graph.db.zst": "7bc6da98cd946541b05cf98bfe6a5a40309222964f31abc587e125bcb85e506d",
+      "artifact.json": "b8115f440d12c67005e73b7b0ee53a5d6da341a9188329e66a0fdc4b9fdada77",
+      "manifest.json": "83248344da5887921f7d068ff1f67cb2588d0b5a4af46466a8670016750908f6"
+    },
+    "worktreeAtBaseline": "clean",
+    "aheadBehindAtBaseline": "0/0"
+  },
+  {
+    "repository": "rpchen/litellm-discovery-core",
+    "branchAtBaseline": "main",
+    "commit": "a13f16fd983478572502f3896fd5509978027261",
+    "indexCommit": "a13f16fd983478572502f3896fd5509978027261",
+    "project": "E-opensource-litellm-provider-litellm-discovery-core",
+    "status": "ready",
+    "remoteVerifiedAt": "2026-10-10T09:34:55.855Z",
+    "sha256": {
+      "graph.db.zst": "3444d6b46e576b682c541766a28efb2a2416de5b7acd848d79c400af64072fe4",
+      "artifact.json": "45ad8314244bf54a89d25fe89a8780b9948c863c98ad6b93c8c548aa2ba931ef"
+    },
+    "snapshotSHA256": {
+      "graph.db.zst": "3444d6b46e576b682c541766a28efb2a2416de5b7acd848d79c400af64072fe4",
+      "artifact.json": "45ad8314244bf54a89d25fe89a8780b9948c863c98ad6b93c8c548aa2ba931ef",
+      "manifest.json": "9ea40c071fb64115801a54ffbbe362e7dafe641146fc1a5a2f3f70f135c99232"
+    },
+    "worktreeAtBaseline": "clean",
+    "aheadBehindAtBaseline": "0/0"
+  },
+  {
+    "repository": "rpchen/pi-litellm-provider",
+    "branchAtBaseline": "main",
+    "commit": "c98e57b877081fc4a9471ce772eeb6c130674dde",
+    "indexCommit": "c98e57b877081fc4a9471ce772eeb6c130674dde",
+    "project": "E-opensource-litellm-provider-pi-litellm-provider",
+    "status": "ready",
+    "remoteVerifiedAt": "2026-10-10T09:45:23.004Z",
+    "sha256": {
+      "graph.db.zst": "e8a645d8cb00f15ee4d52f0f7e6432674dd47a913fc7d3d57868ea31b42d7922",
+      "artifact.json": "55b221c60277641afc5bb9c2cf52b05daf28df820d6586210a48762505bdf3c1"
+    },
+    "snapshotSHA256": {
+      "graph.db.zst": "e8a645d8cb00f15ee4d52f0f7e6432674dd47a913fc7d3d57868ea31b42d7922",
+      "artifact.json": "55b221c60277641afc5bb9c2cf52b05daf28df820d6586210a48762505bdf3c1",
+      "manifest.json": "4f74de12b61ebada2e6d3d6dbe3376ac87de262fb3ae706312c33caeebfd9692"
+    },
+    "worktreeAtBaseline": "clean",
+    "aheadBehindAtBaseline": "0/0"
+  },
+  {
+    "repository": "rpchen/opencode-litellm-provider",
+    "branchAtBaseline": "main",
+    "commit": "f3447a3c2187e3cc3c90d1d76b0b28a7c5d79e03",
+    "indexCommit": "f3447a3c2187e3cc3c90d1d76b0b28a7c5d79e03",
+    "project": "E-opensource-litellm-provider-opencode-litellm-provider",
+    "status": "ready",
+    "remoteVerifiedAt": "2026-10-10T09:35:29.834Z",
+    "sha256": {
+      "graph.db.zst": "929807278293aa3c614c435b29e917f70e67eca3717d121a6762455407601d22",
+      "artifact.json": "47fe4be8a8abfbcee3a1c55763646d416a804eb514155713292d58c1ac72d536"
+    },
+    "snapshotSHA256": {
+      "graph.db.zst": "929807278293aa3c614c435b29e917f70e67eca3717d121a6762455407601d22",
+      "artifact.json": "47fe4be8a8abfbcee3a1c55763646d416a804eb514155713292d58c1ac72d536",
+      "manifest.json": "956663c3c9e96b1614ffb16778697a0c9716efaad7b97754cef4404f66a10f36"
+    },
+    "worktreeAtBaseline": "clean",
+    "aheadBehindAtBaseline": "0/0"
+  }
+]

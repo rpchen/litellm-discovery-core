@@ -1,0 +1,182 @@
+{
+  "kind": "observed-registered-allowlist",
+  "observedAt": "2026-10-10",
+  "provider": "litellm-e2e",
+  "pluginVersion": "0.10.0",
+  "coreCommit": "a13f16fd983478572502f3896fd5509978027261",
+  "note": "Provider id anonymized; fields absent in source stay absent. This is not a LiteLLM discovery payload.",
+  "models": [
+    {
+      "id": "deepseek-v4-pro",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text"
+      ],
+      "contextWindow": 1000000,
+      "maxTokens": 384000
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 1000000,
+      "maxTokens": 384000
+    },
+    {
+      "id": "glm-5.3",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text"
+      ],
+      "contextWindow": 1000000,
+      "maxTokens": 131072
+    },
+    {
+      "id": "glm-5.3-flash",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 1000000,
+      "maxTokens": 131072
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "gpt-6-astra",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "gpt-6-luna",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "gpt-6-sol",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 272000,
+      "maxTokens": 128000
+    },
+    {
+      "id": "hy4-preview",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text"
+      ],
+      "contextWindow": 1024000,
+      "maxTokens": 64000
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "api": "openai-responses",
+      "reasoning": true,
+      "input": [
+        "text"
+      ],
+      "contextWindow": 204800,
+      "maxTokens": 131072
+    },
+    {
+      "id": "kimi-k3",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 1048576,
+      "maxTokens": 131072
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 1048576,
+      "maxTokens": 131072
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "api": "openai-completions",
+      "reasoning": true,
+      "input": [
+        "text",
+        "image"
+      ],
+      "contextWindow": 1048576,
+      "maxTokens": 131072
+    }
+  ]
+}
