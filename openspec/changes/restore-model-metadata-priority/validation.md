@@ -1,4 +1,6 @@
-# 设计修订验证
+# 设计与实施验证
+
+当前实施证据见 [implementation.md](implementation.md) 和 [scenario-evidence.md](scenario-evidence.md)。用户已于 2026-10-10 批准 Core 先行实施；下面保留的是此前设计阶段检查，不作为新代码或宿主 E2E 证据。
 
 本次按用户Review收敛既有设计，不扩大审计范围。下面是修订与设计检查结果，不能替代未实施算法的业务测试。
 
@@ -35,4 +37,4 @@ T01–T34沿用原编号，T05/T06明确撤回且不再生成Scenario/实施任�
 
 Pi省略map会补档位、全null返回空列表已实测；真正picker/请求行为需要T29。OpenCode现有Model.Info映射需要T33验证最终请求。Pi无独立tools注册位，当前16条tools=true，不阻断此次设计，也不新增工具控制。旧错误配置快照需要一次成功刷新重建，沿已有schema门禁。无需真实/v1/model/info或实际serving证明。
 
-新业务尚未实施；本轮本地只运行适用的设计/closure/数据检查。PR CI结果以对应新HEAD的GitHub运行记录为准，既有宿主E2E通过也不代表新增模型匹配与档位场景已实施。停在Review，不合并、归档或发布。
+本段记录设计 Review 时的状态；当前 Core 已实施，仍有 DeepSeek 官方别名待决，具体结果以 implementation.md 与本次 PR HEAD CI 为准。PR CI结果以对应新HEAD的GitHub运行记录为准，既有宿主E2E通过也不代表新增模型匹配与档位场景已实施。停在Review，不合并、归档或发布。

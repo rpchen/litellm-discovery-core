@@ -2,14 +2,14 @@
 
 ## Context
 
-本轮修订同名 change，按用户 Review 的规则 A–G 收敛；只修改设计、规格增量、任务与测试计划。业务源码、dist、canonical specs 和历史 archive 不变。基线见 baseline.md，公开资料与 Pi SDK 探针见 evidence/source-notes.md。
+该设计按用户 Review 的规则 A–G 收敛，并于 2026-10-10 获准实施。当前先实施 Core；宿主适配在 Core 经代码 Review 并获授权合入后推进。历史 archive 不改。基线见 baseline.md，公开资料与 Pi SDK 探针见 evidence/source-notes.md。
 
 用户实际 16 个 model_name 已冻结。16 条选中记录的关键能力与 reasoning_options 完整，59 条冻结公开记录未发现本轮曾假设的关键字段缺失；没有跨 provider 补字段的现实需求。证据只能支持它已显示的事实，不能借 Review 创造新的产品限制。
 
 ## Goals / Non-Goals
 
 **Goals:** 用 model_name 找到一条正确的 models.dev 记录，准确生成两宿主配置；价格不影响使用。
-**Non-Goals:** 调查 LiteLLM 内部路由或真实服务商；拼接 provider 字段；重新设计协议或恢复；新增候选裁决体系。本阶段不实施、不合并、不归档、不发布。
+**Non-Goals:** 调查 LiteLLM 内部路由或真实服务商；拼接 provider 字段；重新设计协议或恢复；新增候选裁决体系。本轮不合并、不归档、不发布；实施只使用已批准规则。
 
 ## Decisions
 

@@ -15,6 +15,7 @@ function spec(id: string, overrides: Partial<ModelSpec> = {}): ModelSpec {
     name: id,
     protocol: "chat",
     capabilities: { tools: true, input: ["text"], output: ["text"] },
+    reasoningSupported: "unsupported",
     variants: [],
     released: 0,
     releaseUnit: "none",
@@ -55,7 +56,7 @@ describe("endpointFingerprint", () => {
       buildOptions: { contextTierCap: true, protocolOverrides: {} },
     } as const
     expect(endpointFingerprint(base)).not.toBe(endpointFingerprint({ ...base, credentialKey: "sk-b" }))
-    expect(endpointFingerprint(base)).not.toBe(endpointFingerprint({
+    expect(endpointFingerprint(base)).toBe(endpointFingerprint({
       ...base,
       buildOptions: { contextTierCap: false, protocolOverrides: {} },
     }))

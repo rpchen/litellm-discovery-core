@@ -1,7 +1,7 @@
 # discovery-diagnostics Specification
 
 ## Purpose
-Defines observational discovery diagnostics that explain model-info validity, models.dev matching, protocol decisions, field provenance, source boundaries, degraded enrichment, and cache state without changing discovery results.
+Defines observational diagnostics for configuration status, selected public metadata source, reasoning options and actual errors without disclosing raw credentials or internal endpoints.
 
 ## Requirements
 

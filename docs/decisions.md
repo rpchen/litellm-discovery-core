@@ -15,20 +15,28 @@
 
 ## ADR-003：保持既有行为
 
-- **状态**：已接受（PR1，仍然有效）
+- **状态**：历史抽取决定；元数据/价格部分由 ADR-005 替代
 
 基线来自 Pi `a3d7487`，并与 OpenCode `96b00f5` 对照。PR1 保留既有模型过滤、保守合并、models.dev 选择优先级、协议冲突回退、价格换算和阶梯上下文截断规则。发现与抽取无关的问题留在来源仓库的后续变更中。
 
 
 ## ADR-004：models.dev canonical catalog 采纳（canonical registry + serving proof）
 
-- **状态**：实施中（OpenSpec `adopt-modelsdev-canonical-catalog`，Core 先行，Pi/OpenCode 各自 change 跟进）
+- **状态**：历史决定；serving proof、字段补齐、价格权威及 schema8 proof 由 ADR-005 替代。catalog 输入与单 resolver 保留。
 - **决定**：adapter 生产从 `api.json` 迁到 `catalog.json`（同 snapshot、同 TTL epoch、同 failure domain）；Core 新增 `catalog-input`（穷举三态）、`wire-id`（解析零证明力）、`resolve`（唯一 resolver）三个模块并重写 identity/serving/field-matrix/LKG；事实严格分层（canonical identity、intrinsic、serving、Proven Runtime Enforcement、Operator-Declared Pricing、LiteLLM descriptive、parse metadata）；未证明记录零供给；字段级分支算法（serving-absence 永不回填 canonical）；Proven Runtime Enforcement 证明集从空开始（逐键晋升需 exact source path + 负向突破测试的 OpenSpec delta）；推理档位仅已证明 serving `reasoning_options`；价格逐组件（声明 → proven serving cost → unknown）；Single resolver（`buildModelSpecs`/assessment/diagnostics/LKG 全派生）；LKG schema 8 group-wide proof composition（identityKind 三态、整体重证明、绝不按字段拼接、v≤7 fail closed）。
 - **关闭 Q1**：serving 未证明时不发布任何档位；`litellm_params.reasoning_effort` 是 operator configuration（请求可覆盖），不是 pin。
 - **保留 Q2**：provider-only（`api.json` 形状）自建镜像按 D2 fail closed（不做 canonical 解析，LiteLLM 完整者仍发布），仅诊断提示改用 catalog 形状。
 - **行为变化**：DeepSeek 384000/393216 双证明恢复、档位 unknown、kimi-k3 131072、无 proven enforcement、LiteLLM-only 收紧、serving 缺字段不回填、schema 8 一次性 fail closed（详见 README 迁移说明与 design Risks）。
 - **理由**：审计证明旧消费模型与 models.dev 真实三层数据模型结构性不一致（S2 52.6% 误 withheld、变体经 relation 当选、first-party serving 当内禀、未证明档位/价格入库）；一次性对齐后 catalogue-wide 断言（S2 零误杀、零未证明贡献、零变体当选、值等于矩阵）在 live 全量（447 canonical，2026-10-08）与离线子集同时成立。
 
+
+## ADR-005：按模型名选整条元数据记录
+
+- **状态**：设计已于 2026-10-10 获用户批准；Core 实施提交独立代码 Review，合入另需授权。
+- **依据**：用户实际 16 个 model_name 及已冻结公开目录，旧 serving proof 阻断正确的能力/档位；没有跨 provider 补字段的实际需求。
+- **决定**：model_name + 明确目录关系；官方 → OpenCode → OpenRouter 选整条记录，false 与未知分开，reasoning_options 逐模型保真。价格为所选参考值或 0，绝不影响发布/限制/恢复；contextTierCap 忽略。
+- **删除**：内部 route/base_model 身份、serving proof、逐字段多来源回填、候选等价裁决、operator 价格权威/最高价、tier cap、LKG multiset/多重 proof。保留必要能力准入、已有协议、scope、内容校验和恢复入口；旧缓存经 8→9、1→2 重建。
+- **交付**：Core → Pi → OpenCode，同一稳定 Core SHA；本轮不合并、不发布，宿主 E2E 在 Core 获授权合入后执行。详见同名 OpenSpec design/test-matrix。
 
 ## 开发代码索引（2026-10-02）
 

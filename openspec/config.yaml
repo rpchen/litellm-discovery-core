@@ -3,6 +3,8 @@ created: 2026-09-26
 context: |
   项目：litellm-discovery-core —— LiteLLM 模型发现与元数据处理的宿主无关 TypeScript core。
   core 不引用 Pi 或 OpenCode SDK；插件适配、构建时 SHA 固定和发行流程属于后续变更。
+  元数据按 model_name 与明确目录关系选择官方→OpenCode→OpenRouter 的一条记录；价格不影响能力、发布或恢复。
+  当前 approved change restore-model-metadata-priority 覆盖旧 serving proof 与字段补齐条款。
   Language: zh-CN
 rules:
   proposal:

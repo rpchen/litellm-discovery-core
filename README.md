@@ -6,162 +6,33 @@
 
 ## 公共 API
 
-从 `src/index.ts` 导出：
+Core 从 src/index.ts 导出发现入口、协议选择、models.dev 选择、ModelSpec、发布判定、LKG、refresh coordinator、endpoint snapshot 和 diagnostics。Core 不引用宿主 SDK，也不管理凭据或持久化。
 
-- LiteLLM 地址、部署归一化和 deployment 分组
-- `chat` / `responses` / `messages` 协议判定
-- models.dev canonical registry identity 与 serving provider/record 解析、字段级
-  resolution matrix（serving → canonical → litellm-declared → unknown）、推理档位
-  与 Operator-Declared Pricing、证据 provenance
-- reasoning 支持三态解析，以及 Chat Completions / Responses / both / unknown 协议能力判定
-- `ModelSpec` 构建（唯一构造器 `toModelSpec`）与稳定模型指纹
-- trusted Last Known Good 的捕获/校验/失效判定，以及 partial catalog、regression、recovery 与 acknowledgement 领域事实（`src/core/catalog.ts`）
-- refresh coordinator：singleflight、短时缓存、退避与 last-known-good
-- endpoint-bound discovery snapshot、兼容性检查与 drift comparison；显式多 endpoint 可用稳定 endpoint ID 隔离同 URL/同凭据实例
-- structured diagnostics：models.dev 命中、协议判定原因、字段 provenance 与 cache source
+## 模型元数据
 
-core 零运行时依赖，不导入 Pi、OpenCode 或其他宿主 SDK；`ModelSpec` 只携带中立的 `protocol`，不携带宿主 package 名称。
+LiteLLM model_name 原样作为模型 ID、显示名和请求名。完整 canonical 名称、唯一裸名称及明确 canonical_model_id 关系用于查找；保留版本、日期和 SKU，不用内部 route、base_model 或 models_dev_provider 证明模型身份。
 
-## Discovery quality
+按 **官方服务商 → OpenCode → OpenRouter** 选择一条明确对应的完整记录。官方服务商由 canonical owner 和已核实的组织别名识别（tencent → tencent-tokenhub、zhipuai → zai）。官方 API 名称可以不同，但必须有明确 canonical 关系。不同日期或 free/pro SKU 不替代原型号。
 
-Core 消费 models.dev `catalog.json`（`{ providers, models }` 同一 snapshot）：
-`models` 是唯一的 canonical registry（内禀事实），`providers` 是 serving
-记录来源。适配器只 fetch/cache 原始 JSON，形状校验、identity、authority、
-merge 全在 Core。
+选中记录独立提供 tools、reasoning、modalities、limit、reasoning_options、release_date 和参考价格；缺字段不从 canonical、其他服务商或 LiteLLM 回填。false 是明确不支持，缺失为未知。发布仍要求有限正 context/output、明确 tools/reasoning 及非空已知输入/输出模态；可选 input/release/price 不阻止发布。input capacity 不充当 context。
 
-- **Canonical identity 只来自 registry 精确证明**：deployment 限定值精确命中
-  registry key（`qualified-deployment`）、adapter 解析余串精确命中、裸值唯一命中
-  （`registry-unique`），或已证明 serving 记录的 `canonical_model_id`
-  （`serving-relation`，只证明 identity、不解析 SKU）。`0 → 无证明`、
-  `1 → proven`、`>1 → ambiguous`。family/前缀/子串、relation fan-out、
-  `model_name`、`custom_llm_provider`、`api_base` 都不是证据。
-- **Serving provider 只由运维者显式声明证明**：组内所有 deployment 声明同一
-  `model_info.models_dev_provider` 且该 provider 存在于 catalog。LiteLLM 适配器
-  前缀（`openai/` 等）不再证明 namespace 或 serving。
-- **Serving record 需精确 SKU 命中**：只当 provider 内某条记录的 key/id 精确等于
-  解析后的 wire id 才 resolve。仅 relation 指向 canonical 的记录（`-free` /
-  `-fast` / `:thinking` / tier 变体）永不提供 serving facts；此时整组按
-  serving-unproven 解析并诊断 `serving-record-unresolved`。声明的 provider
-  不存在或无记录时为 `declared-unmatched`（warning + 按未证明解析）。
-- **未证明记录零供给**：无论 canonical 是否存在，未证明的 provider 记录
-  （OpenCode、OpenRouter、unique、first-party、同名精确匹配、变体）都不提供
-  任何发布事实（limits、modalities、tools、reasoning、档位、价格、release）。
-  未登记模型只能经已声明 serving 记录发布；仅靠 LiteLLM 声明时 context 无法
-  声明（G30）→ withheld。同名记录只作为诊断候选
-  （OpenCode → OpenRouter → 其余排序）列出可用的声明。serving provider 证明
-  是**组级**证明：组内所有 deployment 必须声明同一 `models_dev_provider`，
-  部分声明按未证明处理。
-- **字段级 resolution matrix**：每字段独立按分支解析——serving 已证明且记录有值
-  → serving；否则 canonical 有值 → canonical；否则 LiteLLM 全员一致声明 →
-  `litellm-declared`；否则 unknown。serving 记录是最终 serving 视图（models.dev
-  已完成 base merge 与 `base_model_omit` 删除）：缺字段**永不回填 canonical**，
-  只允许**同维度** LiteLLM 声明补缺（serving 无 `limit.input` 而 LiteLLM 有
-  `max_input_tokens` → input 为 `litellm-declared`），否则 unknown。
-  与 serving/canonical base 不同的 LiteLLM 声明记为 resolved discrepancy；
-  跨 deployment 显式不一致记为 unresolved conflict。
-- **无跨维度替代**：`model_info.max_input_tokens` 是 input capacity，**任何分支**
-  （含 LiteLLM-only）都永不当作 `limit.context`：无 context 证据即 missing →
-  withheld（G30）。`limit.input` 缺失即 unknown，
-  绝不等于 context（非 gated，不 withheld）。
-- **Proven Runtime Enforcement（空证明集）**：全部非价格 `litellm_params` 键
-  （含 `max_input_tokens`、`max_tokens` 系、`reasoning_effort`、modality flags、
-  `supports_*`）当前均为 **operator configuration**：不收窄、不产生事实、不进
-  LKG 指纹，只进诊断。晋升需 OpenSpec delta（含 LiteLLM 源码 exact source path
-  + 负向突破测试）。7 个 `MirroredPricingParams` 价格键是独立的
-  **Operator-Declared Pricing**：`litellm_params` 先于 `model_info`、多 deployment
-  取最高，其次已证明 serving 记录 `cost`，否则 unknown（0）；价格键永不收窄能力字段。
-- **推理档位只来自已证明 serving 记录的 `reasoning_options`**（`unknown` /
-  `known` 可为空两态，非 gated）。canonical `reasoning: true` 只证明支持推理；
-  `litellm_params.reasoning_effort` 是 operator configuration（请求可覆盖），永不
-  pin/产生档位/收窄；`supports_*_reasoning_effort` / `reasoning_effort_levels` /
-  `supported_openai_params` / `allowed_openai_params` 只诊断。
-- **Single resolver**：每组一次 `resolveModel()` 得到 `ResolvedModel`
-  （identity + parse metadata、serving、逐字段 basis/evidence、档位状态、诊断候选、
-  publication verdict、LKG proof）；`ModelSpec`（唯一构造器 `toModelSpec`）、
-  publication gate、diagnostics、LKG capture/validation 全由此派生，不再漂移。
-- **LKG schema 8 proof composition（group-wide）**：逐 deployment 证据项
-  （`model_info.id` 或证据 multiset 派生键、归一化输入 multiset、identityKind
-  `canonical` / `litellm-only` / `serving-only`）、registry 摘要（仅 canonical
-  basis 参与时）、serving 声明 + 记录摘要、逐字段 basis、空 enforcement 指纹、
-  LiteLLM 指纹（仅 litellm-declared 参与时）。恢复逐组件重证明、整份恢复或整体
-  fail closed，绝不按字段拼接；v7 及更早版本 fail closed 后由 live 自动重捕获。
-  显式声明为非正数的 model-level context/output 是非法元数据（`invalid-metadata`），
-  不会被当成 missing。
-- 可信 group identity 保留 provider namespace：`openai/foo`、`anthropic/foo` 与
-  无前缀 `foo` 是不同身份；每 deployment 都必须有正面身份证据（`model_name`
-  永不替代），reconciliation 与 deployment 顺序无关。
-- 只有在本轮完整通过 publication gate 的 `ModelSpec` 才能成为 Last Known Good；
-  恢复时逐字段证明 captured facts 与存储的 `ModelSpec` 一致，并按同维度比较新
-  live facts。live 冲突只看 authoritative intrinsic 事实：低权威描述性差异不再
-  使快照失效；identity/provider/schema 变化、任何 live illegal limit 整份 fail
-  closed，不复活 LiteLLM 已不再提供的模型。
-- models.dev 未命中的私有/未知模型仍会保留在 Core 的 neutral discovery/diagnostics
-  中；LiteLLM 声明完整即按 `litellm-declared` 发布，若无法得到正数 context/output，
-  Core 会标记为缺少 operational limits，Pi/OpenCode 适配器不得把 `0` 上限直接发布
-  成可用宿主模型。
+推理支持和档位分开：reasoning=false 不支持；true 且没有 effort 选项表示支持但无可选档位；true 且有 effort 则只使用该记录的 values。没有统一 GPT 档位模板。既有协议选择、mixed fallback、override 和 Messages 映射保持不变。
 
-### 行为变化（迁移说明）
+价格只是选中记录的参考值：每项有限非负 cost 可显示，其余为 0（表示无有效价格，不能据此认定免费）。价格不影响发布、LKG、能力通知或模型限制。**contextTierCap 已废弃，暂接受但忽略**；价格阶梯不再截断 context/output。
 
-- **DeepSeek 输出 393216 → 384000**（R4/R4b/R4c，design Risks 显式确认）：
-  仅当同时声明 `models_dev_provider: deepseek` **且** wire id 精确命中某条 SKU
-  record（如 route `deepseek/deepseek-flash` + `custom_llm_provider: deepseek`）
-  才恢复 serving 值 393216；仅声明 provider 而无 exact SKU 仍是 canonical 384000。
-- **推理档位消失**：serving 未证明时一律 levels unknown、无 variants（此前
-  13 个模型发布 reseller/first-party 档位）。恢复方式：声明 `models_dev_provider`。
-- **kimi-k3 输出 1048576 → 131072**：first-party serving override 不再当内禀发布。
-- **无 proven enforcement**：`litellm_params` 非价格键不再收窄任何字段（含
-  `max_input_tokens`）；运维者若依赖旧收窄行为，需改用 LiteLLM 描述性声明或
-  等待晋升 delta。**非正值的非价格 `litellm_params` 键（如 `max_tokens: 0`）同样
-  不再使模型 `invalid-metadata`、不再使 LKG 失效**：非法性裁决只接受能力证据
-  （`model_info` 描述性声明与 trusted 记录 limit），operator configuration 的坏值
-  仅以 `operator-configuration-invalid-value` 诊断呈现，绝不参与 publication gate
-  （D7a/G20d）。
-- **LiteLLM-only 更严格**：canonical 未证明、无 serving 的私有模型，`max_input_tokens`
-  只是 input capacity，**绝不充当 `limit.context`**（维度隔离无 LiteLLM-only 例外，
-  G30/design Risks）：无 context 语义声明即 context missing → withheld；此前 main
-  「拿 `max_input_tokens` 当 context」的发布路径（旧 R11 lenient 语义）已按冻结设计
-  撤销，outage/providers-only 期间同样只有有效 LKG 可恢复。
-- **serving 缺字段不回填**：resolved serving 缺字段（如 `base_model_omit` 删除的
-  `limit.input`）不再用 canonical 回填；有同维度 LiteLLM 声明则补缺，否则 unknown。
-- **LKG 一次性 fail closed**：升级后首轮 outage 期间旧 v7 条目不恢复，下一轮 live
-  自动重捕获为 v8。
-- **`catalog.json` 迁移**：adapter 默认 URL 改为 `https://models.dev/catalog.json`；
-  自建 provider-only（`api.json` 形状）镜像按 D2 fail closed（不做 canonical 解析，
-  无 canonical identity 即 context missing → 全部 withheld，有效 LKG 可恢复），仅作诊断提示。
+## 发布与恢复
 
-### Evidence source authority 与本轮语义
+仅 configured / configured-lkg 发布；一个模型缺少关键能力不影响其他模型。Partial catalog、regression/recovery、重试、取消、认证失败、成功空清单和 acknowledgement 的既有行为保留，acknowledgement 仅影响提醒。
 
-```
-evidence collection
-  → canonical identity resolution
-  → field semantics
-  → source authority
-  → selected | resolved-discrepancy | unresolved-conflict | unknown | missing | illegal
-```
+LKG 继续使用 endpoint/凭据 scope、model_name、有效关键配置、schema 和内容校验。内部路由、deployment ID、serving 声明和价格不参与恢复有效性；价格损坏归零。恢复整份关键配置和宿主使用的 reasoning/tools 判定，不复活已删除模型；年龄仅展示。
 
-- **Publication gate 绝不降低**：模型只有 `configured` / `configured-lkg` 才能进入宿主；没有 user confirmation、override 或 model-level degraded publication 路径。一个模型 withheld 不影响同一 endpoint 的其他模型。
-- **Partial catalog 是正常结果**：`17 publishable / 3 withheld` 立即发布 17 个，3 个在 diagnostics 中连同原因可见；`discovered > 0 && publishable = 0` 表达为 `unusable` catalog。
-- **Regression / recovery**：previously published 模型变 withheld 记为 regression；withheld 模型重新满足 gate 后自动发布，无需用户批准。
-- **Acknowledgement 只影响提醒**：fingerprint 由 withheld 模型身份与实质原因组成（排除时间戳/计数/错误文本细节），完全恢复即清除；它从不参与 `publishable(model)`。
+**升级需要一次成功刷新**：publication schema 8→9、discovery snapshot 1→2。旧策略已保存空档位和截断上限，旧缓存不能作为新配置离线恢复；刷新成功后自动重建。插件适配需先合入 Core，再用同一完整 SHA 构建 dist。
 
-### 证据来源审计（发布相关字段）
+默认 diagnostics 提供配置状态、所选公开来源、推理支持/档位和实际错误。主动审计可查看公开 canonical/record 引用及最终配置；输出不包含原始凭据、内部地址、候选服务商证明或 models_dev_provider 修复提示。
 
-| 字段 | canonical/serving 高权威 | LiteLLM 描述性（declared-observable） | operator configuration（只诊断） |
-|---|---|---|---|
-| identity | registry 精确命中（qualified-deployment / registry-unique / serving-relation） | —（`model_name`、family、前缀永不作证据） | route adapter 段、`custom_llm_provider`（仅 parse metadata） |
-| serving provider | `models_dev_provider` 全员一致声明 + provider 存在 | — | route 段、`custom_llm_provider`、`api_base` 永不证明 |
-| serving record | provider 内 key/id 精确命中 wire id | — | relation-only 记录（变体）永不解析 SKU |
-| context | serving `limit.context` → registry `limit.context` | —（无 LiteLLM context 键；`max_input_tokens` 在任何分支都不充当 context） | `litellm_params.max_input_tokens`（不收窄、不比较） |
-| output | serving → registry `limit.output` | `model_info.max_output_tokens` / `max_tokens` | `litellm_params.max_tokens` 系（不收窄） |
-| input capacity | serving → registry `limit.input`，否则同维度 LiteLLM 补缺 | `model_info.max_input_tokens` | `litellm_params.max_input_tokens`（不收窄） |
-| input/output modalities | serving → registry 完整集合 | 每维度 flag 全员显式声明才 known | `litellm_params` 同名键（不增删） |
-| tools | serving → registry `tool_call` | `model_info.supports_function_calling` | `litellm_params.supports_function_calling`（不决定） |
-| reasoning | serving → registry `reasoning` | `model_info.supports_reasoning` | `litellm_params.supports_reasoning`（不决定） |
-| reasoning levels | 仅已证明 serving `reasoning_options` | —（`supports_*_reasoning_effort` 等只诊断） | `litellm_params.reasoning_effort`（不产生档位） |
-| price（逐组件） | 已证明 serving `cost`（仅 LiteLLM 未声明的组件） | `model_info` 价格键 | `litellm_params` 7 个 `MirroredPricingParams` 价格键（最高优先，独立事实） |
-| release date | resolved serving → registry `release_date`（缺失不回填） | — | — |
+公开字段解析 helper 保留兼容入口并委托同一 resolver；LegacyFamilyCompatibilityProvider、deploymentConstraintValue 和 runtime constraint 常量只用于旧 API 兼容，不参与选择、发布或 LKG。已删除的 serving/proof 字段需要 adapter 按各自批准的 change 更新。
 
-规则：跨 deployment 的**显式不一致**始终是 unresolved conflict（模型级记录无法证明宿主请求会落到哪条 route），即使存在高权威内禀值；authority 只裁决「deployment 之间一致」与「模型级记录」之间的差异。Proven Runtime Enforcement 证明集当前为空：晋升单个键需 OpenSpec delta（含 exact source path + 负向突破测试）。
+本轮规格以 [restore-model-metadata-priority](openspec/changes/restore-model-metadata-priority/design.md) 增量覆盖 canonical 基线；跨仓库收尾后按既有流程归档，历史 archive 不修改。
 
 ## 开发
 

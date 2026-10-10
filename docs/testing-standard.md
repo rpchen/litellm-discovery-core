@@ -149,93 +149,19 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 
 ## 8. Discovery 元数据优先级与可用性不变量
 
-两个插件的核心价值是让宿主**正确使用模型能力**，不是承担计费职责。实现和评审时必须优先保证 protocol、context/input/output、modalities、tools、reasoning/variants 等使用能力正确。
+Core 是业务真源；adapter 消费其发布判定与配置，不复制元数据匹配算法。生效变更 restore-model-metadata-priority 的 T01–T27 为 Core 验收，T28–T34 在 Core 获授权合入后验证真实宿主。
 
-可信 publication 的 identity resolution 只使用可验证关系（canonical catalog 模型）：
+- LiteLLM model_name 是模型/请求身份；只用完整 canonical、唯一 bare 或明确目录关系匹配。版本、日期、SKU 必须保留。内部 route/base_model/deployment ID/models_dev_provider 不决定匹配或缓存有效性。
+- 官方 owner（含已核实组织别名）→ OpenCode → OpenRouter 选一条记录，所有能力/选项/可选价格均来自该记录。不得跨 provider、canonical 或 LiteLLM 补字段；不同型号不合并。保留目录形状检查和未知额外顶层字段兼容。
+- false 是已知不支持，字段缺失为未知；reasoning 支持与档位分开，effort 只取所选 reasoning_options。测试逐一核对 16 个冻结名称、GPT 各自档位、支持无档位和不支持三种结果。
+- 发布仅 configured/configured-lkg；有限正 context/output、明确 tools/reasoning、非空已知输入/输出模态是关键条件。input 不能当 context，价格/input/release 不新增阻断。0/0 模型不能注册为可用模型；模型失败相互隔离。协议选择与 Messages 映射回归既有行为，不增加阻断或预算推导。
+- 参考价逐项取所选 cost 的有限非负值，否则 0。缺失、错误、零价和价格阶梯不影响发布、限制、档位、LKG 或能力退化；contextTierCap 接受但忽略，不参与 endpoint builder scope。
 
-1. Canonical registry 精确证明：deployment 限定值精确命中 registry key
-  （`qualified-deployment`，含经 `custom_llm_provider` 解析证据确认 adapter
-   段后的余串）、裸值在 registry 裸 ID 索引中唯一命中（`registry-unique`）、
-   已证明 serving 记录的 `canonical_model_id`（`serving-relation`，只证明
-   underlying identity、不解析 SKU）。`0 → 无证明`、`1 → proven`、
-   `>1 → ambiguous`。禁止 family/name heuristic、relation fan-out 选择、
-   `aliases`/`inherits`/`equivalent_to` 推断（真实 catalog 出现 0 次）。
-2. Serving provider 证明：组内所有 deployment 声明同一显式
-   `models_dev_provider` 且该 provider 存在于 catalog。LiteLLM 适配器前缀
-   （`openai/` 等）、`custom_llm_provider`、`api_base` 永不证明 namespace 或
-   serving。Canonical identity known ≠ serving provider known。
-3. Serving record（SKU）证明：已证明 provider 内 key/id 精确命中解析后的
-   wire id。仅 relation 指向 canonical 的记录（`-free`/`-fast`/`:thinking`/
-   tier 变体）永不解析 SKU（`serving-record-unresolved`，整组按未证明解析）；
-   多条 exact 候选事实实质不同 → `serving-ambiguous`；无候选 →
-   `declared-unmatched`。
-4. 未证明的 provider 记录（OpenCode、OpenRouter、unique、first-party、同名精确
-   匹配、变体）永不提供任何发布事实，只作诊断候选（OpenCode → OpenRouter →
-   其余排序）；未登记模型只能经已声明 serving 记录或完整 LiteLLM 声明发布。
-5. 仍有多个无法消歧的 identity 时保持 `ambiguous`，不得强行选择；
-   canonical/serving 两边确定性证据指向不同 registry key 时一律 identity
-   conflict、fail closed（事实相等不构成等价）。
+LKG 复用 scope/model_name/关键配置/schema/内容校验及来源时间，不比较内部路由、serving 声明、deployment multiset、价格或整记录摘要。缓存关键事实必须与恢复的 ModelSpec 及宿主能力判定一致；已删除模型不恢复，端点/凭据隔离。价格损坏只归零，年龄不作 TTL。publication 8→9、snapshot 1→2 拒绝已知旧错误配置，成功刷新后重建。
 
-**Canonical Model Identity、Serving Provider Selection、Serving Record Selection
-是三个概念**：identity 来自 registry 精确命中；provider selection 只由运维者
-显式声明证明；record selection 只由 provider 内的精确 wire-id 命中证明。
-未证明记录（含同名精确匹配）只进 diagnostics，不进入 resolution、ModelSpec、
-gate 或 LKG。
+默认诊断显示配置、公开来源、推理档位和实际错误；主动审计输出公开引用与最终配置。用注入的测试凭据/地址验证输出不泄漏敏感原始响应。不统计 serving proof，不要求用户配置 models_dev_provider。
 
-模型名字、family substring、邻近型号和经验规则不得参与可信 publication identity resolution，也不得据此推断 tools、reasoning、modalities 或 limits。若历史非发布兼容 API 仍保留 family-name helper，它必须与 `selectModelsDevRecord` / `selectModelsDevRecordDetailed` / `assessModelConfiguration` / `buildPublicationResult` 隔离，且不得影响 `configured` 判定。
-
-长期不变量：
-
-- **证据来源权威（source authority）**：canonical identity 经 registry 精确证明是
-  models.dev 内禀事实具备高权威的**前置门禁**；serving 事实还需要 serving
-  provider + record 双重证明。identity 为 `ambiguous`/conflict 或缺少正面证据时，
-  models.dev 不下发权威，字段按 serving-unproven 分支回落到 canonical/LiteLLM
-  证据与 tri-state 语义。
-- **必须区分四类事实**：
-  - 模型内禀事实（context / output / input capacity / modalities / vision / audio / video / pdf / tools / reasoning）：canonical identity 可靠时以 registry entry 为高权威；LiteLLM `model_info` 中的同类字段是 declared-observable secondary evidence；
-  - serving 事实（上述字段的 serving override、`cost`、`reasoning_options`）：只来自已证明 serving 记录（provider 声明 + 精确 SKU 命中）；serving 记录是 models.dev 生成完成的最终视图，缺字段永不回填 canonical，只允许同维度 LiteLLM 补缺；
-  - Proven Runtime Enforcement：当前证明集**为空**——全部非价格 `litellm_params` 键均为 operator configuration，不收窄、不产生事实、不进 LKG 指纹，也**不参与非法性裁决**（非正值的 operator-configuration 键只进诊断，绝不使模型 `invalid-metadata` 或使 LKG fail closed），只进诊断；晋升单个键需 OpenSpec delta（含 LiteLLM 源码 exact source path + 负向突破测试）；
-  - Operator-Declared Pricing（`MirroredPricingParams` 7 个价格键）：独立价格事实（`litellm_params` 先于 `model_info`、多 deployment 取最高），其次已证明 serving `cost`，否则 unknown；永不收窄能力字段。
-  - 字段名本身不构成 hard cap；描述性声明不得收窄或否决权威 intrinsic 值。
-- **resolved discrepancy 与 unresolved conflict 必须分开**：可裁决差异记录证据后继续 publication assessment，不得报告为 incomplete / invalid / blocked；无法按 authority 裁决的冲突才 withheld。`discrepancy ≠ conflict`、`resolved discrepancy ≠ incomplete`。
-- `unknown` 不得自动变成 `false`，也不得自动变成 `true`；多 deployment 聚合不得先丢弃缺失声明再得出 supported/unsupported。
-- **跨 deployment 的显式不一致始终是 unresolved conflict**（模型级记录无法证明宿主请求会落到哪条 route），即使存在 authoritative intrinsic 值；authority 只裁决「deployment 之间一致或沉默」与「模型级记录」之间的差异。不得通过过滤缺失值、选择首条 deployment、取最小/最大值或部分 sparse flags 把部分未知/冲突事实提升为 known。
-- modality unknown 属于 publication completeness。无证据的 text baseline 不是 confirmed text-only；sparse flag 只证明该维度，不证明整个 direction。有权威完整集合时该 direction 为 known，与之矛盾的描述性 flag 记为 resolved discrepancy。
-- **不存在 model-level degraded publication**：`publishable(model)` 只依赖证据，不依赖任何用户确认、acceptance、flag 或 option；Core 不得再提供 `degraded` 状态或 acceptance API，adapter 不得再提供 accept-degraded 命令/RPC。
-- withheld 必须给出完整 reason 列表（identity-ambiguous / identity-unmatched / metadata-unavailable / incomplete-metadata / authoritative-conflict / illegal-metadata），并且一个模型 withheld 不得影响同一 endpoint 的其他模型。
-- partial catalog（`discovered > 0` 且部分可发布）是正常结果：可发布的模型必须立即进入宿主，无需任何用户动作；`discovered > 0 && publishable = 0` 必须表达为 unusable catalog，adapter 必须让用户能明显看到 endpoint 已连接但 catalog 当前不可用，并提供已有 Retry/诊断入口，不得提供 accept/override。
-- previously published 模型变 withheld 必须作为 regression 呈现，且必须与「新模型首次 withheld」区分；withheld 模型恢复后必须自动发布，无需用户批准。
-- acknowledgement（若实现）只允许改变提醒状态：fingerprint 只能由 withheld 模型身份与实质原因组成（排除时间戳、retry counter、错误文本细节），完全恢复即清除；它不得参与 publication，也不得以独立 slash command 形式暴露。
-- LKG 必须由 Core 重新证明仍满足当前 publication policy：只有本轮完整通过 gate、
-  由同一 resolution 投影的 `ModelSpec` 才可成为 LKG（不同时期的事实拼盘永不是合法
-  条目）；live 冲突判定只接受 authoritative intrinsic 事实，低权威描述性差异不得
-  使快照失效；identity/provider/schema 变化、任何 live illegal limit（按非法性裁决的
-  证据来源：`model_info` 描述性声明与 trusted 记录 limit；operator configuration 的
-  非正值不属于 illegal limit，见上）整份 fail
-  closed；LKG 不得复活 LiteLLM 已不再提供的模型；条目为 schema 8 proof composition
-  （逐 deployment 证据 multiset、registry/serving 摘要、逐字段 basis、空 enforcement
-  指纹、LiteLLM 指纹），恢复逐组件重证明、整份恢复或整体 fail closed，绝不按字段
-  拼接；不设固定 TTL，年龄只作为 diagnostics 信息。
-- Provider-qualified model identity MUST retain the provider namespace during trusted group reconciliation; identical unqualified model names under different providers are not the same identity without deterministic metadata proof, and relation reconciliation must be order-independent (connectivity, not directionality).
-- Trusted group identity requires positive evidence for every deployment. Absence of a detected conflict is not proof of identity consistency; identity-less deployments must keep the group unpublishable unless deterministic metadata proves their identity, and the aggregate route name (`model_name`) never substitutes for per-deployment evidence.
-- LKG identity validation must use the same provider-aware stable identity semantics as live publication and must remain valid even when enrichment sources are unavailable; the provider namespace must never be discarded during LKG matching, and an LKG entry may never prove identity for a live group that cannot prove it itself.
-- LKG conflict comparison MUST compare like-for-like capability dimensions; input capacity must not be compared to total context merely because both are token limits, and the latest trusted model-level context/output facts must participate in the comparison.
-- Stored LKG evidence and the `ModelSpec` restored from it MUST describe the same critical capability facts (limits, tools/reasoning verdicts, modality sets); an entry whose captured facts diverge from its stored spec is forged and never restores.
-- Core 是 publication policy 的唯一业务真源；adapter 不得复制这些判断。
-
-价格与能力必须分开判断：
-
-- LiteLLM 显式价格（Operator-Declared Pricing：`litellm_params` 价格键先于
-  `model_info`，多 deployment 取最高）始终优先；其次已证明 serving 记录的
-  `cost`（仅 LiteLLM 未声明的组件）；registry 无价格，未证明记录永不提供价格；
-- 缺少可靠价格允许为未知/零，不得为了补价格牺牲正确的能力匹配。
-
-Operational limits 是宿主发布硬边界：
-
-- Core 可以用 `0` 表示“未知 limit”，用于 diagnostics/fingerprint；
-- Pi/OpenCode **不得把 context/output 非正数的 ModelSpec 发布成可用宿主模型**；
-- diagnostics 必须保留该模型并明确报告缺少 operational limits；
-- 必须有通用 adapter 测试证明 0/0 模型被阻止，而不是只为某个具体模型写特例。
+测试首先断言最终配置和真实请求；旧 proof、价格权威、跨来源补字段和 tier cap 的断言应删除或替换。所有保留 Scenario 必须记录真实测试名与当前 SHA 的 CI，设计数据校验不能替代实现或真实宿主 E2E。共享质量规范仍只在本文件维护。
 
 ## 9. 展示层时间与持久 UI
 

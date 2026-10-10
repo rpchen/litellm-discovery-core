@@ -3,7 +3,7 @@
 # modelsdev-catalog Specification
 
 ## Purpose
-Defines how Core consumes the models.dev catalog as one snapshot: exhaustive shape classification, wire-ID parsing without authority, canonical identity proof, serving provider/record proof, fact classes, the field resolution matrix, the runtime enforcement matrix, reasoning controls, and price authority.
+Defines model-name and explicit canonical relationships, official → OpenCode → OpenRouter whole-record selection, exact reasoning options and optional prices. The active restore-model-metadata-priority delta supersedes the baseline requirements until closure.
 
 ## Requirements
 ### Requirement: Catalog input contract
