@@ -3,165 +3,101 @@
 ## REMOVED Requirements
 
 ### Requirement: Publication completeness policy
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Essential capability admission；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Reasoning decoupled from levels
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Reasoning completeness independent of controls；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Deterministic source resolution and inheritance
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Identity-preserving metadata selection；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Group-wide limit evidence
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Selected token limits；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Per-dimension modality evidence
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Ordered modality sets；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Modality completeness
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Known conversational modalities；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Tri-state multi-deployment aggregation
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Consistent deployment identities；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: LKG completeness revalidation
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Critical configuration cache validation；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Failure taxonomy without pseudo-complete publication
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Per-model metadata failure outcomes；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Last Known Good without TTL
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Reusable verified configuration without expiry；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ### Requirement: Configuration states and provenance
-**Reason**: 旧整组场景包含已废弃策略或与新规则不同的完整性边界，明确替换而非在 MODIFIED 中静默丢弃场景。
-**Migration**: 使用本 delta 的 Configuration outcomes and readable provenance；必要行为与负向边界见新场景和共享测试矩阵，历史 archive 保持原样。
+**Reason**: 旧身份、proof、字段拼接或重复规则与本次用户确认的整记录选择不符。
+**Migration**: 整记录选择见 modelsdev-catalog，发布与 LKG 合并为下述必要规则；不再复制同一组缓存证明。
 
 ## MODIFIED Requirements
 
 ### Requirement: False versus unknown
-Core SHALL 保留false、missing/null、invalid之间的区别，不把unknown默认成false或true。false是完整结论，未知关键字段必须由下一合格来源或LKG解决。
-
-#### Scenario: [T10] 不支持与未声明
-- **WHEN** 分别出现明确false与所有来源缺失
-- **THEN** false不阻发布，未知未解决不得正常发布
+Core SHALL 保留明确 false 与未声明的区别，不默认制造支持或不支持；选中记录缺少关键字段时沿用已有完整性检查，不跨来源补字段。
 
 #### Scenario: Missing tool declaration stays unknown
-- **WHEN** neither LiteLLM nor models.dev declares tool-call support
-- **THEN** Core reports tool support `unknown`, not `unsupported`
+- **WHEN** 选中记录未声明 tool-call support
+- **THEN** 保留 unknown，不改为 unsupported 或 true。
 
 #### Scenario: Explicit negative evidence means unsupported
-- **WHEN** a trusted source explicitly declares no tool-call or reasoning support without contradiction
-- **THEN** Core reports `unsupported`
+- **WHEN** 选中记录明确声明无 tool-call 或 reasoning 支持
+- **THEN** 使用 unsupported；false 本身不阻止完整模型发布。
 
 ## ADDED Requirements
 
 ### Requirement: Essential capability admission
-Core SHALL 仅在身份无冲突、协议可映射、有限正context/output、tools/reasoning明确、输入和输出模态已知且适合文本会话时正常发布。false是明确事实；price、input、release与档位数量不是准入条件。缺失关键字段或真实身份/能力/协议冲突只withhold该模型，不影响其他模型；通知确认不能改变发布。
+Core SHALL 复用已有关键配置完整性检查：有限正 context/output、明确 tools/reasoning、已知且符合宿主会话边界的模态。档位数量、价格和内部 deployment 身份不属于准入条件。MUST NOT 新增 mixed deployment 协议阻断；现有协议选择、默认值与 override 不变。通知确认不改变发布；单模型未配置不影响其他模型。
 
-#### Scenario: [T14] 无档位仍可用
-- **WHEN** reasoning=true且无可选档位，其他关键事实完整
-- **THEN** 正常发布
+#### Scenario: [T14] 支持无档位
+- **WHEN** reasoning=true 且 options=[] 或 toggle，其他关键能力完整
+- **THEN** 正常发布，不造 effort。
 
-#### Scenario: [T16] 坏价格不阻断
-- **WHEN** 关键事实完整而所有价格非法
-- **THEN** 参考价归零并正常发布
+#### Scenario: [T11] 已有协议回退
+- **WHEN** 同 model_name 的内部 deployment 协议不同
+- **THEN** 维持当前 mixed-fallback / override 行为，不新增 withheld。
 
-### Requirement: Reasoning completeness independent of controls
-Core SHALL 按modelsdev-catalog读取支持与同记录选项；supported+空/缺options可发布，unsupported不带variants，unknown不伪造支持。
-
-#### Scenario: [T14] 支持但无档位
-- **WHEN** 记录reasoning=true，options为[]、toggle或缺失
-- **THEN** 保持supported，不造effort，不因空variants撤下
-
-### Requirement: Identity-preserving metadata selection
-Core SHALL 使用modelsdev-catalog固定来源链与精确身份规则；字段缺失才向下查找，不能跨SKU继承。models_dev_provider不影响选择。
-
-#### Scenario: [T02] 官方别名提供完整能力
-- **WHEN** deepseek-flash显式指向V4.1Flash
-- **THEN** 无声明也用官方393216输出和low/high/max
-
-#### Scenario: [T03] fallback值高于LL描述
-- **WHEN** 官方缺失，合格OpenCode/OpenRouter记录与LL不同
-- **THEN** 按固定优先级采用，不把LL描述差异当冲突
-
-### Requirement: Selected token limits
-Core SHALL 仅按同维度解析有效context/input/output；只在当前字段依赖LiteLLM补缺时检查deployment一致性。MUST NOT 用价格tier、request defaults或max_input造context；不采用的低层描述不阻止有效目录配置。
-
-#### Scenario: [T12] 错误低层限制
-- **WHEN** 官方限制完整，LL出现0/负数或不同输出描述
-- **THEN** 保持官方限制；缺官方且被采用的关键限制非法时withhold
-
-### Requirement: Ordered modality sets
-Core SHALL 分别选择输入与输出完整模态集合，缺失才查下一来源，明确集合外的模态不视为支持；MUST NOT 用family例外或宿主默认添加能力。
-
-#### Scenario: [T10] image明确不支持
-- **WHEN** 官方input仅text，下层含image
-- **THEN** 不添加image
-
-### Requirement: Known conversational modalities
-Core SHALL 仅发布输入/输出模态已知且包含文本会话必需能力的模型；缺某模态字段不默认成text，非对话模型保留既有过滤。
-
-#### Scenario: [T30] 未知或nontext-only
-- **WHEN** 全部来源缺输入模态或模型只支持音频输入
-- **THEN** 不得向文本会话宿主伪造text能力
-
-### Requirement: Consistent deployment identities
-Core SHALL 首先验证多deployment模型身份/协议一致；目录权威字段不与LL取交集。仅LL补缺字段使用一致的明确值，缺失为未知，冲突为未解决；deployment顺序/ID不影响结果。
-
-#### Scenario: [T08] 相同身份与不同描述
-- **WHEN** 两deployment同模型且LLtools相反，官方tools明确
-- **THEN** 采用官方；无官方或后两级字段时冲突withhold
-
-#### Scenario: [T11] 协议冲突
-- **WHEN** 同组明确协议不同且无override
-- **THEN** withhold，不静默降为Chat
+#### Scenario: [T16] 无价格
+- **WHEN** 关键配置完整，cost 缺失或错误
+- **THEN** 价格填0，正常发布。
 
 ### Requirement: Critical configuration cache validation
-Core SHALL 仅捕获通过当前发布门禁的完整关键配置；schema9条目包含稳定模型身份、协议、关键ModelSpec与最少来源，保留端点scope和捕获时间。恢复须同身份/协议/端点、关键内容完整、无新可信关键冲突且当前目录仍含该模型。价格、部署ID/顺序、空enforcement、serving声明不参与兼容；年龄不是失效条件。活catalog真实歧义不得用LKG掩盖；新的完整live结果直接采用。
+Core SHALL 复用现有缓存入口，仅捕获有效关键配置。LKG 保留 endpoint/凭据 scope、model_name、关键 ModelSpec、schema 与必要内容校验、来源和时间。MUST NOT 比较内部 route/base_model、deployment multiset、serving 声明或价格来判有效性，不新建证明地图。成功清单中模型被删除不得恢复；scope 不同、关键缓存损坏按既有检查拒绝；age 仍不使有效缓存过期。publication schema 8→9、snapshot 1→2，旧错误配置经成功发现重建，不能冒充新策略。
 
-#### Scenario: [T18] outage后恢复
-- **WHEN** catalog中断且当前同身份模型仍在，LKG关键事实完整
-- **THEN** 以configured-lkg发布并显示来源/年龄
+#### Scenario: [T18] 目录中断仍可恢复
+- **WHEN** 同 scope/model_name 仍在，缓存关键配置有效，目录暂不可用
+- **THEN** 沿既有 LKG 路径继续使用，展示上次成功来源。
 
-#### Scenario: [T20] 身份改变或模型删除
-- **WHEN** live清单删除模型或身份/协议改变
-- **THEN** 不恢复旧模型
+#### Scenario: [T20] 内部信息无关
+- **WHEN** 同 model_name 的 route/base_model/deployment ID 或价格变化
+- **THEN** 不因此使 LKG 失效。
 
-#### Scenario: [T16] 只改价格
-- **WHEN** 所有关键事实不变，价格改变/损坏
-- **THEN** 保留LKG有效性
+#### Scenario: [T20] 删除模型
+- **WHEN** 成功 LiteLLM 清单中已无该 model_name
+- **THEN** 不恢复该模型。
 
-### Requirement: Per-model metadata failure outcomes
-Core SHALL 区分网络不可用、身份歧义、字段缺失与非法关键数据。完整LiteLLM-only配置或合法LKG仍可发布；其余withhold，不用宿主默认、价格或用户确认伪造完整性。
+#### Scenario: [T19] 旧配置与损坏内容
+- **WHEN** 遇到旧 schema 或关键缓存内容损坏
+- **THEN** 沿现有版本/完整性门禁拒绝；旧配置在成功发现后重建。
 
-#### Scenario: [T25] catalog失败
-- **WHEN** 目录失败，部分模型有合法LKG或明确完整LL事实
-- **THEN** 仅发布完整/合法恢复的模型，其余列出具体缺口
+### Requirement: Existing metadata failure handling
+Core SHALL 保留已有目录不可用、未匹配和关键字段不完整的诊断与按模型处理；不为假想缺字段增加恢复机制。有效 LKG 沿用既有路径，独立 LiteLLM-only 路径不扩展且不补充选中记录；无有效关键配置不得用宿主默认或用户确认伪造。
 
-### Requirement: Reusable verified configuration without expiry
-Core SHALL 仅捕获通过当前发布门禁的完整关键配置；schema9条目包含稳定模型身份、协议、关键ModelSpec与最少来源，保留端点scope和捕获时间。恢复须同身份/协议/端点、关键内容完整、无新可信关键冲突且当前目录仍含该模型。价格、部署ID/顺序、空enforcement、serving声明不参与兼容；年龄不是失效条件。活catalog真实歧义不得用LKG掩盖；新的完整live结果直接采用。
-
-#### Scenario: [T18] 老但有效
-- **WHEN** 相同scope身份协议的完整快照年龄增加
-- **THEN** 仅展示年龄，不按TTL撤下
-
-#### Scenario: [T19] 旧schema
-- **WHEN** 只有schema8快照且目录不可用
-- **THEN** 不冒充新策略，成功刷新后重建9
-
-### Requirement: Configuration outcomes and readable provenance
-Core SHALL 沿用configured/configured-lkg与已有withheld原因表达结果，不为provider proof、价格或候选数量新增状态。保留字段来源给主动审计，默认摘要不展示内部证明树；匹配数统计实际采用models.dev能力的模型。
-
-#### Scenario: [T22] 匹配与配置数量
-- **WHEN** 身份命中但关键字段未采用或尚缺失
-- **THEN** 分别记录身份审计、实际metadata匹配与发布状态，不宣称成功
+#### Scenario: [T25] 目录故障
+- **WHEN** 目录暂不可用且部分模型有合法 LKG
+- **THEN** 沿现有恢复与逐模型诊断处理；不新增字段级 fallback。

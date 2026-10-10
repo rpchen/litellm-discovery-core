@@ -1,29 +1,38 @@
-# 设计验证与审查边界
+# 设计修订验证
 
-本change是设计稿；proposal/design/specs/tasks已齐，不表示实现完成。实现任务未勾选，canonical specs与历史archive未修改，保留closure门禁。
+本次按用户Review收敛既有设计，不扩大审计范围。下面是修订与设计检查结果，不能替代未实施算法的业务测试。
 
-| 验证 | 结果 |
+## Review处理
+
+| 项目 | 结果 / 依据 |
 |---|---|
-| Core openspec validate --all --strict --no-interactive | 13 passed / 0 failed（12 current specs + 本change） |
-| Pi 同命令 | 24 passed / 0 failed（23 + change） |
-| OpenCode 同命令 | 24 passed / 0 failed（23 + change） |
-| 三仓库 npm run test:openspec-closure | 各32/32测试通过；各自archive检查0 mismatches |
-| Core verify-design.mjs | PASS；16模型、59公开记录、目录digest与基线校验 |
-| 58个规格delta身份/overlay核验 | 378 Requirements / 948 Scenarios盘点；28个受影响capability；引用精确匹配当前标题 |
-| Pi实际peer的getSupportedThinkingLevels探针 | 缺map产生5档；全null为[]；不是完整宿主E2E |
+| A / D1 | model_name唯一产品身份；删除base_model/route/deployment身份条件及其LKG失效规则 |
+| B/C / D2–D3 | 官方→OpenCode→OpenRouter选第一条明确对应整记录；不跨provider/LL补字段；保留已确认API/组织别名 |
+| D / D4 | 只读所选reasoning与reasoning_options；保留三种支持/档位结果和Pi none→off/全null；不扩展预算推断 |
+| E / D5 | 所选记录价格或0，删除跨provider补价、价格权威、最高价、tier cap；价格不参与发布/LKG |
+| F / D6 | 协议算法/default/mixed-fallback/override不变；删除两宿主protocol-routing delta，T11只回归旧行为 |
+| G / D6 | 仅复用scope/model_name/有效关键配置/完整性及版本机制；删除proof/multiset/内部路由条件 |
+| D7–D8 / 工作方式 | 简洁用户诊断，主动审计公开来源；非平凡机制依据列在D8；无证据的候选排序/裁决与新阻断彻底撤回 |
 
-初稿用MODIFIED替换旧场景被strict正确拒绝。现在有意废弃整组旧策略的要求均以REMOVED+ADDED明确替代，Reason/Migration写明迁移；保留的Single resolution result、False versus unknown及审计快照要求保留原场景。未禁用检查、未编辑历史、不假定模糊标题等价。新增Scenario全部登记scenario-evidence.md，状态planned。
-
-本轮未运行业务全套、更新构建、package安装或真实Pi/OpenCode E2E，因为没有实施且用户要求停在设计Review；tasks列出未来全部门禁。main/Release/dist不变，无新增版本发布义务。
-
-## Retrospective
+## 验证结果
 
 | 检查 | 结果 |
 |---|---|
-| 过拟合 | 16名称只用于测试oracle；运行设计依赖精确身份/组织关系，无模型家族或GPT统一档位表 |
-| 复杂度 | 删除serving proof、价格权威/价格cap、空enforcement与多重LKG证明；沿用现有状态/入口，不增加fallback层 |
-| 知识留存 | 审计、基线、全部current specs盘点、来源、测试矩阵及宿主差异在本change；实施时再同步正确权威文档 |
-| 规范/实现/发布边界 | 明确未实施；旧产品行为仍在；不把planning complete称为产品已修复；新change不归档 |
-| 保留/临时内容 | 用户配置/密钥不改；仅新change入库，临时下载与生成工具留workspace忽略的.tmp；无自动化、tag、release或merge |
+| Core / Pi / OpenCode strict all | 13/13、24/24、24/24通过，0 failed |
+| 三仓库closure | 各32/32；历史archive检查均0 mismatches |
+| 固定数据一致性 | verify-design.mjs PASS：16名称、59记录；每个期望能力和价格来自同一选中记录 |
+| 冻结输入保留 | catalog subset、observed Pi、source manifest字节不变；expected-16全部模型值不变，只更新说明；合成输入删除route/base_model |
+| 完整性事实复核 | 59条公开记录的tools/reasoning、正context/output、输入/输出模态均完整；16条选中记录有reasoning_options |
+| 有效规则核对 | 复用原inventory/overlay校验，58个规格引用标题准确；26个受影响capability，无跨provider继承与整记录选择矛盾 |
+| 正确旧行为保留 | unknown额外顶层字段忽略、False versus unknown、Single resolution、协议回退/override、scope/认证/删除、安装/provenance门禁保留 |
+| 范围 | 只修改本change；未改源码、dist、canonical、archive、版本或用户配置 |
 
-需Review的实际取舍是：同一记录的reasoning支持/选项原子读取；官方API别名与显式SKU边界；价格脱离全部有效性条件；旧schema一次刷新重建。仍待实施验证的是实际deployment身份、Pi真实picker/请求和OpenCode默认variants行为。Pi缺少模型tools注册位、budget注入受限已单列，不能通过假能力绕过。
+T01–T34沿用原编号，T05/T06明确撤回且不再生成Scenario/实施任务。Core重复LKG/字段条款已合并，新增Scenario从71减为40，Pi33→30，OpenCode34→31；数量仅说明删减范围，不作为质量标准。质量由16项实际配置准确性和必要边界决定。
+
+## Retrospective与实际剩余项
+
+原审计定位保留，C20协议阻断结论撤回；其余处理建议同步整记录规则。默认诊断不携带候选/proof，主动导出安全边界不变。临时生成材料仅在workspace忽略的.tmp；无新审计框架、运行机制或永久测试基础设施。
+
+Pi省略map会补档位、全null返回空列表已实测；真正picker/请求行为需要T29。OpenCode现有Model.Info映射需要T33验证最终请求。Pi无独立tools注册位，当前16条tools=true，不阻断此次设计，也不新增工具控制。旧错误配置快照需要一次成功刷新重建，沿已有schema门禁。无需真实/v1/model/info或实际serving证明。
+
+新业务尚未实施；本轮本地只运行适用的设计/closure/数据检查。PR CI结果以对应新HEAD的GitHub运行记录为准，既有宿主E2E通过也不代表新增模型匹配与档位场景已实施。停在Review，不合并、归档或发布。

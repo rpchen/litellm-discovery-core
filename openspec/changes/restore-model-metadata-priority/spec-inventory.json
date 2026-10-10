@@ -297,7 +297,7 @@
       {
         "title": "protocol explanation",
         "line": 56,
-        "disposition": "REMOVED",
+        "disposition": "KEEP",
         "scenarios": [
           "conflicting deployment protocols"
         ]
@@ -393,7 +393,7 @@
       {
         "title": "protocol capability visibility",
         "line": 63,
-        "disposition": "REMOVED",
+        "disposition": "KEEP",
         "scenarios": [
           "Chat Completions and Responses are both supported",
           "protocol evidence is missing"
@@ -2254,7 +2254,7 @@
       {
         "title": "多部署协议不一致时回退",
         "line": 46,
-        "disposition": "REMOVED",
+        "disposition": "KEEP",
         "scenarios": [
           "一个部署走 Anthropic，一个走 OpenAI"
         ]
@@ -2278,8 +2278,8 @@
       }
     ],
     "scenarioCount": 10,
-    "action": "delta",
-    "rationale": "本change精确修改或删除冲突要求，其余保留"
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
   },
   {
     "repository": "pi-litellm-provider",
@@ -3773,7 +3773,7 @@
       {
         "title": "多部署协议不一致时回退",
         "line": 50,
-        "disposition": "REMOVED",
+        "disposition": "KEEP",
         "scenarios": [
           "一个部署走 Anthropic，一个走 OpenAI"
         ]
@@ -3806,8 +3806,8 @@
       }
     ],
     "scenarioCount": 13,
-    "action": "delta",
-    "rationale": "本change精确修改或删除冲突要求，其余保留"
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
   },
   {
     "repository": "opencode-litellm-provider",

@@ -34,4 +34,4 @@
 node openspec/changes/restore-model-metadata-priority/evidence/verify-design.mjs
 ```
 
-验证16名称与观察清单相等、每个oracle字段与选定公开record相等、每个GPT选项独立、日期版本反例、59记录subset digest，以及main/index基线校验。它没有实现或运行新resolver；不能当业务修复、价格不变性测试或真实宿主E2E证据。
+验证16名称与观察清单相等、不依赖内部身份线索、每个oracle能力与价格字段均与选定公开整record相等、每个GPT选项独立、日期版本反例、59记录subset digest，以及main/index基线校验。它没有实现或运行新resolver；不能当业务修复、价格不变性测试或真实宿主E2E证据。

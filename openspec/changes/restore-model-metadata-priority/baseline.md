@@ -10,3 +10,7 @@
 三子仓库基线无active change、无open PR。Pi/OpenCode最新tag和Release均v0.10.0，README与main一致；Core无产品Release。两插件core-provenance均指向上表Core SHA。当前设计分支三仓库均codex/restore-model-metadata-priority；workspace仍main且无修改。
 
 完整immutable snapshot校验和见evidence/baseline.json。准备途中Git/TLS多次超时；项目支持的CLI后备入口最终ready，未reset/clean/stash。MCP structural/coverage仍被缓存超时拦截，list_projects/index_status虽ready不能替代逐文件coverage，本审计据当前源码回读，不声称图谱验证成功。提交后设计分支的文档SHA自然不同于main索引基线；本轮不发布新main索引、不调用finish（未合并）。
+
+## 本轮修订续做
+
+从Core ecde4df78c9b、Pi 700fafc0d41f、OpenCode dcf2f7fb6417续做；三个工作树干净、原Draft PR均OPEN且CI通过。MCP resume超时后，项目prepareMain CLI后备以mode=resume返回working并保留现有分支；workspace main ready。main与provenance未变，三个工作索引对应上述设计HEAD。本轮无需重新建立main或合并索引。

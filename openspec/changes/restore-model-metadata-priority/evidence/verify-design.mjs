@@ -31,9 +31,11 @@ for (const e of expected) {
   assert.equal(old.reasoning, true);
   assert(!Object.hasOwn(old, "thinkingLevelMap"));
   const row = discovery.find(x=>x.model_name===e.id);
-  assert.equal(row.model_info.base_model,e.canonicalID);
+  assert(!Object.hasOwn(row.model_info, "base_model"));
+  assert(!Object.hasOwn(row, "litellm_params"));
+  assert.deepEqual(e.cost, r.cost ?? {});
   assert(!Object.hasOwn(row.model_info, "models_dev_provider"));
-  assert.deepEqual(Object.keys(row).sort(), ["litellm_params","model_info","model_name"]);
+  assert.deepEqual(Object.keys(row).sort(), ["model_info","model_name"]);
 }
 assert.deepEqual(expected.find(x=>x.id==="gpt-5.6-luna").levels, ["none","low","medium","high","xhigh","max"]);
 assert.deepEqual(expected.find(x=>x.id==="gpt-6-astra").levels, ["low","medium","high","xhigh","max"]);

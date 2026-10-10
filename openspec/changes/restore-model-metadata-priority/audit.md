@@ -1,6 +1,6 @@
 # 全量审计
 
-审计日期：2026-10-10。按用户产品原则 P1–P12（顺序同任务书）判断，而非把旧规范当不可修改需求。以下为已发现的完整问题集合；不声称未运行的新实现已通过。源码定位以 baseline.md 的固定 SHA 为准。全量 58 个 current spec 的文件、hash、Requirement/Scenario 清单与处理在 spec-inventory.json / spec-inventory.md；历史 archive 只读。
+审计日期：2026-10-10。按用户产品原则 P1–P12（顺序同任务书）判断，而非把旧规范当不可修改需求。以下保留原审计定位，并按本轮规则A–G修订处理建议；C20撤回，不再视为需修复问题。本轮不扩大审计。源码定位以 baseline.md 的固定 SHA 为准。全量 58 个 current spec 的文件、hash、Requirement/Scenario 清单与处理在 spec-inventory.json / spec-inventory.md；历史 archive 只读。
 
 ## 基线与证据范围
 
@@ -12,13 +12,13 @@
 
 | ID / 仓库 | 文件、要求或函数 | 实际行为与冲突 | 原则 | 处理 | 风险与回归 |
 |---|---|---|---|---|---|
-| C01 Core | modelsdev-catalog: Serving provider proof / Unproven provider records；resolve.ts resolveServing:320 | 未配置 models_dev_provider 即忽略官方/OpenCode/OpenRouter 能力 | P1–5,10 | 删除 serving proof；按 D1–D3 自动关联 | T01–T06；错误声明不能阻断 |
-| C02 Core | resolve.ts resolveDeploymentIdentity:190 / matchCandidate:252；canonical identity requirement | model_name 不参与 canonical 匹配，精确实际名称仍失败 | P2 | 纳入精确 model_name 线索，已知冲突不可覆盖 | T07–T09；私有 alias、冲突 base_model |
+| C01 Core | modelsdev-catalog: Serving provider proof / Unproven provider records；resolve.ts resolveServing:320 | 未配置 models_dev_provider 即忽略官方/OpenCode/OpenRouter 能力 | P1–5,10 | 删除 serving proof；按 D1–D3 自动关联 | T01–T04；T05/T06撤回，声明不影响选择 |
+| C02 Core | resolve.ts resolveDeploymentIdentity:190 / matchCandidate:252；canonical identity requirement | model_name 不参与 canonical 匹配，精确实际名称仍失败 | P2 | 只用model_name匹配；内部base_model/route不作身份条件 | T07–T09；内部信息变化不阻断，目录版本/SKU保留 |
 | C03 Core | resolve.ts servingRecordCandidates:284；record-level selection determinism | 官方只有 relation/API alias 也被拒；deepseek-flash 无法供档位 | P2,3 | 官方 explicit canonical relation | T02；保留版本/SKU 反例 |
-| C04 Core | modelsdev-catalog；resolve.ts publicationCriticalFacts:305 | 价格不同被当关键 record 冲突，可使模型不可用 | P8,9 | 比较关键能力时移出 cost | T16；候选价格任意变换 |
-| C05 Core | resolve.ts resolveBranchFields:741 / applyIllegality:1377 | LL deployment 冲突、非法低层限制先于权威数据 veto | P1,3,11 | 只校验被采用事实；LL 仅补缺时需一致 | T10,T12；有效官方 vs 坏 LL |
+| C04 Core | modelsdev-catalog；resolve.ts publicationCriticalFacts:305 | 价格不同被当关键 record 冲突，可使模型不可用 | P8,9 | 删除候选等价裁决；所选记录价格或0 | T16；价格不影响使用 |
+| C05 Core | resolve.ts resolveBranchFields:741 / applyIllegality:1377 | LL deployment 冲突、非法低层限制先于权威数据 veto | P1,3,11 | 直接读所选整记录；删除provider/LL补字段 | T10,T12；有效官方 vs 坏 LL |
 | C06 Core | resolve.ts resolveReasoningLevels:1429 | 没 serving record 就 levels unknown，虽 reasoning true | P7 | 读取选中记录 reasoning_options；不造统一 GPT 模板 | T01,T13–T15 |
-| C07 Core | resolve.ts resolvePriceComponent:1203；capabilities.ts perTokenCost | operator params→model_info→proven record，且取最高 deployment 价 | P3,8,9 | 三层参考价格→0 | T16 |
+| C07 Core | resolve.ts resolvePriceComponent:1203；capabilities.ts perTokenCost | operator params→model_info→proven record，且取最高 deployment 价 | P3,8,9 | 所选整记录参考价或0，不跨provider补价 | T16 |
 | C08 Core | resolve.ts firstTierPointOf/applyTierCap:1654/1674；capabilities.ts tierPoint | 价格阶梯把 GPT context 压到272000，甚至可从价格造 context | P8,9 | 删除 cap；配置废弃接受但忽略 | T17；all price mutations保持K |
 | C09 Core | resolve.ts buildProof:1695 / litellmDeclaredMaterial:1769；publication.ts liveLitellmFingerprintOf:1052 | 部署多重摘要、价格字段、空 enforcement 参与 LKG | P8,10,11 | 缩为关键快照兼容；不存原始deployment证据树 | T18–T21 |
 | C10 Core | modelsdev-catalog: Last Known Good schema 8 proof composition；publication.ts validateLastKnownGood | price-only change 明确要求拒绝完整 LKG | P8,9 | 后续 schema9；价格不参与reuse | T16,T18 |
@@ -28,10 +28,10 @@
 | C14 Core | evidence.ts；modelsdev.ts legacy helpers；capabilities.ts mapCapabilities；src/index.ts | 重叠的能力/推理/价格算法仍由 export * 暴露；并非可直接认定死代码 | P10 | 使用清点后删除私有分支，公开兼容入口委托单resolver | T24；外部消费者兼容 |
 | C15 Core | modelsdev-catalog Runtime enforcement matrix；discovery-resilience constraints | 空“已证明键集合”及未来promotion机制没有当前产品作用 | P4,10,11 | 删除整个空框架；不把请求参数当模型上限 | T12；默认参数不改能力 |
 | C16 Core | discovery-quality/publication 各旧 precedence/aggregation 规则 | “LL权威/交集/最高价”和新canonical章节同存；fallback顺序不一 | P1–3,8 | deltas完整替换相关Requirement，不仅改主函数 | T03,T10；规范overlay检查 |
-| C17 Core | publication LKG completeness revalidation | 同名 Scenario New live fact conflicts with stored values 存在两种范围；任意LL冲突与权威冲突混淆 | P10,11 | 合并为真正关键事实变化；删重复场景 | T18,T20 |
-| C18 Core | publication Failure taxonomy；discovery-quality unknown-model fallback | 网络失败一律不能normal与LL完整仍可发布互相冲突 | P10,11 | 明确完整LL补缺、LKG、未知withhold三个既有结果 | T18,T25 |
-| C19 Core | wire-id.ts；catalog-input.ts；resolve.ts | transport解析、canonical registry和记录身份未形成简单可复用关联；providers-only无registry不可误用 | P2,6 | 保留完整catalog契约；运输前缀不授予来源权威 | T07,T26 |
-| C20 Core | protocol.ts resolveProtocol；两宿主 protocol-routing | 同组deployment协议不一致静默回退Chat | P6,11 | 真冲突withhold或显式override，不凭metadata provider选协议 | T11 |
+| C17 Core | publication LKG completeness revalidation | 同名 Scenario New live fact conflicts with stored values 存在两种范围；任意LL冲突与权威冲突混淆 | P10,11 | 保留关键缓存完整性；删除内部路由重证明和重复条款 | T18,T20 |
+| C18 Core | publication Failure taxonomy；discovery-quality unknown-model fallback | 网络失败一律不能normal与LL完整仍可发布互相冲突 | P10,11 | 保留既有失败/LKG处理，独立LL-only路径不扩展且不补选中记录 | T18,T25 |
+| C19 Core | wire-id.ts；catalog-input.ts；resolve.ts | transport解析、canonical registry和记录身份未形成简单可复用关联；providers-only无registry不可误用 | P2,6 | 保留完整catalog与未知顶层字段兼容；只按model_name匹配，不解析内部route求身份 | T07,T26；删除不必要transport身份解析 |
+| C20 Core（撤回） | protocol.ts resolveProtocol；两宿主 protocol-routing | 已核实有mixed-fallback，但没有用户调用错误证据；上轮据此要求withheld属于过度设计 | 本轮规则F | 保持当前协议/default/override；删除新增协议delta及阻断任务 | T11仅回归已有行为 |
 | C21 Core | build.ts ModelSpec.reasoningSupported optional；Pi reasoningForHost | 注释要求缺失unknown，Pi却可按variant数量推断 | P7 | 正常发布必需明确verdict；旧shape仅诊断/兼容失败 | T14,T24 |
 | C22 Core | docs/testing-standard.md §8；docs/decisions.md ADR004；README | 固定 serving proof、价格权威及schema8规则；ADR状态仍“实施中” | P4,5,8,10,12 | 实施时新决策明确supersede，§8用新不变量替换 | T27；不改archive |
 | P01 Pi | openspec/model-discovery 能力/记录选择/价格；config.yaml；docs/decisions.md | LL优先、家族表、unique provider、显式override、价格cap同时存在 | P1–6,8–10 | 消费Core新契约；清理旧context与文档 | T28 |
@@ -66,3 +66,7 @@
 Core core-modelsdev/core-publication/core-build/core-diagnostics/core-resilience/resolve-matrix/canonical-catalog-acceptance/core-capabilities 中的“无声明不匹配”“price-only拒绝LKG”“272k截断”预期需明确更改，不能原样沿用当成质量保证。identity/SKU负向、正限制、unknown/false、endpoints、auth、secret allowlist、partial publication仍保留。
 
 Pi map/publication/diagnostics/audit/discovery 与 OpenCode publication/audit/core-adapter/sync/TUI 测试须采用相同固定目录输入；直接factory/mock只证明适配边界，不能替代真实宿主读取注册结果和发起请求。所有新Scenario的计划映射见 scenario-evidence.md（实现前全部标为 planned），避免设计验证被误标为实现证据。
+
+## 本轮证据纠偏
+
+16条选中记录能力与选项完整；59条冻结公开记录关键字段检查无缺失。因此撤回逐字段fallback、官方候选等价裁决/排序、内部身份冲突与新协议阻断，T05/T06不再对应实施工作。D1–D8与原矩阵已同步；名称足够作为用户匹配基线，无需真实路由采集。保留必要机制的实际依据集中在design.md D8，未新增审计体系。

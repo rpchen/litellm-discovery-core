@@ -32,7 +32,7 @@
 | pi-litellm-provider | openspec/specs/multi-endpoint-activation/spec.md | 4 / 4 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
 | pi-litellm-provider | openspec/specs/openspec-closure-gate/spec.md | 6 / 23 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
 | pi-litellm-provider | openspec/specs/pi-integration/spec.md | 5 / 11 | delta | 本change精确修改或删除冲突要求，其余保留 |
-| pi-litellm-provider | openspec/specs/protocol-routing/spec.md | 6 / 10 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| pi-litellm-provider | openspec/specs/protocol-routing/spec.md | 6 / 10 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
 | pi-litellm-provider | openspec/specs/provider-diagnostics/spec.md | 5 / 6 | delta | 本change精确修改或删除冲突要求，其余保留 |
 | pi-litellm-provider | openspec/specs/publication/spec.md | 4 / 16 | delta | 本change精确修改或删除冲突要求，其余保留 |
 | pi-litellm-provider | openspec/specs/refresh-coordinator/spec.md | 4 / 7 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
@@ -55,7 +55,7 @@
 | opencode-litellm-provider | openspec/specs/model-discovery/spec.md | 10 / 24 | delta | 本change精确修改或删除冲突要求，其余保留 |
 | opencode-litellm-provider | openspec/specs/multi-endpoint-activation/spec.md | 12 / 16 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
 | opencode-litellm-provider | openspec/specs/openspec-closure-gate/spec.md | 6 / 23 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
-| opencode-litellm-provider | openspec/specs/protocol-routing/spec.md | 7 / 13 | delta | 本change精确修改或删除冲突要求，其余保留 |
+| opencode-litellm-provider | openspec/specs/protocol-routing/spec.md | 7 / 13 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |
 | opencode-litellm-provider | openspec/specs/provider-diagnostics/spec.md | 6 / 7 | delta | 本change精确修改或删除冲突要求，其余保留 |
 | opencode-litellm-provider | openspec/specs/publication/spec.md | 4 / 15 | delta | 本change精确修改或删除冲突要求，其余保留 |
 | opencode-litellm-provider | openspec/specs/refresh-coordinator/spec.md | 6 / 7 | retain | 保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突 |

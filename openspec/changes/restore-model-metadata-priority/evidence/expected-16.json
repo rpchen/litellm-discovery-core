@@ -1,6 +1,6 @@
 {
   "kind": "review-oracle-from-public-records",
-  "note": "Expected for exact canonical synthetic input; live deployment identity has not been captured. Explicit oracle, not implementation output.",
+  "note": "Expected whole-record selection from actual model_name and frozen public catalog. Canonical identity is a lookup result, not an internal-route assumption. Explicit oracle, not resolver output.",
   "models": [
     {
       "id": "deepseek-v4-pro",

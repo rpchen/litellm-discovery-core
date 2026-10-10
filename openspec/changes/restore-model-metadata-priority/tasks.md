@@ -1,34 +1,32 @@
 # Tasks
 
-本阶段止于设计 Review。下列未勾选项是获批后的工作，不代表当前实现已改变；计划证据对应test-matrix.md与scenario-evidence.md。
+仅设计修订；未勾选项须获准实施后执行。证据见原 T01–T34 与 scenario-evidence.md；T05/T06 已撤回。
 
-## 1. 设计与输入冻结
+## 1. 设计审查
 
-- [x] 1.1 完成58个current spec、源码/测试/宿主审计，交付audit、inventory、基线与脱敏16名称/公开目录oracle。
-- [ ] 1.2 获得本设计Review结论并记录决定；不得在此之前执行2–5。
+- [x] 1.1 保留既有审计与16名称/公开数据，按规则A–G修订D1–D8、deltas及测试矩阵；删除未经实证的机制。
+- [ ] 1.2 获得修订设计Review结论；此前不执行下面实施任务。
 
-## 2. 身份与元数据
+## 2. 名称与整记录
 
-- [ ] 2.1 替换resolveServing/proof路径为D1–D3；将设计输入移入正式test/fixtures，T01–T10/T26覆盖公开名称、官方API别名、owner别名、canonical版本/SKU与顺序无关。
-- [ ] 2.2 精简字段解析与LL补缺，保留missing/false和同维度限制；T10/T12/T30验证低层数据不veto及未知不可伪造；同步README与testing-standard §8身份/能力段。
-- [ ] 2.3 按同记录reasoning_options生成控制，T13–T15分别覆盖全部GPT、DeepSeek/GLM、支持无档位、不支持及Messages budget；文档明示无模板。
-- [ ] 2.4 消除明确deployment协议冲突的Chat猜测，T11覆盖override与正常默认；同步协议契约说明。
+- [ ] 2.1 用model_name与明确models.dev关系替换内部route/base_model和serving证明；按官方→OpenCode→OpenRouter选整记录。T01–T04/T07–T10验证；不实现T05/T06。
+- [ ] 2.2 删除跨provider/LL字段补齐、候选等价裁决，复用现有完整性与正上限检查；T10/T12/T26保留false/空值、版本/SKU与未知顶层字段兼容。
+- [ ] 2.3 精确读取所选记录reasoning_options，T13/T14逐模型核对；T11/T15只回归既有协议和Messages映射，不新增冲突阻断或预算推导。
 
-## 3. 价格、准入与恢复
+## 3. 价格与缓存
 
-- [ ] 3.1 删除price authority/最高LL价/价格tier cap，仅三层参考价→0；T16/T17变换测试证明published/K/档位/通知不变，README说明contextTierCap废弃。
-- [ ] 3.2 实现D6最小schema9 LKG与schema2snapshot，删除多重proof/price digest；T18–T21/T25涵盖迁移、坏cost恢复、关键篡改、删除、身份/协议/endpoint/auth边界；更新缓存文档。
-- [ ] 3.3 移除重复resolver，逐一清点src/index.ts公开导出并保留必要委托包装；T24外部消费者及类型测试验证没有第二算法。
+- [ ] 3.1 仅选中记录参考价或0；删除operator权威、跨provider价格与tier cap。T16/T17验证价格不影响使用，README说明contextTierCap忽略。
+- [ ] 3.2 复用缓存入口，保留scope/model_name/有效关键配置/完整性；删除route/base_model/multiset/serving/price证明。按8→9、1→2阻止已知旧错误配置回放，T18–T21/T25验证。
+- [ ] 3.3 清点公开导出后合并重复算法，必要兼容包装委托同一resolver；T24验证外部消费者，不凭假想使用情况删除API。
 
-## 4. 诊断与规范一致性
+## 4. 用户输出与规范
 
-- [ ] 4.1 让diagnostics从同一resolution给出用户摘要与allowlist开发来源；T22/T23验证matched定义、缺口、无provider证明提示和敏感输入不泄露。
-- [ ] 4.2 按本deltas同步canonical，新增ADR supersede旧优先级/proof并更新testing-standard §8；修正publication Purpose过时degraded描述。不得修改任何历史archive；T27审计effective specs、重复场景、旧规则残留。
-- [ ] 4.3 对每个新Scenario在scenario-evidence.md填入真正测试文件/名称/CI运行，保留身份、安全与故障负例；设计验证不得充当实现证据。
+- [ ] 4.1 简化默认诊断为配置、来源、推理与实际错误；主动审计保留公开来源和最终配置，T22/T23验证无敏感泄漏。
+- [ ] 4.2 实施时同步README、testing-standard §8、ADR、OpenSpec context及本deltas；修正Purpose旧proof/degraded说明。T27只检查相关有效规则，历史archive不改。
+- [ ] 4.3 回填每个保留Scenario的真实测试名与CI证据；不把设计数据检查作为实现或真实宿主证据。
 
-## 5. 集成与审核
+## 5. 验证与交付
 
-- [ ] 5.1 运行npm run typecheck、bun test、npm run build:dist、npm run test:package、npm run validate:spec、npm run test:openspec-closure；记录退出码与差异范围。
-- [ ] 5.2 核验两宿主兼容计划引用同一Core完整SHA；Core独立PR审查并仅在明确授权后合入，finish_codebase_task确认main/index一致。
-- [ ] 5.3 Pi再OpenCode固定已合入Core SHA完成T28–T34与真实宿主门禁；三仓库结果齐全才称跨仓库修复完成。
-- [ ] 5.4 实现完成后按CLI archive本change，strict/closure再次通过；历史archive不可更改，版本与Release另获授权。
+- [ ] 5.1 执行既有typecheck、bun test、build:dist、test:package、validate:spec、closure门禁；记录实际结果。
+- [ ] 5.2 Core独立Review且获授权合入后，Pi再OpenCode以同一稳定Core SHA执行T28–T34和真实宿主门禁。
+- [ ] 5.3 实现与证据齐全后才按CLI archive新change；合并、finish与版本发布均按既有授权流程，本轮不执行。
