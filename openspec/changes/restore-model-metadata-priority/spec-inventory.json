@@ -1,0 +1,4176 @@
+[
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/codebase-memory/spec.md",
+    "sha256": "fd9cb5121ea7fa80247fd985f943461c06bc55e1dbcfee53c3fd7ffc31a2a24a",
+    "requirements": [
+      {
+        "title": "explicit indexing controls graph adoption",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-OPT-IN] unindexed child does not inherit parent graph"
+        ]
+      },
+      {
+        "title": "release snapshots bind immutable source identity",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-RELEASE] indexed release publishes a complete snapshot",
+          "[CBM-FAIL-CLOSED] invalid source or runtime prevents publication",
+          "[CBM-INTEGRITY] corrupted or mismatched snapshot is rejected",
+          "[CBM-DEGRADED] non-success native indexing prevents export"
+        ]
+      },
+      {
+        "title": "local release snapshots preserve working checkout",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SYNC] startup sync handles released and working commits independently"
+        ]
+      },
+      {
+        "title": "merged main snapshots bind reviewed source",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-MAIN-PUBLISH] successful main CI publishes exact merge snapshot",
+          "[CBM-MAIN-IMMUTABLE] retries preserve the original snapshot"
+        ]
+      },
+      {
+        "title": "every new task synchronizes code and index",
+        "line": 52,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-TASK-START] clean checkout starts with current remote source and index",
+          "[CBM-PRESERVE-WORK] unfinished work blocks a new task",
+          "[CBM-TASK-PENDING] unavailable or invalid remote index is not ready"
+        ]
+      },
+      {
+        "title": "merge completion includes index agreement",
+        "line": 67,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-TASK-FINISH] merging client verifies identical local and remote snapshot"
+        ]
+      },
+      {
+        "title": "task readiness verifies final remote main",
+        "line": 74,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-RETARGET] main advances while prepare or finish waits",
+          "[CBM-TOTAL-BUDGET] repeated target changes cannot restart timeout",
+          "[CBM-WORKSPACE-BUDGET] workspace budget expires before the next selected root",
+          "[CBM-NOT-READY] invalid or unavailable service blocks readiness"
+        ]
+      },
+      {
+        "title": "synchronization protects actual symbolic Git state",
+        "line": 93,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-CONCURRENT-CHECKOUT] same SHA branch or source changes during download",
+          "[CBM-COMMON-MUTEX] linked worktrees prepare concurrently",
+          "[CBM-PRESERVE-WORK] existing unfinished source remains intact",
+          "[CBM-QUEUED-LOCK] a queued second client accepts the advanced checkout",
+          "[CBM-QUEUED-USER-CHANGE] a queued client rejects concurrent user changes"
+        ]
+      },
+      {
+        "title": "publication scheduling isolates source commits",
+        "line": 116,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SHA-QUEUE] old CI arrives after latest main publisher is pending",
+          "[CBM-PUBLISH-RACE] distinct publishers append concurrently"
+        ]
+      },
+      {
+        "title": "main snapshots use isolated clean source provenance",
+        "line": 127,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-DIRTY-BUILD] source changes without a commit during generation",
+          "[CBM-NATIVE-BASIS] dirty native metadata has matching hashes"
+        ]
+      },
+      {
+        "title": "shared cache installation validates competing winners",
+        "line": 138,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PARALLEL-CACHE] independent checkouts share one valid cache target",
+          "[CBM-CACHE-RETRY] private staging rename is temporarily denied",
+          "[CBM-CACHE-RACE] incomplete or foreign winning cache exists"
+        ]
+      },
+      {
+        "title": "MCP readiness gate resolves every project identity",
+        "line": 153,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PROJECT-GATE] aliases paths and either compare target refer to a failed repository"
+        ]
+      },
+      {
+        "title": "selected workspace repositories cannot disappear on metadata errors",
+        "line": 160,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SELECTED-METADATA] selected child metadata is corrupt or foreign",
+          "[CBM-MISSING-METADATA] selected child is missing its working artifact",
+          "[CBM-ALL-RECEIPTS] expected child receipt is missing duplicated or forged"
+        ]
+      },
+      {
+        "title": "discovered root metadata failures gate the session",
+        "line": 175,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-ROOTS-DISCOVERY] corrupted discovered metadata blocks queries without forwarding"
+        ]
+      },
+      {
+        "title": "startup preparation never blocks the client connection",
+        "line": 182,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-HANDSHAKE-LATENCY] handshake answers within the connection window"
+        ]
+      },
+      {
+        "title": "preparation outcomes are isolated per root and round",
+        "line": 189,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PREPARE-ROUNDS] late background success cannot clear a newer explicit failure"
+        ]
+      },
+      {
+        "title": "host disconnect cancels background preparation and every session",
+        "line": 196,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-LIFECYCLE-EARLY] early EOF does not leak a late watcher session",
+          "[CBM-LIFECYCLE-NORMAL] normal EOF closes established watcher sessions"
+        ]
+      },
+      {
+        "title": "the protocol process never performs synchronous identity resolution",
+        "line": 207,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-STARTUP-ISOLATION] slow identity scan keeps the handshake and the gate responsive"
+        ]
+      },
+      {
+        "title": "queued lock regression blocks the implementation's own pre-lock read",
+        "line": 214,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-QUEUED-LOCK] a queued second client accepts the advanced checkout"
+        ]
+      }
+    ],
+    "scenarioCount": 39,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/cross-repository-verification/spec.md",
+    "sha256": "31df87ea831c1270bb627a0ca9b34d1b1a18203acb86af64c3dc8059d2066b65",
+    "requirements": [
+      {
+        "title": "Core SHA contract",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "invalid SHA"
+        ]
+      },
+      {
+        "title": "consumer verification entrypoints",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "valid dispatch"
+        ]
+      },
+      {
+        "title": "provenance",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "successful run"
+        ]
+      },
+      {
+        "title": "post-merge notification",
+        "line": 29,
+        "disposition": "KEEP",
+        "scenarios": [
+          "token unavailable"
+        ]
+      }
+    ],
+    "scenarioCount": 4,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/discovery-core/spec.md",
+    "sha256": "8ccd6341583ac05025fde555f0409d947b55fc1ece6ab019aacba7a4becb79e6",
+    "requirements": [
+      {
+        "title": "Host-independent public API",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Isolated consumer import"
+        ]
+      },
+      {
+        "title": "No host runtime dependency",
+        "line": 17,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Host-free build"
+        ]
+      },
+      {
+        "title": "Preserve discovery behavior",
+        "line": 26,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Offline fixture regression"
+        ]
+      },
+      {
+        "title": "Host mapping stays outside core",
+        "line": 35,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Protocol remains neutral"
+        ]
+      }
+    ],
+    "scenarioCount": 4,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/discovery-diagnostics/spec.md",
+    "sha256": "ff34823e75d4282c5519def2bb19742fdd6b04363cd80185e23fa9fa492f68c0",
+    "requirements": [
+      {
+        "title": "observational diagnostics",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "diagnose a valid response"
+        ]
+      },
+      {
+        "title": "source visibility",
+        "line": 15,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "mixed metadata sources",
+          "canonical original selection is explainable",
+          "provider proven without exact SKU is explainable",
+          "canonical identity without serving proof is explainable",
+          "fallback selection keeps the canonical identity intact",
+          "declared serving is explainable",
+          "unknown reasoning levels are explained",
+          "fallback-serving resolution names its origin",
+          "configured effort is explained"
+        ]
+      },
+      {
+        "title": "protocol explanation",
+        "line": 56,
+        "disposition": "KEEP",
+        "scenarios": [
+          "conflicting deployment protocols"
+        ]
+      },
+      {
+        "title": "discovery-source boundaries",
+        "line": 63,
+        "disposition": "KEEP",
+        "scenarios": [
+          "diagnostics requested"
+        ]
+      },
+      {
+        "title": "degraded enrichment",
+        "line": 70,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "models.dev unavailable",
+          "canonical registry unavailable"
+        ]
+      },
+      {
+        "title": "cache observability",
+        "line": 81,
+        "disposition": "KEEP",
+        "scenarios": [
+          "restored snapshot"
+        ]
+      },
+      {
+        "title": "sensitive-data boundary",
+        "line": 88,
+        "disposition": "KEEP",
+        "scenarios": [
+          "diagnostic serialization"
+        ]
+      }
+    ],
+    "scenarioCount": 16,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/discovery-quality/spec.md",
+    "sha256": "9f3ae870ec03afc486b0126d287414dbe9f4da9ce490328a6f67ffc48c4c9870",
+    "requirements": [
+      {
+        "title": "conservative canonical model identity",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "formatted upstream identity",
+          "semantic suffix is a different identity"
+        ]
+      },
+      {
+        "title": "provider disambiguation",
+        "line": 19,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "ambiguous reseller identity",
+          "canonical identity does not choose a serving record"
+        ]
+      },
+      {
+        "title": "reasoning resolution",
+        "line": 30,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "reasoning sources disagree",
+          "enforced reasoning constraint"
+        ]
+      },
+      {
+        "title": "token-limit semantics",
+        "line": 41,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "total context differs from input limit",
+          "LiteLLM input differs from canonical input",
+          "Missing canonical input stays unknown"
+        ]
+      },
+      {
+        "title": "deterministic metadata precedence",
+        "line": 56,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "deployment capability and pricing conflict"
+        ]
+      },
+      {
+        "title": "protocol capability visibility",
+        "line": 63,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Chat Completions and Responses are both supported",
+          "protocol evidence is missing"
+        ]
+      },
+      {
+        "title": "unknown-model fallback",
+        "line": 74,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "private model has no enrichment record"
+        ]
+      },
+      {
+        "title": "discovery-quality provenance",
+        "line": 81,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "quality diagnostics requested"
+        ]
+      },
+      {
+        "title": "operational limits are explicit",
+        "line": 88,
+        "disposition": "KEEP",
+        "scenarios": [
+          "private model has no token-limit metadata"
+        ]
+      },
+      {
+        "title": "record-level selection determinism",
+        "line": 95,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "equivalent serving records ignore record order",
+          "material record conflicts fail closed on every order",
+          "conflicting original records never fall through to a reseller",
+          "relation-only candidates never resolve the SKU"
+        ]
+      },
+      {
+        "title": "runtime constraints never conflict with serving metadata",
+        "line": 114,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "fallback serving limit narrowed by an enforced cap",
+          "descriptive disagreement with fallback serving still conflicts"
+        ]
+      }
+    ],
+    "scenarioCount": 21,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/discovery-resilience/spec.md",
+    "sha256": "574c57c6f9e8a9916b97a667cdbd93113e950841767d8110b6f25cd764690353",
+    "requirements": [
+      {
+        "title": "Evidence provenance and source authority",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Provenance is recorded per evidence item",
+          "Intrinsic truth is authoritative once identity is resolved",
+          "Unproven provider records carry no authority",
+          "Simulated model names never decide authority"
+        ]
+      },
+      {
+        "title": "Deployment constraints are separate from intrinsic facts",
+        "line": 27,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Runtime constraint narrows the effective configuration",
+          "Descriptive declaration does not become a hard cap",
+          "Dimensions are never mixed",
+          "Unpromoted configured keys never narrow"
+        ]
+      },
+      {
+        "title": "Resolved discrepancy versus unresolved conflict",
+        "line": 46,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Resolved discrepancy keeps the model publishable",
+          "Unresolved conflict withholds the model",
+          "Discrepancy is not incompleteness"
+        ]
+      },
+      {
+        "title": "Trusted Last Known Good reuse",
+        "line": 61,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Outage with a valid snapshot keeps the model available",
+          "No valid snapshot means withheld",
+          "Recovery replaces the snapshot with fresh facts",
+          "Removed model is not resurrected",
+          "Identity or provider change invalidates the entry",
+          "Provider-only catalog does not block a valid restore"
+        ]
+      },
+      {
+        "title": "Per-model withholding reasons",
+        "line": 88,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Reasons are explicit and additive",
+          "Failure is isolated per model"
+        ]
+      },
+      {
+        "title": "Partial and unusable catalog facts",
+        "line": 99,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Partial availability",
+          "Unusable catalog"
+        ]
+      },
+      {
+        "title": "Regression and recovery detection",
+        "line": 110,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Regression is identified",
+          "Recovery needs no user approval"
+        ]
+      },
+      {
+        "title": "Notification acknowledgement",
+        "line": 121,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Unchanged problem set does not repeat",
+          "Improvement stays quiet, recovery clears",
+          "Regression outranks a first-time gap",
+          "Acknowledgement never changes publication",
+          "Suppression survives a host restart",
+          "A non-interruptive first observation stores nothing",
+          "Material growth after a restart re-notifies",
+          "Regression after a restart re-notifies",
+          "An unusable catalog notifies once, not every round",
+          "Unreadable memory is inert"
+        ]
+      }
+    ],
+    "scenarioCount": 33,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/discovery-snapshot/spec.md",
+    "sha256": "e28d7c7b998f9d09c91366d2eef17c08b5b766cd88f37c2e644aab0af7975621",
+    "requirements": [
+      {
+        "title": "versioned snapshot",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "snapshot creation"
+        ]
+      },
+      {
+        "title": "endpoint-bound compatibility",
+        "line": 15,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "changed endpoint or credential",
+          "sensitive input"
+        ]
+      },
+      {
+        "title": "defensive restore",
+        "line": 26,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "model content changed after persistence"
+        ]
+      },
+      {
+        "title": "drift comparison",
+        "line": 33,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "compatibility drift",
+          "metadata-only update"
+        ]
+      },
+      {
+        "title": "host independence",
+        "line": 44,
+        "disposition": "KEEP",
+        "scenarios": [
+          "adapter persistence"
+        ]
+      },
+      {
+        "title": "explicit endpoint identity isolation",
+        "line": 51,
+        "disposition": "KEEP",
+        "scenarios": [
+          "otherwise identical explicit endpoints",
+          "legacy caller omits endpoint identity"
+        ]
+      },
+      {
+        "title": "endpoint identifier syntax",
+        "line": 62,
+        "disposition": "KEEP",
+        "scenarios": [
+          "valid endpoint identifier",
+          "invalid endpoint identifier"
+        ]
+      }
+    ],
+    "scenarioCount": 11,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/modelsdev-catalog/spec.md",
+    "sha256": "6f392c208cef7a4977e87f8170e57105fad220511cc30070b068c03414c43480",
+    "requirements": [
+      {
+        "title": "Catalog input contract",
+        "line": 9,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Complete catalog snapshot",
+          "Future top-level keys are ignored",
+          "Legacy provider-only payload fails closed",
+          "Unusable catalog value",
+          "Models-only value is unavailable"
+        ]
+      },
+      {
+        "title": "Wire-ID parsing carries no authority",
+        "line": 32,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Adapter segment is parse metadata only",
+          "Qualified value without adapter evidence only tries the full form",
+          "Reseller route resolves identity but not serving",
+          "Default adapter is not a serving proof"
+        ]
+      },
+      {
+        "title": "Canonical identity resolution",
+        "line": 51,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Unique bare id proves the canonical identity",
+          "Duplicate bare id fails closed",
+          "Qualified route proves the identity",
+          "base_model alias decides identity",
+          "Canonical and provider relation contradict",
+          "No heuristic identity"
+        ]
+      },
+      {
+        "title": "Fact classes are resolved separately",
+        "line": 78,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "First-party serving override is not intrinsic",
+          "Serving-only fields never come from the registry"
+        ]
+      },
+      {
+        "title": "Serving provider proof",
+        "line": 89,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Declared serving provider supplies overrides",
+          "Variant records are never chosen by relation",
+          "Relation-only record under a declared provider is unresolved",
+          "Relation-only records never prove identity without a lookup-key match",
+          "Candidate matched through the lookup key resolves the serving record and may prove identity",
+          "Declared provider absent from the catalog",
+          "Declared provider present without an exact record is unresolved, not unmatched",
+          "Gateway adapter does not prove serving"
+        ]
+      },
+      {
+        "title": "Unproven provider records never supply publication facts",
+        "line": 124,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Canonical model exists, reseller is ignored",
+          "Unregistered model with a same-name reseller record",
+          "Unregistered model with complete LiteLLM declarations",
+          "Unregistered model with a declared serving record"
+        ]
+      },
+      {
+        "title": "Field resolution matrix",
+        "line": 143,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Serving view is final and omit-aware",
+          "Canonical field missing falls to LiteLLM declaration",
+          "No dimension substitution for context",
+          "Modality list is a complete set",
+          "Absent modalities object is unknown",
+          "MiniMax-M3 without serving proof",
+          "MiniMax-M3 served by MiniMax",
+          "MiniMax-M3 served by a third party",
+          "Configured input key does not narrow before promotion",
+          "Input capacity is never compared with total context"
+        ]
+      },
+      {
+        "title": "Runtime enforcement matrix",
+        "line": 186,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "No litellm_params key narrows a value",
+          "Non-positive operator-configuration limits never gate publication",
+          "Operator-configured effort is diagnostic only",
+          "Unlisted keys are unused",
+          "Promotion requires evidence",
+          "Router-internal model_info gates are not deployment enforcement"
+        ]
+      },
+      {
+        "title": "Reasoning controls authority",
+        "line": 213,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Unproven serving has no selectable levels",
+          "Proven serving levels",
+          "Configured effort is diagnostic only",
+          "Forwarded parameter is not a level set",
+          "Supported reasoning without levels"
+        ]
+      },
+      {
+        "title": "Price authority",
+        "line": 236,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Unproven serving keeps price unknown",
+          "Declared serving price fills only undeclared components",
+          "Relation-only record supplies no price"
+        ]
+      },
+      {
+        "title": "Single resolution result",
+        "line": 251,
+        "disposition": "MODIFIED",
+        "scenarios": [
+          "Gate and configuration cannot diverge",
+          "No cross-provider field inheritance"
+        ]
+      },
+      {
+        "title": "Last Known Good schema 8 proof composition",
+        "line": 262,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Canonical entry survives outage",
+          "Group-wide deployment change rejects the entry",
+          "Mixed composition is re-proven per component",
+          "Serving declaration removed",
+          "Empty enforcement fingerprint ignores configured keys",
+          "Unreferenced provider record change",
+          "Schema 7 entry fails closed",
+          "LiteLLM-only and serving-only models capture legally",
+          "Inconsistent proof kind fails closed"
+        ]
+      },
+      {
+        "title": "Catalogue-wide regression evidence",
+        "line": 301,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Offline catalogue assertions"
+        ]
+      }
+    ],
+    "scenarioCount": 65,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/openspec-closure-gate/spec.md",
+    "sha256": "3b25c3e07a05bc21dbb6f25a84bf201d3a9ae2ec40f8ff21d854fec023526627",
+    "requirements": [
+      {
+        "title": "archived specification deltas SHALL be represented canonically",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "missing added capability is rejected",
+          "stale modified requirement is rejected",
+          "removed requirement is absent",
+          "removed requirement remains",
+          "similar titles are independent",
+          "explicit RENAMED operation establishes identity",
+          "explicit legacy compatibility alias establishes identity"
+        ]
+      },
+      {
+        "title": "archived requirement history SHALL be replayed as state transitions",
+        "line": 45,
+        "disposition": "KEEP",
+        "scenarios": [
+          "added then removed ends absent",
+          "modified then removed ends absent",
+          "removed then re-added ends present",
+          "renamed chain ends at the final title",
+          "unorderable renames fail closed",
+          "conflicting transitions inside one archive fail closed"
+        ]
+      },
+      {
+        "title": "archive chronology SHALL be a partial order derived from Git ancestry",
+        "line": 78,
+        "disposition": "KEEP",
+        "scenarios": [
+          "same introduction commit is a tie",
+          "same introduction commit is refined by the committed fixture",
+          "same commit with conflicting states fails ambiguous",
+          "incomparable histories with conflicting states fail ambiguous",
+          "fixture contradicting Git provenance fails the gate",
+          "Git-provable archives need no fixture entry",
+          "ancestry resolves a reversed lexical order",
+          "ambiguous archived requirement history fails closed"
+        ]
+      },
+      {
+        "title": "malformed archived deltas SHALL fail closed",
+        "line": 120,
+        "disposition": "KEEP",
+        "scenarios": [
+          "malformed archive is checked"
+        ]
+      },
+      {
+        "title": "historical archive compatibility SHALL be explicit",
+        "line": 127,
+        "disposition": "KEEP",
+        "scenarios": [
+          "existing historical archives are checked",
+          "chronology ties are not reported as chronology resolution"
+        ]
+      },
+      {
+        "title": "closure workflows SHALL provide complete Git history",
+        "line": 140,
+        "disposition": "KEEP",
+        "scenarios": [
+          "release closure verification runs with full history",
+          "workflow history requirements are guarded"
+        ]
+      }
+    ],
+    "scenarioCount": 26,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/project-governance/spec.md",
+    "sha256": "620b0d5f23106354e74393f4138f1297b8313d32264eba67839734629eb014c2",
+    "requirements": [
+      {
+        "title": "completed changes cannot remain active",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "all tasks are checked"
+        ]
+      }
+    ],
+    "scenarioCount": 1,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/publication/spec.md",
+    "sha256": "ab226434d0ef2efefc4f773bec0aea305787dbe60515ac1a09632dcf84e287a9",
+    "requirements": [
+      {
+        "title": "Publication completeness policy",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Complete trustworthy metadata is publishable",
+          "Missing context blocks normal publication",
+          "Missing output limit blocks normal publication",
+          "Zero context is illegal, not a default",
+          "Zero output is illegal, not a default",
+          "Explicit model-level output <= 0 is illegal, not missing",
+          "Unknown key capability blocks normal publication",
+          "Illegal metadata is rejected",
+          "Publication never depends on user confirmation",
+          "Per-model isolation of failure",
+          "fallback conflict blocks publication"
+        ]
+      },
+      {
+        "title": "False versus unknown",
+        "line": 57,
+        "disposition": "MODIFIED",
+        "scenarios": [
+          "Missing tool declaration stays unknown",
+          "Explicit negative evidence means unsupported"
+        ]
+      },
+      {
+        "title": "Reasoning decoupled from levels",
+        "line": 68,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Reasoning without levels is legal",
+          "Reasoning with levels",
+          "No reasoning",
+          "Levels never flip support"
+        ]
+      },
+      {
+        "title": "Deterministic source resolution and inheritance",
+        "line": 87,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Registry entry supplies intrinsic facts",
+          "Original provider wins",
+          "Ordered capability fallback",
+          "Ambiguity stays observable",
+          "Deterministic inheritance carries provenance",
+          "No heuristic guessing",
+          "Family-name provider matches stay ambiguous",
+          "Deployment group identities must be consistent",
+          "Equivalent relations reconcile a group",
+          "Provider-qualified routed identities keep their namespace",
+          "Identity equivalence reconciliation is order-independent",
+          "Group identity requires evidence for every deployment",
+          "All deployments identity-less stays blocked",
+          "Deployment order cannot change identity completeness"
+        ]
+      },
+      {
+        "title": "Group-wide limit evidence",
+        "line": 146,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Agreeing deployment limits are known",
+          "Partially declared limits stay unknown",
+          "Disagreeing deployment limits are a conflict",
+          "Model-level metadata fills only a fully undeclared field",
+          "Authoritative model-level value resolves a descriptive difference",
+          "A proven endpoint runtime constraint narrows the effective value",
+          "context, input, and output are distinct scalar dimensions"
+        ]
+      },
+      {
+        "title": "Per-dimension modality evidence",
+        "line": 177,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Sparse false does not prove the remaining set",
+          "Documented complete set is known",
+          "Declared dimension contradicting the model set is a conflict",
+          "Declared dimension contradicting the model set is a resolved discrepancy",
+          "Cross-deployment modality disagreement stays unresolved"
+        ]
+      },
+      {
+        "title": "Modality completeness",
+        "line": 200,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Authoritative intrinsic list completes the direction",
+          "Explicit text-only is known",
+          "Missing modality evidence blocks publication",
+          "Explicit image is preserved without name inference"
+        ]
+      },
+      {
+        "title": "Tri-state multi-deployment aggregation",
+        "line": 219,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Agreement stays known",
+          "Missing deployment evidence is not dropped",
+          "Authority resolves a descriptive disagreement",
+          "Conflict stays unknown",
+          "Cross-deployment conflict outranks an authoritative verdict"
+        ]
+      },
+      {
+        "title": "LKG completeness revalidation",
+        "line": 242,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Forged complete limits with unknown capabilities are rejected",
+          "Captured facts must match the stored ModelSpec",
+          "New live fact conflicts with stored values",
+          "Descriptive discrepancy never invalidates",
+          "A changed runtime constraint fails closed",
+          "New live fact conflicts with stored values",
+          "LKG modality conflict inspects every deployment and ignores order",
+          "New trusted model-level limits conflict with LKG",
+          "Input capacity never contradicts total context",
+          "LKG provider-qualified identity survives metadata outage",
+          "LKG unqualified identity does not equal qualified identity without proof",
+          "LKG restore requires a provable live group identity",
+          "Same live fact does not invalidate",
+          "Illegal live metadata never hides behind LKG"
+        ]
+      },
+      {
+        "title": "Failure taxonomy without pseudo-complete publication",
+        "line": 301,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Network failure is observable",
+          "Retry recovery restores publication"
+        ]
+      },
+      {
+        "title": "Last Known Good without TTL",
+        "line": 312,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Valid LKG keeps publication",
+          "Old but stable LKG stays valid",
+          "Identity conflict invalidates LKG",
+          "Unproven serving record change does not invalidate",
+          "Newer trusted metadata wins",
+          "Only complete gate-passing specs become LKG",
+          "Capture cannot fail silently through drift",
+          "A removed model is never resurrected",
+          "Schema change invalidates LKG",
+          "LKG never restores a superseded fallback serving value",
+          "Unique-match-sourced LKG never substitutes for lost live metadata",
+          "Persisted authority grades an explicit provider without a canonical relation as fallback-serving",
+          "Persisted authority keeps authoritative entries restorable",
+          "Persisted evidence authority is validated as schema-critical",
+          "Operator configuration never fails an LKG entry closed"
+        ]
+      },
+      {
+        "title": "Configuration states and provenance",
+        "line": 375,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "States distinguish discovery from configuration",
+          "Resolved discrepancies and unresolved conflicts are first-class facts",
+          "Provenance explains key fields"
+        ]
+      }
+    ],
+    "scenarioCount": 86,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "litellm-discovery-core",
+    "file": "openspec/specs/refresh-coordinator/spec.md",
+    "sha256": "bb00d1eb46ff23c85a966824493d6a1e7e423e09e8f4403418617954db50455f",
+    "requirements": [
+      {
+        "title": "singleflight",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "concurrent refreshes"
+        ]
+      },
+      {
+        "title": "short freshness",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "cache hit",
+          "forced refresh"
+        ]
+      },
+      {
+        "title": "retry backoff",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "repeated failures"
+        ]
+      },
+      {
+        "title": "last-known-good",
+        "line": 33,
+        "disposition": "KEEP",
+        "scenarios": [
+          "stale fallback",
+          "no prior success"
+        ]
+      },
+      {
+        "title": "caller-controlled failure policy",
+        "line": 44,
+        "disposition": "KEEP",
+        "scenarios": [
+          "clear"
+        ]
+      },
+      {
+        "title": "host independence",
+        "line": 51,
+        "disposition": "KEEP",
+        "scenarios": [
+          "host adapter ownership"
+        ]
+      }
+    ],
+    "scenarioCount": 8,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/build-provenance-validation/spec.md",
+    "sha256": "c077ebaf0c02afeff12b8d34212ae9297c1eb79c7e2456e75523460db8ba7b54",
+    "requirements": [
+      {
+        "title": "提交产物按 provenance 复验",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "提交产物过期",
+          "提交产物一致"
+        ]
+      },
+      {
+        "title": "core 缓存必须干净",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "缓存有未提交修改",
+          "缓存干净"
+        ]
+      },
+      {
+        "title": "更新构建与复验边界清晰",
+        "line": 36,
+        "disposition": "KEEP",
+        "scenarios": [
+          "main 后续前进"
+        ]
+      }
+    ],
+    "scenarioCount": 5,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/change-sync/spec.md",
+    "sha256": "76e1448cf886093961eae875ca202aab360b980a854f6fcc4fe9a033cfab77d6",
+    "requirements": [
+      {
+        "title": "刷新触发",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "管理员新增模型",
+          "管理员删除模型",
+          "取消刷新"
+        ]
+      },
+      {
+        "title": "宿主两阶段刷新语义",
+        "line": 23,
+        "disposition": "KEEP",
+        "scenarios": [
+          "重启后先回放再校正",
+          "空清单跨重启保持撤下"
+        ]
+      },
+      {
+        "title": "注册结果整体替换",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "模型集合变化"
+        ]
+      },
+      {
+        "title": "仅在内容变化时更新",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "无变化的轮询"
+        ]
+      },
+      {
+        "title": "LiteLLM 不可达时保留上次结果",
+        "line": 48,
+        "disposition": "KEEP",
+        "scenarios": [
+          "短暂网络中断"
+        ]
+      },
+      {
+        "title": "认证失败时撤下模型",
+        "line": 55,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Key 被吊销"
+        ]
+      },
+      {
+        "title": "models.dev 不可达时的降级",
+        "line": 62,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "models.dev 超时"
+        ]
+      },
+      {
+        "title": "首次发现完成前的状态",
+        "line": 69,
+        "disposition": "KEEP",
+        "scenarios": [
+          "启动时 LiteLLM 不可达"
+        ]
+      },
+      {
+        "title": "轮询生命周期",
+        "line": 76,
+        "disposition": "KEEP",
+        "scenarios": [
+          "/reload 后不重复轮询"
+        ]
+      }
+    ],
+    "scenarioCount": 12,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/codebase-memory/spec.md",
+    "sha256": "df03b9561d31bb12c8d1ad58f409d8d89a0952f807f1f312c5369a6a26e19c48",
+    "requirements": [
+      {
+        "title": "explicit indexing controls graph adoption",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-OPT-IN] unindexed child does not inherit parent graph"
+        ]
+      },
+      {
+        "title": "release snapshots bind immutable source identity",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-RELEASE] indexed release publishes a complete snapshot",
+          "[CBM-FAIL-CLOSED] invalid source or runtime prevents publication",
+          "[CBM-INTEGRITY] corrupted or mismatched snapshot is rejected",
+          "[CBM-DEGRADED] non-success native indexing prevents export"
+        ]
+      },
+      {
+        "title": "local release snapshots preserve working checkout",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SYNC] startup sync handles released and working commits independently"
+        ]
+      },
+      {
+        "title": "merged main snapshots bind reviewed source",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-MAIN-PUBLISH] successful main CI publishes exact merge snapshot",
+          "[CBM-MAIN-IMMUTABLE] retries preserve the original snapshot"
+        ]
+      },
+      {
+        "title": "every new task synchronizes code and index",
+        "line": 52,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-TASK-START] clean checkout starts with current remote source and index",
+          "[CBM-PRESERVE-WORK] unfinished work blocks a new task",
+          "[CBM-TASK-PENDING] unavailable or invalid remote index is not ready"
+        ]
+      },
+      {
+        "title": "merge completion includes index agreement",
+        "line": 67,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-TASK-FINISH] merging client verifies identical local and remote snapshot"
+        ]
+      },
+      {
+        "title": "task readiness verifies final remote main",
+        "line": 74,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-RETARGET] main advances while prepare or finish waits",
+          "[CBM-TOTAL-BUDGET] repeated target changes cannot restart timeout",
+          "[CBM-WORKSPACE-BUDGET] workspace budget expires before the next selected root",
+          "[CBM-NOT-READY] invalid or unavailable service blocks readiness"
+        ]
+      },
+      {
+        "title": "synchronization protects actual symbolic Git state",
+        "line": 93,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-CONCURRENT-CHECKOUT] same SHA branch or source changes during download",
+          "[CBM-COMMON-MUTEX] linked worktrees prepare concurrently",
+          "[CBM-PRESERVE-WORK] existing unfinished source remains intact",
+          "[CBM-QUEUED-LOCK] a queued second client accepts the advanced checkout",
+          "[CBM-QUEUED-USER-CHANGE] a queued client rejects concurrent user changes"
+        ]
+      },
+      {
+        "title": "publication scheduling isolates source commits",
+        "line": 116,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SHA-QUEUE] old CI arrives after latest main publisher is pending",
+          "[CBM-PUBLISH-RACE] distinct publishers append concurrently"
+        ]
+      },
+      {
+        "title": "main snapshots use isolated clean source provenance",
+        "line": 127,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-DIRTY-BUILD] source changes without a commit during generation",
+          "[CBM-NATIVE-BASIS] dirty native metadata has matching hashes"
+        ]
+      },
+      {
+        "title": "shared cache installation validates competing winners",
+        "line": 138,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PARALLEL-CACHE] independent checkouts share one valid cache target",
+          "[CBM-CACHE-RETRY] private staging rename is temporarily denied",
+          "[CBM-CACHE-RACE] incomplete or foreign winning cache exists"
+        ]
+      },
+      {
+        "title": "MCP readiness gate resolves every project identity",
+        "line": 153,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PROJECT-GATE] aliases paths and either compare target refer to a failed repository"
+        ]
+      },
+      {
+        "title": "selected workspace repositories cannot disappear on metadata errors",
+        "line": 160,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SELECTED-METADATA] selected child metadata is corrupt or foreign",
+          "[CBM-MISSING-METADATA] selected child is missing its working artifact",
+          "[CBM-ALL-RECEIPTS] expected child receipt is missing duplicated or forged"
+        ]
+      },
+      {
+        "title": "discovered root metadata failures gate the session",
+        "line": 175,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-ROOTS-DISCOVERY] corrupted discovered metadata blocks queries without forwarding"
+        ]
+      },
+      {
+        "title": "startup preparation never blocks the client connection",
+        "line": 182,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-HANDSHAKE-LATENCY] handshake answers within the connection window"
+        ]
+      },
+      {
+        "title": "preparation outcomes are isolated per root and round",
+        "line": 189,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PREPARE-ROUNDS] late background success cannot clear a newer explicit failure"
+        ]
+      },
+      {
+        "title": "host disconnect cancels background preparation and every session",
+        "line": 196,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-LIFECYCLE-EARLY] early EOF does not leak a late watcher session",
+          "[CBM-LIFECYCLE-NORMAL] normal EOF closes established watcher sessions"
+        ]
+      },
+      {
+        "title": "the protocol process never performs synchronous identity resolution",
+        "line": 207,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-STARTUP-ISOLATION] slow identity scan keeps the handshake and the gate responsive"
+        ]
+      },
+      {
+        "title": "queued lock regression blocks the implementation's own pre-lock read",
+        "line": 214,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-QUEUED-LOCK] a queued second client accepts the advanced checkout"
+        ]
+      }
+    ],
+    "scenarioCount": 39,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/core-compatibility/spec.md",
+    "sha256": "d1e4ced479092b46bf517e795ef5b32144dd9afe350f452a0ed7bae05d910c9e",
+    "requirements": [
+      {
+        "title": "Pi compatibility entrypoint",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "valid Core SHA",
+          "invalid Core SHA"
+        ]
+      }
+    ],
+    "scenarioCount": 2,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/diagnostics/spec.md",
+    "sha256": "65bfd5854e3970a45f27fb3c8b63d446ee9b03704f56372a941910f4f9469b6d",
+    "requirements": [
+      {
+        "title": "host-local absolute time",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "host is UTC+08:00",
+          "retry time is shown"
+        ]
+      }
+    ],
+    "scenarioCount": 2,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/discovery-quality-integration/spec.md",
+    "sha256": "ddb580114030ed380337251f755bc8b4b12b19df272835ab3854bea2fc8c3e39",
+    "requirements": [
+      {
+        "title": "Pi consumes Core token-limit semantics",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Core total context differs from LiteLLM max input"
+        ]
+      },
+      {
+        "title": "Pi receives operational limits from capability fallback",
+        "line": 15,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "hy4-preview original provider record is unavailable"
+        ]
+      },
+      {
+        "title": "Pi does not publish non-operational token limits",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "context limit is unknown",
+          "output limit is unknown",
+          "operational limits are valid"
+        ]
+      }
+    ],
+    "scenarioCount": 5,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/discovery-resilience-integration/spec.md",
+    "sha256": "60fdf99a8964e750f47fcb0638e2ba43a841670f460b3035eea376de2a034e09",
+    "requirements": [
+      {
+        "title": "Adapter consumes Core publication facts without re-deriving policy",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Conflict-blocked groups stay blocked",
+          "Published set is exactly Core's publishable set",
+          "Provider selection provenance is preserved"
+        ]
+      },
+      {
+        "title": "Partial catalog availability is published immediately",
+        "line": 23,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Partially available catalog",
+          "Withheld models never enter the host or the snapshot"
+        ]
+      },
+      {
+        "title": "Withheld availability changes are surfaced appropriately",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Regression is announced",
+          "Unusable catalog is announced",
+          "First-time gap stays non-interruptive",
+          "Repeated unchanged problems do not spam",
+          "Suppression survives a host restart",
+          "Material change after a restart is announced",
+          "Persisted memory never changes publication"
+        ]
+      },
+      {
+        "title": "Withdrawn models are never silently substituted",
+        "line": 65,
+        "disposition": "KEEP",
+        "scenarios": [
+          "No silent model substitution",
+          "Acknowledgement only suppresses notifications"
+        ]
+      },
+      {
+        "title": "Trusted LKG is presented as verified configuration",
+        "line": 76,
+        "disposition": "KEEP",
+        "scenarios": [
+          "LKG provenance is visible"
+        ]
+      }
+    ],
+    "scenarioCount": 15,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/discovery-snapshot/spec.md",
+    "sha256": "c5b34a8598119269051fe37b3fb8fc4e46344b962155d6fc68403296b08783a7",
+    "requirements": [
+      {
+        "title": "endpoint-compatible restore",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "compatible restore",
+          "credential-bound incompatible restore",
+          "restore phase without credential"
+        ]
+      },
+      {
+        "title": "snapshot persistence",
+        "line": 23,
+        "disposition": "KEEP",
+        "scenarios": [
+          "first success",
+          "endpoint changes with same models"
+        ]
+      },
+      {
+        "title": "drift observation",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "compatibility drift"
+        ]
+      },
+      {
+        "title": "host-owned persistence",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "persistence transport"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/endpoint-management/spec.md",
+    "sha256": "ffa09c58b3b7771cce9acce259178327d0fbc8fae491f4452f00909a3cb2eda6",
+    "requirements": [
+      {
+        "title": "Unified endpoint management entry",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[HOST-UI] Interaction uses real host dialogs"
+        ]
+      },
+      {
+        "title": "Endpoint listing",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[LIST-EMPTY] No endpoint configured",
+          "[LIST-SINGLE] Single endpoint",
+          "[LIST-MULTI] Mixed active and credential states",
+          "[LIST-EXTERNAL] Manual configuration change is visible",
+          "[LIST-LEGACY-GHOST] No ghost default without a legacy address"
+        ]
+      },
+      {
+        "title": "Add endpoint",
+        "line": 44,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[ADD-OK] Valid endpoint is added",
+          "[ADD-DUP] Duplicate ID",
+          "[ADD-BAD-ID] Invalid ID",
+          "[ADD-BAD-URL] Invalid Base URL",
+          "[ADD-INACTIVE] Default inactive and unconnected",
+          "[ADD-PRESERVE] Existing endpoints are untouched",
+          "[ADD-LEGACY] Legacy single-endpoint configuration is migrated with confirmation",
+          "[ADD-ROLLBACK] A failed Add keeps the activation consistent with the committed configuration"
+        ]
+      },
+      {
+        "title": "Edit endpoint",
+        "line": 90,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[EDIT-URL] Base URL is changed",
+          "[EDIT-ID-READONLY] ID cannot be edited",
+          "[EDIT-PRESERVE] Unmanaged fields are preserved",
+          "[EDIT-ATOMIC] Failed write leaves no partial result",
+          "[EDIT-ISOLATED] Other endpoints are unaffected",
+          "[LEGACY-MIGRATE] Legacy default is fully manageable through migration"
+        ]
+      },
+      {
+        "title": "Credential management",
+        "line": 117,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CRED-CONNECT] Connect a key",
+          "[CRED-REPLACE] Replace a key",
+          "[CRED-DISCONNECT] Disconnect removes only that credential",
+          "[CRED-NO-ECHO] Keys are never echoed",
+          "[CRED-ACTIVATION-INDEPENDENT] Credential changes do not alter activation",
+          "[CRED-LOGIN-CONSISTENT] /login and the management UI share one credential state",
+          "[CRED-INVALID-KEY] Invalid key input is rejected",
+          "[CRED-CORRUPT-STORE] Unparseable credential store is not overwritten"
+        ]
+      },
+      {
+        "title": "Activation management",
+        "line": 161,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[ACT-TOGGLE] Activate and deactivate",
+          "[ACT-ZERO] Zero active endpoints",
+          "[ACT-CRED-INDEPENDENT] Deactivation keeps credential and snapshot",
+          "[ACT-IMMEDIATE] Provider exposure follows activation at once",
+          "[ACT-STABLE-REGISTRATION] Refresh preserves unchanged providers and applies changed Base URLs"
+        ]
+      },
+      {
+        "title": "Delete endpoint",
+        "line": 184,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DEL-CONFIRM] Confirmation is required",
+          "[DEL-CANCEL] Cancelled delete changes nothing",
+          "[DEL-CLEANUP] Confirmed delete cleans all persisted state",
+          "[DEL-ISOLATED] Other endpoints survive",
+          "[DEL-NO-GHOST] Re-adding a deleted id starts clean",
+          "[DEL-PARTIAL-FAILURE] Interrupted delete is retryable"
+        ]
+      },
+      {
+        "title": "Canonical configuration safety",
+        "line": 219,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CFG-NON-DESTRUCTIVE] Unknown and global fields survive",
+          "[CFG-PARSE-FAIL] Unparseable configuration is not overwritten",
+          "[CFG-CONFLICT] Concurrent external edit is detected",
+          "[CFG-LOCK] Stale lock does not block forever"
+        ]
+      },
+      {
+        "title": "Host-owned file permission preservation",
+        "line": 238,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[HOST-PERM] Existing host files keep their permissions"
+        ]
+      }
+    ],
+    "scenarioCount": 44,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/endpoint-state-consistency/spec.md",
+    "sha256": "6b12db5bf8279c6f5b688584804036487c29a0816e491eb6124272d0fd9d9d32",
+    "requirements": [
+      {
+        "title": "Canonical endpoint state model",
+        "line": 9,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[STATE-DESIRED-ENABLED-INVALID] Enabled endpoint with invalid configuration",
+          "[STATE-DISABLED-INVALID] Disabled endpoint with invalid configuration",
+          "[STATE-ENABLED-NEEDS-AUTH] Enabled endpoint without a credential",
+          "[STATE-ENABLED-NOT-APPLIED] Enabled endpoint whose runtime apply has not yet succeeded",
+          "[STATE-ENABLED-ERROR] Enabled endpoint whose last apply failed",
+          "[STATE-ENABLED-ACTIVE] Enabled, valid, authenticated endpoint with a successful apply",
+          "[STATE-DISABLED] Plain disabled endpoint"
+        ]
+      },
+      {
+        "title": "Validation uses one rule end-to-end",
+        "line": 58,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[VALIDATION-CONSISTENCY] A URL accepted in the Add dialog is acceptable to runtime apply",
+          "[VALIDATION-INVALID-PRESERVED] Invalid endpoint stays in the registry"
+        ]
+      },
+      {
+        "title": "Credential state is not \"connected\"",
+        "line": 73,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CRED-STORED-LABEL] Stored key is labelled \"saved\", not \"connected\"",
+          "[CRED-MISSING-IS-NOT-INVALID] Missing credential is not an invalid configuration"
+        ]
+      },
+      {
+        "title": "`/models` only reflects actually applied runtime models",
+        "line": 88,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[MODELS-HIDE-DISABLED] Disabled endpoint's models disappear from `/models`",
+          "[MODELS-HIDE-UNAPPLIED] Apply-failed endpoint's models disappear from `/models`",
+          "[MODELS-HIDE-INVALID] Invalid endpoint never publishes models",
+          "[MODELS-SNAPSHOT-GATE] Persisted snapshot is gated by the same three dimensions"
+        ]
+      },
+      {
+        "title": "Apply-failure does not silently revert desired state",
+        "line": 114,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DESIRED-PERSISTED-ENABLED] Persisted desired state survives apply failure",
+          "[DESIRED-NO-SILENT-ROLLBACK] Apply failure never reports fake success"
+        ]
+      },
+      {
+        "title": "Manual retry",
+        "line": 130,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[RETRY-SUCCESS] Retry reconciles to Active",
+          "[RETRY-NO-OP-FOR-DISABLED] Retry is not offered for disabled or invalid endpoints"
+        ]
+      },
+      {
+        "title": "Diagnostics endpoint detail never degrades to placeholder",
+        "line": 145,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DIAG-DETAIL-DISABLED] Disabled endpoint has full detail",
+          "[DIAG-DETAIL-INVALID] Invalid endpoint has full detail",
+          "[DIAG-DETAIL-NEEDS-AUTH] Enabled without credential has full detail"
+        ]
+      },
+      {
+        "title": "State consistency across management, diagnostics and runtime",
+        "line": 164,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CONSISTENCY-ALL-VIEWS] All surfaces agree on the canonical state"
+        ]
+      },
+      {
+        "title": "No regression on existing behaviour",
+        "line": 173,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[REGRESSION-MODELS-ZERO-LIMIT] Models with non-positive limits are never published"
+        ]
+      }
+    ],
+    "scenarioCount": 24,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/litellm-connection/spec.md",
+    "sha256": "e7a37eef180973a2b9abff57237e905514c99187e27484446bd37c4e507fd3e8",
+    "requirements": [
+      {
+        "title": "API Key 经宿主认证链提供",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "经 /login 录入 Key",
+          "环境变量兜底",
+          "stored 凭据优先于环境变量",
+          "无任何 Key"
+        ]
+      },
+      {
+        "title": "LiteLLM 地址经全局配置文件或环境变量提供",
+        "line": 27,
+        "disposition": "KEEP",
+        "scenarios": [
+          "仅环境变量可用",
+          "地址缺失",
+          "配置文件字段非法",
+          "显式 endpoints 模式忽略 LITELLM_BASE_URL",
+          "legacy 字段与 endpoints 混用被拒绝"
+        ]
+      },
+      {
+        "title": "地址规范化",
+        "line": 50,
+        "disposition": "KEEP",
+        "scenarios": [
+          "带尾斜杠的地址",
+          "带 /v1 的地址",
+          "非 http(s) 地址",
+          "已采用的地址无法规范化"
+        ]
+      },
+      {
+        "title": "发现与调用使用同一把用户 Key",
+        "line": 69,
+        "disposition": "KEEP",
+        "scenarios": [
+          "团队 Key 只看到团队模型"
+        ]
+      },
+      {
+        "title": "凭据保密",
+        "line": 76,
+        "disposition": "KEEP",
+        "scenarios": [
+          "发现请求失败"
+        ]
+      },
+      {
+        "title": "Key 无效时撤下模型",
+        "line": 83,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Key 被吊销"
+        ]
+      }
+    ],
+    "scenarioCount": 16,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/model-audit-export/spec.md",
+    "sha256": "6069ac831d4737d583a4a7381b996cd307595ceefadab283dcc21cf2d33f2525",
+    "requirements": [
+      {
+        "title": "Pi audit export 命令",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[AUDIT-FULL] 完整 identity 与模型清单",
+          "[AUDIT-SAFE] 最小化数据"
+        ]
+      },
+      {
+        "title": "正式交付严格验证",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[VERIFY-STRICT] 缺失与非法被拒绝"
+        ]
+      },
+      {
+        "title": "可重复构建",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[REPRODUCIBLE-BUILD] clean rebuild 一致"
+        ]
+      },
+      {
+        "title": "Package 与 tarball 行为",
+        "line": 33,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[PACKAGE-IDENTITY] tarball 可验证"
+        ]
+      },
+      {
+        "title": "真实宿主 E2E",
+        "line": 40,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[REAL-HOST-E2E] 真实宿主闭环"
+        ]
+      },
+      {
+        "title": "Out of scope",
+        "line": 47,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[OUT-OF-SCOPE] 无时间戳与 Git 依赖"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/model-discovery/spec.md",
+    "sha256": "9ce2bcae8883c6fd33ebe234fe7468ef647aae061883376139600d0918fa5335",
+    "requirements": [
+      {
+        "title": "以真实部署作为模型清单",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "团队白名单中残留已删除的模型名"
+        ]
+      },
+      {
+        "title": "只注册对话模型",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "过滤非对话模型",
+          "mode 缺失的图像模型",
+          "mode 缺失的普通模型"
+        ]
+      },
+      {
+        "title": "多部署模型的能力合并",
+        "line": 30,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "两个部署上限不同"
+        ]
+      },
+      {
+        "title": "能力字段映射与数据源优先级",
+        "line": 37,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "LiteLLM 缺失输出上限",
+          "两个来源冲突",
+          "非文本图片模态被丢弃",
+          "模态信任名单"
+        ]
+      },
+      {
+        "title": "models.dev 记录选择",
+        "line": 56,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "原厂记录缺失时使用 Zen",
+          "大小写不同的原厂 id",
+          "多个转售记录且无原厂与 Zen 记录"
+        ]
+      },
+      {
+        "title": "推理档位来源",
+        "line": 71,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "effort 档位",
+          "budget 档位",
+          "只有 toggle"
+        ]
+      },
+      {
+        "title": "按价格阶梯截断上下文",
+        "line": 89,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "272k 阶梯",
+          "tiered_pricing 阶梯",
+          "用户关闭截断"
+        ]
+      },
+      {
+        "title": "显示名与价格",
+        "line": 104,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "显示名",
+          "价格换算"
+        ]
+      },
+      {
+        "title": "空结果与异常数据",
+        "line": 115,
+        "disposition": "KEEP",
+        "scenarios": [
+          "对话模型全部被删除",
+          "单个部署数据异常"
+        ]
+      },
+      {
+        "title": "models.dev catalog 来源与形状",
+        "line": 126,
+        "disposition": "KEEP",
+        "scenarios": [
+          "默认拉取 catalog 快照",
+          "catalog 不可用时降级不断"
+        ]
+      }
+    ],
+    "scenarioCount": 24,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/multi-endpoint-activation/spec.md",
+    "sha256": "8501297ef7c900e32a29aba476fc8c393e97b606d8f2262b296aa3c950254805",
+    "requirements": [
+      {
+        "title": "Global endpoint registry",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Multiple endpoints are configured"
+        ]
+      },
+      {
+        "title": "Legacy zero-migration behavior",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Existing user upgrades"
+        ]
+      },
+      {
+        "title": "Independent activation",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Endpoint is deactivated"
+        ]
+      },
+      {
+        "title": "Endpoint isolation",
+        "line": 29,
+        "disposition": "KEEP",
+        "scenarios": [
+          "One endpoint fails"
+        ]
+      }
+    ],
+    "scenarioCount": 4,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/openspec-closure-gate/spec.md",
+    "sha256": "48c860519c8701bb7b29dc8ac7e15fb90e96bc4bf67f276895acc8c2ba3253d1",
+    "requirements": [
+      {
+        "title": "archived specification deltas SHALL be represented canonically",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "missing added capability is rejected",
+          "stale modified requirement is rejected",
+          "removed requirement is absent",
+          "removed requirement remains",
+          "similar titles are independent",
+          "explicit RENAMED operation establishes identity",
+          "explicit legacy compatibility alias establishes identity"
+        ]
+      },
+      {
+        "title": "archived requirement history SHALL be replayed as state transitions",
+        "line": 45,
+        "disposition": "KEEP",
+        "scenarios": [
+          "added then removed ends absent",
+          "modified then removed ends absent",
+          "removed then re-added ends present",
+          "renamed chain ends at the final title",
+          "unorderable renames fail closed",
+          "conflicting transitions inside one archive fail closed"
+        ]
+      },
+      {
+        "title": "archive chronology SHALL be a partial order derived from Git ancestry",
+        "line": 78,
+        "disposition": "KEEP",
+        "scenarios": [
+          "same introduction commit is a tie",
+          "same commit with conflicting states fails ambiguous",
+          "incomparable histories with conflicting states fail ambiguous",
+          "ambiguous archived requirement history fails closed",
+          "ancestry resolves a reversed lexical order"
+        ]
+      },
+      {
+        "title": "malformed archived deltas SHALL fail closed",
+        "line": 107,
+        "disposition": "KEEP",
+        "scenarios": [
+          "malformed archive is checked"
+        ]
+      },
+      {
+        "title": "historical archive compatibility SHALL be explicit",
+        "line": 114,
+        "disposition": "KEEP",
+        "scenarios": [
+          "existing historical archives are checked",
+          "chronology ties are not reported as chronology resolution"
+        ]
+      },
+      {
+        "title": "closure workflows SHALL provide complete Git history",
+        "line": 127,
+        "disposition": "KEEP",
+        "scenarios": [
+          "release closure verification runs with full history",
+          "workflow history requirements are guarded"
+        ]
+      }
+    ],
+    "scenarioCount": 23,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/pi-integration/spec.md",
+    "sha256": "f6c7d44fc4ac746985d09e4947f6c50411af0b56f821dbd0351799acb0bac883",
+    "requirements": [
+      {
+        "title": "扩展工厂注册 provider",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "启动时已连接",
+          "未连接时加载"
+        ]
+      },
+      {
+        "title": "模型配置满足 pi 的字段要求",
+        "line": 19,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "完整字段",
+          "无推理档位的模型"
+        ]
+      },
+      {
+        "title": "本地与远程安装都能加载",
+        "line": 30,
+        "disposition": "KEEP",
+        "scenarios": [
+          "本地加载",
+          "远程安装加载"
+        ]
+      },
+      {
+        "title": "不干扰用户自有 models.json 配置",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "用户同时有手工配置"
+        ]
+      },
+      {
+        "title": "真实 Pi 宿主契约必须有永久 E2E 门禁",
+        "line": 48,
+        "disposition": "KEEP",
+        "scenarios": [
+          "固定 Git 候选由真实 Pi 加载",
+          "多 endpoint 在真实宿主中保持凭据与模型隔离",
+          "非 operational 模型不会进入真实宿主",
+          "activation 立即改变真实宿主可见模型"
+        ]
+      }
+    ],
+    "scenarioCount": 11,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/protocol-routing/spec.md",
+    "sha256": "fd7acacb7b40d29355156f93b4e66aad92ee76dcc5a7f80c141f99111fc25e7d",
+    "requirements": [
+      {
+        "title": "协议判定顺序",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "mode 为 responses",
+          "Anthropic 上游",
+          "经 Bedrock 部署的 Claude"
+        ]
+      },
+      {
+        "title": "多协议时 Responses 优先",
+        "line": 28,
+        "disposition": "KEEP",
+        "scenarios": [
+          "同时支持两种"
+        ]
+      },
+      {
+        "title": "supported_endpoints 优先于 mode",
+        "line": 35,
+        "disposition": "KEEP",
+        "scenarios": [
+          "冲突",
+          "声明中没有可用的对话端点"
+        ]
+      },
+      {
+        "title": "多部署协议不一致时回退",
+        "line": 46,
+        "disposition": "KEEP",
+        "scenarios": [
+          "一个部署走 Anthropic，一个走 OpenAI"
+        ]
+      },
+      {
+        "title": "用户覆盖",
+        "line": 53,
+        "disposition": "KEEP",
+        "scenarios": [
+          "覆盖为 chat"
+        ]
+      },
+      {
+        "title": "协议映射到 pi-ai 内置实现",
+        "line": 60,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Responses 调用",
+          "Messages 调用"
+        ]
+      }
+    ],
+    "scenarioCount": 10,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/provider-diagnostics/spec.md",
+    "sha256": "af769c62f4f998111d569bf79e57e6e5a95c9d1f6bf44612771b2c2d5ffac8c6",
+    "requirements": [
+      {
+        "title": "user-invokable diagnostics",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "run diagnostics after successful discovery"
+        ]
+      },
+      {
+        "title": "cache source visibility",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "startup restore"
+        ]
+      },
+      {
+        "title": "safe failure reporting",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "authentication failure"
+        ]
+      },
+      {
+        "title": "shared diagnostic semantics",
+        "line": 29,
+        "disposition": "KEEP",
+        "scenarios": [
+          "models.dev fallback"
+        ]
+      },
+      {
+        "title": "诊断展示 canonical 与 serving 事实",
+        "line": 36,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "serving 未证明的档位 unknown 附恢复提示",
+          "unresolved serving 给出可操作修复"
+        ]
+      }
+    ],
+    "scenarioCount": 6,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/publication/spec.md",
+    "sha256": "7ae30107bde3f9f18aa38fb7ac530bf18384d1241059d7bbce627faee3daeb5d",
+    "requirements": [
+      {
+        "title": "Publication partition governs registration",
+        "line": 12,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Complete models register normally",
+          "Incomplete models never disguise as normal",
+          "Operational guard stays as second layer",
+          "Repeated refreshes never force a withheld model in",
+          "DeepSeek official provider limits reach the Pi host config",
+          "Reseller fallback conflicts stay withheld",
+          "Fallback never rewrites the canonical identity"
+        ]
+      },
+      {
+        "title": "Reasoning follows the Core verdict",
+        "line": 43,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Toggle-style reasoning without levels",
+          "Confirmed non-reasoning model",
+          "Unknown reasoning blocks normal registration"
+        ]
+      },
+      {
+        "title": "Failures and LKG are visible and safe",
+        "line": 60,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Live failure with valid LKG",
+          "Live failure without valid LKG",
+          "Retry recovery",
+          "Descriptive discrepancy keeps the trusted snapshot"
+        ]
+      },
+      {
+        "title": "LKG 以 schema 8 同 resolution 派生",
+        "line": 85,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "seeding 产出 v8 条目",
+          "旧条目 fail closed 后重捕获"
+        ]
+      }
+    ],
+    "scenarioCount": 16,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/refresh-coordinator/spec.md",
+    "sha256": "9632dd09efd72fafd995dbd85a0a80cdbfc00b5b4457f48fc3a7c091f9cbbd2e",
+    "requirements": [
+      {
+        "title": "shared coordinator",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "provider lifetime"
+        ]
+      },
+      {
+        "title": "freshness and force",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "ordinary refresh within TTL",
+          "forced refresh"
+        ]
+      },
+      {
+        "title": "failure mapping",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "host cancellation",
+          "authentication failure",
+          "degradable failure after success"
+        ]
+      },
+      {
+        "title": "host lifecycle ownership",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "polling"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/release-governance/spec.md",
+    "sha256": "f63934ae6721a7554ebf8365d23f5a15fa0704c46bce80d1b3665376808b243d",
+    "requirements": [
+      {
+        "title": "release metadata stays aligned",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "repository release metadata is consistent"
+        ]
+      },
+      {
+        "title": "completed OpenSpec changes are archived",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "completed change remains active"
+        ]
+      },
+      {
+        "title": "tagged releases repeat the real Pi host gate",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "release tag is not host-compatible"
+        ]
+      },
+      {
+        "title": "main merge gate requires both CI and the real host E2E",
+        "line": 29,
+        "disposition": "KEEP",
+        "scenarios": [
+          "merge gate requires both checks",
+          "release candidate passes the real host gate before merging",
+          "governance drift fails the pipeline",
+          "other protections stay frozen"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/runtime-identity/spec.md",
+    "sha256": "a752b616b8a3643da1e88b75850c032ccd73cf03aaa49ac67a711e577dcd66c0",
+    "requirements": [
+      {
+        "title": "Runtime Identity 定义",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[IDENTITY-FIELDS] 三字段完整",
+          "[IDENTITY-NO-GIT] 无运行时 Git 与 cache 推断"
+        ]
+      },
+      {
+        "title": "Artifact digest 计算语义（与 OpenCode 一致）",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DIGEST-DETERMINISTIC] 输入顺序与路径归一",
+          "[SELF-EXCLUSION] 自排除无递归",
+          "[DIGEST-SENSITIVE] artifact 变化敏感"
+        ]
+      },
+      {
+        "title": "Canonical 来源",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CANONICAL-SINGLE] 三处同源"
+        ]
+      },
+      {
+        "title": "Diagnostics 短形式",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DIAG-SHORT] 短形式显示"
+        ]
+      },
+      {
+        "title": "Startup log 同源",
+        "line": 48,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[STARTUP-LOG] 启动记录同一 identity"
+        ]
+      }
+    ],
+    "scenarioCount": 8,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "pi-litellm-provider",
+    "file": "openspec/specs/shared-core-build/spec.md",
+    "sha256": "fe803163e342e255b25b46d82c54c10420756e95b5687536994e49ccc2ff089a",
+    "requirements": [
+      {
+        "title": "单次构建固定 core SHA",
+        "line": 9,
+        "disposition": "KEEP",
+        "scenarios": [
+          "main 更新后构建",
+          "复验已有产物"
+        ]
+      },
+      {
+        "title": "构建产物包含 core 且可追溯",
+        "line": 20,
+        "disposition": "KEEP",
+        "scenarios": [
+          "provenance 可查询",
+          "安装包完整"
+        ]
+      },
+      {
+        "title": "运行时无 core 获取依赖",
+        "line": 31,
+        "disposition": "KEEP",
+        "scenarios": [
+          "禁用 lifecycle scripts 安装",
+          "无平级仓库"
+        ]
+      },
+      {
+        "title": "core 逻辑单副本",
+        "line": 42,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "固定 fixtures 行为一致"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/change-sync/spec.md",
+    "sha256": "b61580783dadcf8fef25550c662e8663ba77c7c564a7e371e409af1b3832bbd6",
+    "requirements": [
+      {
+        "title": "刷新触发",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "管理员新增模型",
+          "管理员删除模型"
+        ]
+      },
+      {
+        "title": "仅在内容变化时重载",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "无变化的轮询"
+        ]
+      },
+      {
+        "title": "LiteLLM 不可达时保留上次结果",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "短暂网络中断"
+        ]
+      },
+      {
+        "title": "认证失败时撤下模型",
+        "line": 33,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Key 被吊销"
+        ]
+      },
+      {
+        "title": "models.dev 不可达时的降级",
+        "line": 40,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "models.dev 超时"
+        ]
+      },
+      {
+        "title": "首次发现完成前的状态",
+        "line": 47,
+        "disposition": "KEEP",
+        "scenarios": [
+          "启动时 LiteLLM 不可达"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/codebase-memory/spec.md",
+    "sha256": "fd9cb5121ea7fa80247fd985f943461c06bc55e1dbcfee53c3fd7ffc31a2a24a",
+    "requirements": [
+      {
+        "title": "explicit indexing controls graph adoption",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-OPT-IN] unindexed child does not inherit parent graph"
+        ]
+      },
+      {
+        "title": "release snapshots bind immutable source identity",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-RELEASE] indexed release publishes a complete snapshot",
+          "[CBM-FAIL-CLOSED] invalid source or runtime prevents publication",
+          "[CBM-INTEGRITY] corrupted or mismatched snapshot is rejected",
+          "[CBM-DEGRADED] non-success native indexing prevents export"
+        ]
+      },
+      {
+        "title": "local release snapshots preserve working checkout",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SYNC] startup sync handles released and working commits independently"
+        ]
+      },
+      {
+        "title": "merged main snapshots bind reviewed source",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-MAIN-PUBLISH] successful main CI publishes exact merge snapshot",
+          "[CBM-MAIN-IMMUTABLE] retries preserve the original snapshot"
+        ]
+      },
+      {
+        "title": "every new task synchronizes code and index",
+        "line": 52,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-TASK-START] clean checkout starts with current remote source and index",
+          "[CBM-PRESERVE-WORK] unfinished work blocks a new task",
+          "[CBM-TASK-PENDING] unavailable or invalid remote index is not ready"
+        ]
+      },
+      {
+        "title": "merge completion includes index agreement",
+        "line": 67,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-TASK-FINISH] merging client verifies identical local and remote snapshot"
+        ]
+      },
+      {
+        "title": "task readiness verifies final remote main",
+        "line": 74,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-RETARGET] main advances while prepare or finish waits",
+          "[CBM-TOTAL-BUDGET] repeated target changes cannot restart timeout",
+          "[CBM-WORKSPACE-BUDGET] workspace budget expires before the next selected root",
+          "[CBM-NOT-READY] invalid or unavailable service blocks readiness"
+        ]
+      },
+      {
+        "title": "synchronization protects actual symbolic Git state",
+        "line": 93,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-CONCURRENT-CHECKOUT] same SHA branch or source changes during download",
+          "[CBM-COMMON-MUTEX] linked worktrees prepare concurrently",
+          "[CBM-PRESERVE-WORK] existing unfinished source remains intact",
+          "[CBM-QUEUED-LOCK] a queued second client accepts the advanced checkout",
+          "[CBM-QUEUED-USER-CHANGE] a queued client rejects concurrent user changes"
+        ]
+      },
+      {
+        "title": "publication scheduling isolates source commits",
+        "line": 116,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SHA-QUEUE] old CI arrives after latest main publisher is pending",
+          "[CBM-PUBLISH-RACE] distinct publishers append concurrently"
+        ]
+      },
+      {
+        "title": "main snapshots use isolated clean source provenance",
+        "line": 127,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-DIRTY-BUILD] source changes without a commit during generation",
+          "[CBM-NATIVE-BASIS] dirty native metadata has matching hashes"
+        ]
+      },
+      {
+        "title": "shared cache installation validates competing winners",
+        "line": 138,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PARALLEL-CACHE] independent checkouts share one valid cache target",
+          "[CBM-CACHE-RETRY] private staging rename is temporarily denied",
+          "[CBM-CACHE-RACE] incomplete or foreign winning cache exists"
+        ]
+      },
+      {
+        "title": "MCP readiness gate resolves every project identity",
+        "line": 153,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PROJECT-GATE] aliases paths and either compare target refer to a failed repository"
+        ]
+      },
+      {
+        "title": "selected workspace repositories cannot disappear on metadata errors",
+        "line": 160,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-SELECTED-METADATA] selected child metadata is corrupt or foreign",
+          "[CBM-MISSING-METADATA] selected child is missing its working artifact",
+          "[CBM-ALL-RECEIPTS] expected child receipt is missing duplicated or forged"
+        ]
+      },
+      {
+        "title": "discovered root metadata failures gate the session",
+        "line": 175,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-ROOTS-DISCOVERY] corrupted discovered metadata blocks queries without forwarding"
+        ]
+      },
+      {
+        "title": "startup preparation never blocks the client connection",
+        "line": 182,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-HANDSHAKE-LATENCY] handshake answers within the connection window"
+        ]
+      },
+      {
+        "title": "preparation outcomes are isolated per root and round",
+        "line": 189,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-PREPARE-ROUNDS] late background success cannot clear a newer explicit failure"
+        ]
+      },
+      {
+        "title": "host disconnect cancels background preparation and every session",
+        "line": 196,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-LIFECYCLE-EARLY] early EOF does not leak a late watcher session",
+          "[CBM-LIFECYCLE-NORMAL] normal EOF closes established watcher sessions"
+        ]
+      },
+      {
+        "title": "the protocol process never performs synchronous identity resolution",
+        "line": 207,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-STARTUP-ISOLATION] slow identity scan keeps the handshake and the gate responsive"
+        ]
+      },
+      {
+        "title": "queued lock regression blocks the implementation's own pre-lock read",
+        "line": 214,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CBM-QUEUED-LOCK] a queued second client accepts the advanced checkout"
+        ]
+      }
+    ],
+    "scenarioCount": 39,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/conversation-feedback/spec.md",
+    "sha256": "a6b0037f176e7040250ba2445f0aa7e3aafeee6cf31802f807f8d8588ac01e7b",
+    "requirements": [
+      {
+        "title": "对话反馈开关",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "开关默认关闭",
+          "非法取值容错",
+          "RPC 导出不触发反馈"
+        ]
+      },
+      {
+        "title": "导出结果对话反馈",
+        "line": 23,
+        "disposition": "KEEP",
+        "scenarios": [
+          "开关开启后成功导出",
+          "反馈与报告快照一致",
+          "连接状态边界",
+          "开关开启后导出失败",
+          "反馈内容边界",
+          "TUI 双通道并存",
+          "反馈提交失败",
+          "模型生成失败不丢失反馈"
+        ]
+      }
+    ],
+    "scenarioCount": 11,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/core-compatibility/spec.md",
+    "sha256": "84ff84139d050b8733a8c96d04e91cac0c18201ab6148d8db7635cbe8e9496ab",
+    "requirements": [
+      {
+        "title": "OpenCode compatibility entrypoint",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "valid Core SHA",
+          "invalid Core SHA"
+        ]
+      }
+    ],
+    "scenarioCount": 2,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/diagnostics-ui/spec.md",
+    "sha256": "b2edb11ff232016fb197f5a7799e6b8ca71d85284368ec80157ddaee9eecbab3",
+    "requirements": [
+      {
+        "title": "host-local absolute time",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "host is UTC+08:00",
+          "retry time is shown"
+        ]
+      },
+      {
+        "title": "dismissible diagnostics card",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "user closes diagnostics"
+        ]
+      },
+      {
+        "title": "dismissible audit card",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "user closes audit result",
+          "a newer audit result arrives"
+        ]
+      },
+      {
+        "title": "diagnostics command output survives startup listener races",
+        "line": 37,
+        "disposition": "KEEP",
+        "scenarios": [
+          "diagnostics event is missed during startup"
+        ]
+      }
+    ],
+    "scenarioCount": 6,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/discovery-quality-integration/spec.md",
+    "sha256": "56a281e524fa430248b6cb3d9ee1e9b6d19081019aa75a3de63fc1887eb1cd11",
+    "requirements": [
+      {
+        "title": "OpenCode preserves Core token-limit semantics",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Core context and input limits differ"
+        ]
+      },
+      {
+        "title": "OpenCode receives operational limits from capability fallback",
+        "line": 15,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "hy4-preview original provider record is unavailable",
+          "fallback never rewrites the canonical identity"
+        ]
+      },
+      {
+        "title": "OpenCode does not publish non-operational token limits",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "context limit is unknown",
+          "output limit is unknown",
+          "operational limits are valid"
+        ]
+      }
+    ],
+    "scenarioCount": 6,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/discovery-resilience-integration/spec.md",
+    "sha256": "5d486f0d56fa24cf7e10f781717a8cbb536678d1067d74854d2e6a8a6242346a",
+    "requirements": [
+      {
+        "title": "Adapter consumes Core publication facts without re-deriving policy",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Read-only publication RPC",
+          "Conflict-blocked groups stay withheld"
+        ]
+      },
+      {
+        "title": "Partial catalog availability is published immediately",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Partially available catalog",
+          "Withheld models never enter the host or the snapshot"
+        ]
+      },
+      {
+        "title": "Withheld availability changes are surfaced appropriately",
+        "line": 30,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Regression is visible",
+          "Unusable catalog is visible",
+          "Repeated unchanged problems do not spam",
+          "Suppression survives a host restart",
+          "Material change after a restart is surfaced again",
+          "Persisted memory never changes publication"
+        ]
+      },
+      {
+        "title": "Withdrawn models are never silently substituted",
+        "line": 57,
+        "disposition": "KEEP",
+        "scenarios": [
+          "No silent model substitution",
+          "Acknowledgement only suppresses notifications"
+        ]
+      },
+      {
+        "title": "Trusted LKG is presented as verified configuration",
+        "line": 68,
+        "disposition": "KEEP",
+        "scenarios": [
+          "LKG provenance is visible"
+        ]
+      }
+    ],
+    "scenarioCount": 13,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/discovery-snapshot/spec.md",
+    "sha256": "cc42bf1a32200d800bc123e144f6eeae65946d8cf5362a37efff4f6f0cd364e0",
+    "requirements": [
+      {
+        "title": "durable compatible restore",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "warm startup",
+          "endpoint mismatch"
+        ]
+      },
+      {
+        "title": "neutral persisted models",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "package reconstruction"
+        ]
+      },
+      {
+        "title": "successful refresh persistence",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "unchanged endpoint and models"
+        ]
+      },
+      {
+        "title": "destructive failure invalidation",
+        "line": 33,
+        "disposition": "KEEP",
+        "scenarios": [
+          "authentication failure"
+        ]
+      },
+      {
+        "title": "storage failure isolation",
+        "line": 40,
+        "disposition": "KEEP",
+        "scenarios": [
+          "write failure"
+        ]
+      }
+    ],
+    "scenarioCount": 6,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/distribution/spec.md",
+    "sha256": "422153484df488c2d6f81e28893862082a2f0970443cac4b9e91eb119378dfe2",
+    "requirements": [
+      {
+        "title": "从公开 GitHub 仓库安装",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "安装最新稳定版",
+          "锁定发布版本"
+        ]
+      },
+      {
+        "title": "仓库包含预构建产物",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "禁用安装脚本",
+          "Git 安装不触发 preparation",
+          "构建产物过期",
+          "provenance 无效"
+        ]
+      },
+      {
+        "title": "PR 与 main 通过统一 CI",
+        "line": 38,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Pull request 验证",
+          "main 再验证"
+        ]
+      },
+      {
+        "title": "main 由 GitHub 规则保护",
+        "line": 49,
+        "disposition": "KEEP",
+        "scenarios": [
+          "CI 未通过",
+          "直接修改 main"
+        ]
+      },
+      {
+        "title": "tag 生成 GitHub Release",
+        "line": 60,
+        "disposition": "KEEP",
+        "scenarios": [
+          "tag 与包版本不一致",
+          "创建首个 Release",
+          "core/main 在 tag 后更新",
+          "显式发布固定 tag",
+          "显式入口误选分支",
+          "发布附件复核"
+        ]
+      },
+      {
+        "title": "发行过程不接触服务凭据",
+        "line": 87,
+        "disposition": "KEEP",
+        "scenarios": [
+          "无 secrets 的公开 PR"
+        ]
+      }
+    ],
+    "scenarioCount": 17,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/endpoint-management/spec.md",
+    "sha256": "c587768bb9c8a5085b2a7218b9c5b3c72690f2b8e343304383b7a5d0faab1869",
+    "requirements": [
+      {
+        "title": "Unified endpoint management entry",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[HOST-UI] Interaction uses real host dialogs"
+        ]
+      },
+      {
+        "title": "Endpoint listing",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[LIST-EMPTY] No endpoint configured",
+          "[LIST-SINGLE] Single endpoint",
+          "[LIST-MULTI] Mixed active and credential states",
+          "[LIST-EXTERNAL] Manual configuration change is visible",
+          "[LIST-LEGACY-GHOST] No ghost default without a legacy address"
+        ]
+      },
+      {
+        "title": "Add endpoint",
+        "line": 45,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[ADD-OK] Valid endpoint is added",
+          "[ADD-DUP] Duplicate ID",
+          "[ADD-BAD-ID] Invalid ID",
+          "[ADD-BAD-URL] Invalid Base URL",
+          "[ADD-INACTIVE] Default inactive and unconnected",
+          "[ADD-PRESERVE] Existing endpoints are untouched",
+          "[ADD-LEGACY] Legacy single-endpoint configuration is migrated with confirmation",
+          "[ADD-ROLLBACK] A failed Add keeps the activation consistent with the committed configuration"
+        ]
+      },
+      {
+        "title": "Edit endpoint",
+        "line": 92,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[EDIT-URL] Base URL is changed",
+          "[EDIT-ID-READONLY] ID cannot be edited",
+          "[EDIT-PRESERVE] Unmanaged fields are preserved",
+          "[EDIT-ATOMIC] Failed write leaves no partial result",
+          "[EDIT-ISOLATED] Other endpoints are unaffected",
+          "[LEGACY-MIGRATE] Legacy default is fully manageable through migration"
+        ]
+      },
+      {
+        "title": "Credential management",
+        "line": 119,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CRED-CONNECT] Connect a key",
+          "[CRED-REPLACE] Replace a key",
+          "[CRED-DISCONNECT] Disconnect removes only that credential",
+          "[CRED-NO-ECHO] Keys are never echoed",
+          "[CRED-ACTIVATION-INDEPENDENT] Credential changes do not alter activation",
+          "[CRED-CONNECT-CONSISTENT] /connect and the management UI share one credential state",
+          "[CRED-INVALID-KEY] Invalid key input is rejected",
+          "[CRED-LEGACY-FORM] Legacy key forms get their required url answer"
+        ]
+      },
+      {
+        "title": "Activation management",
+        "line": 163,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[ACT-TOGGLE] Activate and deactivate",
+          "[ACT-ZERO] Zero active endpoints",
+          "[ACT-CRED-INDEPENDENT] Deactivation keeps credential and snapshot",
+          "[ACT-IMMEDIATE] Provider exposure follows activation at once"
+        ]
+      },
+      {
+        "title": "Delete endpoint",
+        "line": 182,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DEL-CONFIRM] Confirmation is required",
+          "[DEL-CANCEL] Cancelled delete changes nothing",
+          "[DEL-CLEANUP] Confirmed delete cleans all persisted state",
+          "[DEL-ISOLATED] Other endpoints survive",
+          "[DEL-NO-GHOST] Re-adding a deleted id starts clean",
+          "[DEL-PARTIAL-FAILURE] Interrupted delete is retryable"
+        ]
+      },
+      {
+        "title": "Canonical configuration safety",
+        "line": 217,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CFG-NON-DESTRUCTIVE] Unknown and global fields survive",
+          "[CFG-PARSE-FAIL] Unparseable configuration is not overwritten",
+          "[CFG-CONFLICT] Concurrent external edit is detected",
+          "[CFG-COMMENTS] Comments and formatting survive",
+          "[CFG-SHADOWED] Options not sourced from the file make management read-only"
+        ]
+      }
+    ],
+    "scenarioCount": 43,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/endpoint-state-consistency/spec.md",
+    "sha256": "0a44e076978d44cbbc929936ec532257d41ff5b14228b4a3bc8ab9d9e601bae4",
+    "requirements": [
+      {
+        "title": "Canonical endpoint state model",
+        "line": 9,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[STATE-DESIRED-ENABLED-INVALID] Enabled endpoint with invalid configuration",
+          "[STATE-DISABLED-INVALID] Disabled endpoint with invalid configuration",
+          "[STATE-ENABLED-NEEDS-AUTH] Enabled endpoint without a credential",
+          "[STATE-ENABLED-NOT-APPLIED] Enabled endpoint whose runtime apply has not yet succeeded",
+          "[STATE-ENABLED-ERROR] Enabled endpoint whose last apply failed",
+          "[STATE-ENABLED-ACTIVE] Enabled, valid, authenticated endpoint with a successful apply",
+          "[STATE-DISABLED] Plain disabled endpoint"
+        ]
+      },
+      {
+        "title": "Validation uses one rule end-to-end",
+        "line": 56,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[VALIDATION-CONSISTENCY] A URL accepted in the TUI Add/Edit prompt is acceptable to runtime apply",
+          "[VALIDATION-INVALID-PRESERVED] Invalid endpoint stays in the registry"
+        ]
+      },
+      {
+        "title": "Credential state is not \"connected\"",
+        "line": 71,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CRED-STORED-LABEL] Stored key is labelled \"saved\", not \"connected\"",
+          "[CRED-MISSING-IS-NOT-INVALID] Missing credential is not an invalid configuration"
+        ]
+      },
+      {
+        "title": "`/models` only reflects actually applied runtime models",
+        "line": 86,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[MODELS-HIDE-DISABLED] Disabled endpoint's models disappear from `/models`",
+          "[MODELS-HIDE-UNAPPLIED] Apply-failed endpoint's models disappear from `/models`",
+          "[MODELS-HIDE-INVALID] Invalid endpoint never publishes models",
+          "[MODELS-SNAPSHOT-GATE] Persisted snapshot is gated by the same four dimensions"
+        ]
+      },
+      {
+        "title": "Apply-failure does not silently revert desired state",
+        "line": 112,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DESIRED-PERSISTED-ENABLED] Persisted desired state survives apply failure",
+          "[DESIRED-NO-SILENT-ROLLBACK] Apply failure never reports fake success"
+        ]
+      },
+      {
+        "title": "Manual retry",
+        "line": 128,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[RETRY-SUCCESS] Retry reconciles to Active",
+          "[RETRY-NO-OP-FOR-DISABLED] Retry is not offered for disabled or invalid endpoints"
+        ]
+      },
+      {
+        "title": "Diagnostics endpoint detail never degrades to placeholder",
+        "line": 143,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DIAG-DETAIL-DISABLED] Disabled endpoint has full detail",
+          "[DIAG-DETAIL-INVALID] Invalid endpoint has full detail",
+          "[DIAG-DETAIL-NEEDS-AUTH] Enabled without credential has full detail"
+        ]
+      },
+      {
+        "title": "State consistency across management, diagnostics and runtime",
+        "line": 162,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CONSISTENCY-ALL-VIEWS] All surfaces agree on the canonical state"
+        ]
+      },
+      {
+        "title": "No regression on existing behaviour",
+        "line": 171,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[REGRESSION-MODELS-ZERO-LIMIT] Models with non-positive limits are never published"
+        ]
+      }
+    ],
+    "scenarioCount": 24,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/litellm-connection/spec.md",
+    "sha256": "be9e4f5e448ae742231809ac27fa6e384a0ed6ac5a87dfcdc5dab1d5ef54646b",
+    "requirements": [
+      {
+        "title": "通过 /connect 接入 LiteLLM",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "首次连接",
+          "非 http(s) 地址",
+          "地址未填写"
+        ]
+      },
+      {
+        "title": "地址规范化",
+        "line": 23,
+        "disposition": "KEEP",
+        "scenarios": [
+          "用户填写带 /v1 的地址"
+        ]
+      },
+      {
+        "title": "发现与调用使用同一把用户 Key",
+        "line": 30,
+        "disposition": "KEEP",
+        "scenarios": [
+          "团队 Key 只看到团队模型"
+        ]
+      },
+      {
+        "title": "凭据保密",
+        "line": 37,
+        "disposition": "KEEP",
+        "scenarios": [
+          "发现请求失败"
+        ]
+      },
+      {
+        "title": "切换连接时不混用旧结果",
+        "line": 44,
+        "disposition": "KEEP",
+        "scenarios": [
+          "更换 Key"
+        ]
+      },
+      {
+        "title": "断开连接",
+        "line": 51,
+        "disposition": "KEEP",
+        "scenarios": [
+          "用户删除凭据"
+        ]
+      }
+    ],
+    "scenarioCount": 8,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/model-audit-export/spec.md",
+    "sha256": "eac1a279d3777dbd723559eb02d8632617ba5a24aad7b1a7304deedbde60d8b6",
+    "requirements": [
+      {
+        "title": "主动触发并获知结果",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "用户主动导出",
+          "已打开的 TUI 即时接收结果",
+          "Windows Terminal 中连续导出",
+          "浅色与深色主题中可见",
+          "同会话留存与多会话隔离",
+          "打开或复制失败",
+          "文件不可写"
+        ]
+      },
+      {
+        "title": "内容与注册快照一致",
+        "line": 39,
+        "disposition": "MODIFIED",
+        "scenarios": [
+          "最终映射与协议",
+          "无推理档位或未知字段",
+          "发布日期保留注册原值"
+        ]
+      },
+      {
+        "title": "标记发现状态与连接边界",
+        "line": 54,
+        "disposition": "KEEP",
+        "scenarios": [
+          "短暂网络故障",
+          "连接切换和认证失败",
+          "空清单与未连接"
+        ]
+      },
+      {
+        "title": "最小化数据与安全写入",
+        "line": 69,
+        "disposition": "KEEP",
+        "scenarios": [
+          "非导出字段中的敏感数据",
+          "允许字段中的信息",
+          "多次导出"
+        ]
+      }
+    ],
+    "scenarioCount": 16,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/model-discovery/spec.md",
+    "sha256": "f085862ff870c4083afd6a41fb31fdc9defa3f53643b91cdb4aaef9f9c2a60d1",
+    "requirements": [
+      {
+        "title": "以真实部署作为模型清单",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "团队白名单中残留已删除的模型名"
+        ]
+      },
+      {
+        "title": "只注册对话模型",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "过滤非对话模型",
+          "mode 缺失的图像模型",
+          "mode 缺失的普通模型"
+        ]
+      },
+      {
+        "title": "多部署模型的能力合并",
+        "line": 30,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "两个部署上限不同"
+        ]
+      },
+      {
+        "title": "能力字段映射与数据源优先级",
+        "line": 37,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "LiteLLM 缺失输出上限",
+          "两个来源冲突",
+          "LiteLLM 能力字段缺失",
+          "模态信任名单"
+        ]
+      },
+      {
+        "title": "models.dev 记录选择",
+        "line": 64,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "原厂记录缺失时使用 Zen",
+          "大小写不同的原厂 id",
+          "多个转售记录且无原厂与 Zen 记录"
+        ]
+      },
+      {
+        "title": "推理档位来源",
+        "line": 81,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "effort 档位",
+          "只有 toggle"
+        ]
+      },
+      {
+        "title": "按价格阶梯截断上下文",
+        "line": 96,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "272k 阶梯",
+          "tiered_pricing 阶梯",
+          "用户关闭截断",
+          "无阶梯字段"
+        ]
+      },
+      {
+        "title": "显示名与价格",
+        "line": 115,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "显示名",
+          "价格换算"
+        ]
+      },
+      {
+        "title": "空结果与异常数据",
+        "line": 126,
+        "disposition": "KEEP",
+        "scenarios": [
+          "对话模型全部被删除",
+          "单个部署数据异常"
+        ]
+      },
+      {
+        "title": "models.dev catalog 来源、形状与 modelsDevUrl 语义",
+        "line": 137,
+        "disposition": "KEEP",
+        "scenarios": [
+          "默认拉取 catalog 快照",
+          "provider-only 镜像降级不断"
+        ]
+      }
+    ],
+    "scenarioCount": 24,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/multi-endpoint-activation/spec.md",
+    "sha256": "67a7450af48d834aa766f597b80f3e9fb60292066d0139274235d3d658dafa84",
+    "requirements": [
+      {
+        "title": "multiple endpoints run in one supported OpenCode V2 plugin context",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "two explicit endpoints load on a real V2 context shape"
+        ]
+      },
+      {
+        "title": "endpoint credentials are independently addressable",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "user connects two endpoint credentials"
+        ]
+      },
+      {
+        "title": "activation does not remove credential integrations",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "inactive endpoint remains connectable"
+        ]
+      },
+      {
+        "title": "multi-endpoint commands remain visibly actionable",
+        "line": 29,
+        "disposition": "KEEP",
+        "scenarios": [
+          "command executes after multi-endpoint setup",
+          "command executes immediately after multi-endpoint startup",
+          "user toggles an endpoint in the terminal selector"
+        ]
+      },
+      {
+        "title": "fixed endpoint authentication methods are schema-valid",
+        "line": 48,
+        "disposition": "KEEP",
+        "scenarios": [
+          "fixed baseUrl endpoint appears in connect"
+        ]
+      },
+      {
+        "title": "supported OpenCode releases have a real-host delivery gate",
+        "line": 56,
+        "disposition": "KEEP",
+        "scenarios": [
+          "real OpenCode 2.0.16 multi-endpoint delivery"
+        ]
+      },
+      {
+        "title": "endpoint credential isolation is proven against real HTTP discovery",
+        "line": 70,
+        "disposition": "KEEP",
+        "scenarios": [
+          "two endpoints receive their own key"
+        ]
+      },
+      {
+        "title": "diagnostics endpoint arguments follow the OpenCode command invocation contract",
+        "line": 77,
+        "disposition": "KEEP",
+        "scenarios": [
+          "user requests one endpoint's diagnostics",
+          "endpoint argument contains surrounding whitespace",
+          "endpoint argument is unknown"
+        ]
+      },
+      {
+        "title": "Global endpoint registry",
+        "line": 94,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Multiple endpoints are configured"
+        ]
+      },
+      {
+        "title": "Legacy zero-migration behavior",
+        "line": 101,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Existing user upgrades"
+        ]
+      },
+      {
+        "title": "Independent activation",
+        "line": 108,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Endpoint is deactivated"
+        ]
+      },
+      {
+        "title": "Endpoint isolation",
+        "line": 115,
+        "disposition": "KEEP",
+        "scenarios": [
+          "One endpoint fails"
+        ]
+      }
+    ],
+    "scenarioCount": 16,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/openspec-closure-gate/spec.md",
+    "sha256": "48c860519c8701bb7b29dc8ac7e15fb90e96bc4bf67f276895acc8c2ba3253d1",
+    "requirements": [
+      {
+        "title": "archived specification deltas SHALL be represented canonically",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "missing added capability is rejected",
+          "stale modified requirement is rejected",
+          "removed requirement is absent",
+          "removed requirement remains",
+          "similar titles are independent",
+          "explicit RENAMED operation establishes identity",
+          "explicit legacy compatibility alias establishes identity"
+        ]
+      },
+      {
+        "title": "archived requirement history SHALL be replayed as state transitions",
+        "line": 45,
+        "disposition": "KEEP",
+        "scenarios": [
+          "added then removed ends absent",
+          "modified then removed ends absent",
+          "removed then re-added ends present",
+          "renamed chain ends at the final title",
+          "unorderable renames fail closed",
+          "conflicting transitions inside one archive fail closed"
+        ]
+      },
+      {
+        "title": "archive chronology SHALL be a partial order derived from Git ancestry",
+        "line": 78,
+        "disposition": "KEEP",
+        "scenarios": [
+          "same introduction commit is a tie",
+          "same commit with conflicting states fails ambiguous",
+          "incomparable histories with conflicting states fail ambiguous",
+          "ambiguous archived requirement history fails closed",
+          "ancestry resolves a reversed lexical order"
+        ]
+      },
+      {
+        "title": "malformed archived deltas SHALL fail closed",
+        "line": 107,
+        "disposition": "KEEP",
+        "scenarios": [
+          "malformed archive is checked"
+        ]
+      },
+      {
+        "title": "historical archive compatibility SHALL be explicit",
+        "line": 114,
+        "disposition": "KEEP",
+        "scenarios": [
+          "existing historical archives are checked",
+          "chronology ties are not reported as chronology resolution"
+        ]
+      },
+      {
+        "title": "closure workflows SHALL provide complete Git history",
+        "line": 127,
+        "disposition": "KEEP",
+        "scenarios": [
+          "release closure verification runs with full history",
+          "workflow history requirements are guarded"
+        ]
+      }
+    ],
+    "scenarioCount": 23,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/protocol-routing/spec.md",
+    "sha256": "c97420258add81b090e78d38b07bf74967661a3caeb18968e5d77b6080b76355",
+    "requirements": [
+      {
+        "title": "协议判定顺序",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "mode 为 responses",
+          "mode 为 chat",
+          "Anthropic 上游",
+          "经 Bedrock 部署的 Claude"
+        ]
+      },
+      {
+        "title": "多协议时 Responses 优先",
+        "line": 32,
+        "disposition": "KEEP",
+        "scenarios": [
+          "同时支持两种"
+        ]
+      },
+      {
+        "title": "supported_endpoints 优先于 mode",
+        "line": 39,
+        "disposition": "KEEP",
+        "scenarios": [
+          "冲突",
+          "声明中没有可用的对话端点"
+        ]
+      },
+      {
+        "title": "多部署协议不一致时回退",
+        "line": 50,
+        "disposition": "KEEP",
+        "scenarios": [
+          "一个部署走 Anthropic，一个走 OpenAI"
+        ]
+      },
+      {
+        "title": "用户覆盖",
+        "line": 57,
+        "disposition": "KEEP",
+        "scenarios": [
+          "覆盖为 chat"
+        ]
+      },
+      {
+        "title": "调用端点",
+        "line": 64,
+        "disposition": "KEEP",
+        "scenarios": [
+          "Responses 调用"
+        ]
+      },
+      {
+        "title": "已安装插件的模型初始化与调用",
+        "line": 71,
+        "disposition": "KEEP",
+        "scenarios": [
+          "用户报告的 Responses 模型",
+          "其他已部署协议",
+          "推理档位不回归"
+        ]
+      }
+    ],
+    "scenarioCount": 13,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/provider-diagnostics/spec.md",
+    "sha256": "eabc4ec888d8a6270c40f9328c86e6595e3c358b47fd3877b9e1bbe21e22814e",
+    "requirements": [
+      {
+        "title": "user-invokable TUI diagnostics",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "run after successful discovery"
+        ]
+      },
+      {
+        "title": "lifecycle cache visibility",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "endpoint-compatible restore"
+        ]
+      },
+      {
+        "title": "shared mapping semantics",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "protocol fallback"
+        ]
+      },
+      {
+        "title": "safe presentation",
+        "line": 29,
+        "disposition": "KEEP",
+        "scenarios": [
+          "authentication failure"
+        ]
+      },
+      {
+        "title": "existing audit compatibility",
+        "line": 36,
+        "disposition": "KEEP",
+        "scenarios": [
+          "export after diagnostics"
+        ]
+      },
+      {
+        "title": "诊断与 TUI 展示 canonical 与 serving 事实",
+        "line": 43,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "serving 未证明的档位 unknown 附恢复提示",
+          "unresolved serving 给出可操作修复"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/publication/spec.md",
+    "sha256": "03ffea9fe82e04d19b72efc4340ecc83d14e0d4065b26edeb7072ddb0b0df16f",
+    "requirements": [
+      {
+        "title": "Publication partition governs registration",
+        "line": 11,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Complete models register normally",
+          "Incomplete models never disguise as normal",
+          "Operational guard stays as second layer",
+          "Withheld models stay withheld without any user action",
+          "DeepSeek official provider limits reach the OpenCode host model",
+          "Reseller fallback conflicts stay withheld",
+          "Fallback never rewrites the canonical identity"
+        ]
+      },
+      {
+        "title": "Conservative host tool mapping",
+        "line": 42,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Degraded entry with unknown tools"
+        ]
+      },
+      {
+        "title": "Failures and LKG are visible and safe",
+        "line": 50,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "Live failure with valid LKG",
+          "Live failure without valid LKG",
+          "Retry recovery",
+          "Snapshot persists only normally publishable specs",
+          "Descriptive discrepancy keeps the trusted snapshot"
+        ]
+      },
+      {
+        "title": "LKG 以 schema 8 同 resolution 派生",
+        "line": 79,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "seeding 产出 v8 条目",
+          "旧条目 fail closed 后重捕获"
+        ]
+      }
+    ],
+    "scenarioCount": 15,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/refresh-coordinator/spec.md",
+    "sha256": "fe31f123bd30f0ab1386b2e3644fbf7272c32006a9951f4120171409af354117",
+    "requirements": [
+      {
+        "title": "shared coordinator",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "successful discovery"
+        ]
+      },
+      {
+        "title": "trigger semantics",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "explicit trigger",
+          "timer trigger"
+        ]
+      },
+      {
+        "title": "retry scheduling",
+        "line": 26,
+        "disposition": "KEEP",
+        "scenarios": [
+          "first degradable failure"
+        ]
+      },
+      {
+        "title": "stale registration",
+        "line": 33,
+        "disposition": "KEEP",
+        "scenarios": [
+          "last-known-good"
+        ]
+      },
+      {
+        "title": "destructive failures",
+        "line": 40,
+        "disposition": "KEEP",
+        "scenarios": [
+          "authentication failure"
+        ]
+      },
+      {
+        "title": "identity lifecycle",
+        "line": 47,
+        "disposition": "KEEP",
+        "scenarios": [
+          "connection switch"
+        ]
+      }
+    ],
+    "scenarioCount": 7,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/release-governance/spec.md",
+    "sha256": "1914c3c8c2b7354b19f7c630dc280f9d6c79de621ae316865aa77cfba8073589",
+    "requirements": [
+      {
+        "title": "release metadata stays aligned",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "repository release metadata is consistent"
+        ]
+      },
+      {
+        "title": "completed OpenSpec changes are archived",
+        "line": 15,
+        "disposition": "KEEP",
+        "scenarios": [
+          "completed change remains active"
+        ]
+      },
+      {
+        "title": "main merge gate requires both CI and the real host E2E",
+        "line": 22,
+        "disposition": "KEEP",
+        "scenarios": [
+          "merge gate requires both checks",
+          "release candidate passes the real host gate before merging",
+          "governance drift fails the pipeline",
+          "other protections stay frozen"
+        ]
+      }
+    ],
+    "scenarioCount": 6,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/runtime-identity/spec.md",
+    "sha256": "1b4176e4e783a7919d5e1a994d8761f55073ee533ca191d240109661c429e49e",
+    "requirements": [
+      {
+        "title": "Runtime Identity 定义",
+        "line": 8,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[IDENTITY-FIELDS] 三字段完整",
+          "[IDENTITY-NO-GIT] 无运行时 Git 与 cache 推断"
+        ]
+      },
+      {
+        "title": "Artifact digest 计算语义",
+        "line": 19,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DIGEST-DETERMINISTIC] 输入顺序与路径归一",
+          "[SELF-EXCLUSION] 自排除无递归",
+          "[DIGEST-SENSITIVE] artifact 变化敏感"
+        ]
+      },
+      {
+        "title": "Canonical 来源",
+        "line": 34,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[CANONICAL-SINGLE] 三处同源"
+        ]
+      },
+      {
+        "title": "Diagnostics 短形式",
+        "line": 41,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[DIAG-SHORT] 短形式显示"
+        ]
+      },
+      {
+        "title": "Audit 导出完整值",
+        "line": 48,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[AUDIT-FULL] 完整值导出"
+        ]
+      },
+      {
+        "title": "Startup log 同源",
+        "line": 55,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[STARTUP-LOG] 启动记录同一 identity"
+        ]
+      },
+      {
+        "title": "正式交付严格验证",
+        "line": 62,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[VERIFY-STRICT] 缺失与非法被拒绝"
+        ]
+      },
+      {
+        "title": "可重复构建",
+        "line": 69,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[REPRODUCIBLE-BUILD] clean rebuild 一致"
+        ]
+      },
+      {
+        "title": "Package 与 tarball 行为",
+        "line": 76,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[PACKAGE-IDENTITY] tarball 可验证"
+        ]
+      },
+      {
+        "title": "真实宿主 E2E",
+        "line": 83,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[REAL-HOST-E2E] 真实宿主闭环"
+        ]
+      },
+      {
+        "title": "Out of scope",
+        "line": 90,
+        "disposition": "KEEP",
+        "scenarios": [
+          "[OUT-OF-SCOPE] 无时间戳与 Git 依赖"
+        ]
+      }
+    ],
+    "scenarioCount": 14,
+    "action": "retain",
+    "rationale": "保留治理、生命周期、隔离、交付或独立UI契约；未发现与本次产品原则直接冲突"
+  },
+  {
+    "repository": "opencode-litellm-provider",
+    "file": "openspec/specs/shared-discovery-core/spec.md",
+    "sha256": "0f64a424cc14f665458e0d81a5880502c26da553f3eb37c7c23baa8081b2632f",
+    "requirements": [
+      {
+        "title": "共享发现逻辑的唯一维护位置",
+        "line": 8,
+        "disposition": "REMOVED",
+        "scenarios": [
+          "中立模型适配到 OpenCode",
+          "不维护本地业务副本"
+        ]
+      },
+      {
+        "title": "更新构建固定一次完整 SHA",
+        "line": 20,
+        "disposition": "KEEP",
+        "scenarios": [
+          "更新构建期间 main 前移",
+          "非法显式输入"
+        ]
+      },
+      {
+        "title": "缓存与 Git commit 内容一致",
+        "line": 32,
+        "disposition": "KEEP",
+        "scenarios": [
+          "任一类别的缓存污染",
+          "干净环境获取"
+        ]
+      },
+      {
+        "title": "固定复验验收待交付产物",
+        "line": 44,
+        "disposition": "KEEP",
+        "scenarios": [
+          "provenance 缺失或无效",
+          "候选产物有差异",
+          "已发布输入保持不变"
+        ]
+      },
+      {
+        "title": "安装与运行独立于构建环境",
+        "line": 60,
+        "disposition": "KEEP",
+        "scenarios": [
+          "外部消费者禁用安装脚本"
+        ]
+      }
+    ],
+    "scenarioCount": 10,
+    "action": "delta",
+    "rationale": "本change精确修改或删除冲突要求，其余保留"
+  }
+]

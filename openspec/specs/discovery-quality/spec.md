@@ -1,7 +1,7 @@
 # discovery-quality Specification
 
 ## Purpose
-Defines conservative model identity matching and enrichment quality rules, reasoning and protocol capability resolution, distinct token-limit semantics, deterministic metadata precedence, unknown-model fallback, and conflict provenance.
+Defines accurate model names and versions, one selected record for capabilities, separate reasoning support and options, distinct token-limit dimensions, and existing protocol selection.
 
 ## Requirements
 

@@ -1,7 +1,7 @@
 # publication Specification
 
 ## Purpose
-Defines the trustworthy model-capability publication loop: formal completeness and publishability policy, false-vs-unknown semantics, decoupled reasoning/levels, deterministic inheritance, failure taxonomy, TTL-free Last Known Good, explicit degradation, configuration states, and field-level provenance. Core is the single business source of truth; adapters consume its verdicts without reimplementing policy.
+Defines essential capability admission, false versus unknown, whole-configuration LKG recovery and existing metadata failures. Prices never determine availability. The active restore-model-metadata-priority delta supersedes the baseline requirements until closure.
 
 ## Requirements
 

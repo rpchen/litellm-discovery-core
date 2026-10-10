@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+const read = name => JSON.parse(readFileSync(new URL(name, import.meta.url), "utf8"));
+const cat = read("modelsdev-subset.json");
+const expected = read("expected-16.json").models;
+const observed = read("observed-pi-16.json").models;
+const discovery = read("synthetic-discovery.json").data;
+const manifest = read("source-manifest.json");
+assert.equal(createHash("sha256").update(readFileSync(new URL("modelsdev-subset.json", import.meta.url))).digest("hex"), manifest.subsetSHA256);
+assert.equal(expected.length, 16);
+assert.deepEqual(expected.map(x=>x.id).sort(), observed.map(x=>x.id).sort());
+assert.deepEqual(expected.map(x=>x.id).sort(), discovery.map(x=>x.model_name).sort());
+const ids = new Set();
+for (const e of expected) {
+  assert(!ids.has(e.id)); ids.add(e.id);
+  const r = cat.providers[e.provider].models[e.recordKey];
+  assert(cat.models[e.canonicalID], e.id);
+  if (r.canonical_model_id) assert.equal(r.canonical_model_id, e.canonicalID);
+  else assert.equal(e.provider+"/"+e.recordKey, e.canonicalID);
+  assert.equal(r.reasoning, true);
+  assert.equal(r.tool_call, e.tools);
+  assert.deepEqual(r.limit, e.limit);
+  assert.deepEqual(r.modalities, { input:e.input, output:e.output });
+  assert.deepEqual(r.reasoning_options, e.reasoningOptions);
+  assert.deepEqual(r.reasoning_options.filter(o=>o.type==="effort").flatMap(o=>o.values), e.levels);
+  assert.deepEqual(e.piLevels, e.levels.map(x=>x==="none"?"off":x));
+  assert(Number.isFinite(e.limit.context) && e.limit.context>0);
+  assert(Number.isFinite(e.limit.output) && e.limit.output>0);
+  const old = observed.find(x=>x.id===e.id);
+  assert.equal(old.reasoning, true);
+  assert(!Object.hasOwn(old, "thinkingLevelMap"));
+  const row = discovery.find(x=>x.model_name===e.id);
+  assert(!Object.hasOwn(row.model_info, "base_model"));
+  assert(!Object.hasOwn(row, "litellm_params"));
+  assert.deepEqual(e.cost, r.cost ?? {});
+  assert(!Object.hasOwn(row.model_info, "models_dev_provider"));
+  assert.deepEqual(Object.keys(row).sort(), ["model_info","model_name"]);
+}
+assert.deepEqual(expected.find(x=>x.id==="gpt-5.6-luna").levels, ["none","low","medium","high","xhigh","max"]);
+assert.deepEqual(expected.find(x=>x.id==="gpt-6-astra").levels, ["low","medium","high","xhigh","max"]);
+assert.deepEqual(expected.find(x=>x.id==="gpt-6.1-sol").levels, ["low","medium","high","xhigh","max"]);
+assert.equal(cat.providers.deepseek.models["deepseek-v4-pro"].canonical_model_id,"deepseek/deepseek-v4-pro-0813");
+assert.equal(expected.find(x=>x.id==="deepseek-v4-pro").provider,"opencode");
+assert.equal(expected.find(x=>x.id==="deepseek-v4.1-flash").limit.output,393216);
+assert.equal(expected.find(x=>x.id==="kimi-k3").limit.output,1048576);
+assert.deepEqual(expected.find(x=>x.id==="kimi-k2.7-code").levels,[]);
+for (const b of read("baseline.json")) {
+  assert.equal(b.status,"ready");
+  assert.equal(b.commit,b.indexCommit);
+  for (const k of ["artifact.json","graph.db.zst"]) assert.equal(b.sha256[k],b.snapshotSHA256[k]);
+}
+console.log(JSON.stringify({result:"PASS",models:expected.length,publicRecords:Object.values(cat.providers).reduce((n,p)=>n+Object.keys(p.models).length,0),scope:"design data consistency only; no resolver implementation or real-host E2E executed"}));

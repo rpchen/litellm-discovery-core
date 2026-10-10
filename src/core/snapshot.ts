@@ -1,8 +1,9 @@
+import { normalizeModelCost } from "./capabilities.js"
 import { createHash } from "node:crypto"
-import { modelFingerprint, type BuildOptions, type ModelSpec } from "./build.js"
+import { criticalModelFingerprint, hasValidCriticalConfiguration, modelFingerprint, type BuildOptions, type ModelSpec } from "./build.js"
 import { isRecord, normalizeLiteLLMURL } from "./litellm.js"
 
-export const DISCOVERY_SNAPSHOT_SCHEMA_VERSION = 1 as const
+export const DISCOVERY_SNAPSHOT_SCHEMA_VERSION = 2 as const
 
 export const ENDPOINT_ID_PATTERN = /^[a-z0-9][a-z0-9-_]*$/u
 
@@ -79,38 +80,11 @@ function finiteNumber(value: unknown): value is number {
 }
 
 function isModelSpec(value: unknown): value is ModelSpec {
-  if (!isRecord(value)) return false
-  if (!nonEmptyString(value.id) || !nonEmptyString(value.name)) return false
-  if (value.protocol !== "chat" && value.protocol !== "responses" && value.protocol !== "messages") return false
-  if (!isRecord(value.capabilities) || typeof value.capabilities.tools !== "boolean") return false
-  if (!stringArray(value.capabilities.input) || !stringArray(value.capabilities.output)) return false
-  if (!Array.isArray(value.variants)) return false
-  if (
-    value.reasoningSupported !== undefined &&
-    value.reasoningSupported !== "supported" &&
-    value.reasoningSupported !== "unsupported" &&
-    value.reasoningSupported !== "unknown"
-  ) return false
-  if (!finiteNumber(value.released)) return false
-  if (
-    value.releaseUnit !== undefined &&
-    value.releaseUnit !== "unix-ms" &&
-    value.releaseUnit !== "unknown" &&
-    value.releaseUnit !== "none"
-  ) return false
-  if (!isRecord(value.cost)) return false
-  if (
-    !finiteNumber(value.cost.input) ||
-    !finiteNumber(value.cost.output) ||
-    !finiteNumber(value.cost.cacheRead) ||
-    !finiteNumber(value.cost.cacheWrite)
-  ) return false
-  if (!isRecord(value.limit)) return false
-  return finiteNumber(value.limit.context) && finiteNumber(value.limit.input) && finiteNumber(value.limit.output)
+  return hasValidCriticalConfiguration(value);
 }
 
 function cloneModels(models: readonly ModelSpec[]): ModelSpec[] {
-  return structuredClone(models) as ModelSpec[]
+  return structuredClone(models).map((model) => ({ ...model, cost: normalizeModelCost(model.cost) }));
 }
 
 export function endpointFingerprint(input: EndpointFingerprintInput): string {
@@ -126,13 +100,11 @@ export function endpointFingerprint(input: EndpointFingerprintInput): string {
     credentialKey: input.credentialKey,
     buildOptions: input.buildOptions
       ? {
-          contextTierCap: input.buildOptions.contextTierCap,
           protocolOverrides: input.buildOptions.protocolOverrides,
         }
       : null,
   }
-  // Preserve the exact legacy fingerprint material when endpointID is omitted so
-  // existing single-endpoint snapshots remain restorable without migration.
+  // Explicit endpoint IDs isolate instances sharing the same URL and credential.
   const material = stableJSON(
     input.endpointID === undefined
       ? legacyMaterial
@@ -153,7 +125,7 @@ export function createDiscoverySnapshot(
     schemaVersion: DISCOVERY_SNAPSHOT_SCHEMA_VERSION,
     endpointFingerprint: endpoint,
     discoveredAt,
-    modelFingerprint: modelFingerprint(copied),
+    modelFingerprint: criticalModelFingerprint(copied),
     models: copied,
   }
 }
@@ -188,7 +160,7 @@ export function inspectDiscoverySnapshot(
     modelFingerprint: value.modelFingerprint,
     models: cloneModels(value.models),
   }
-  if (modelFingerprint(snapshot.models) !== snapshot.modelFingerprint) {
+  if (criticalModelFingerprint(snapshot.models) !== snapshot.modelFingerprint) {
     return { compatible: false, reason: "corrupt" }
   }
   return { compatible: true, reason: "compatible", snapshot }
@@ -225,7 +197,7 @@ export function compareDiscoverySnapshots(
   }
 
   const endpointChanged = previous.endpointFingerprint !== current.endpointFingerprint
-  const changed = endpointChanged || previous.modelFingerprint !== current.modelFingerprint
+  const changed = endpointChanged || modelFingerprint(previous.models) !== modelFingerprint(current.models)
   const drift =
     endpointChanged ||
     added.length > 0 ||

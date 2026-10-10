@@ -18,7 +18,9 @@ function npmRun(args, options) {
 
 const consumerSource = `
 import assert from "node:assert/strict"
-import { buildModelSpecs, normalizeLiteLLMURL } from "litellm-discovery-core"
+import { buildModelSpecs, normalizeLiteLLMURL, groupLiteLLMDeployments, selectModelsDevRecord, mapCapabilities,
+  buildPublicationResult, resolveModel, createLastKnownGoodEntry, createLastKnownGoodStore, capturedPublicationVerdict,
+  diagnoseModelSpecs, resolveNumericField, resolveBooleanField, resolveModalityField } from "litellm-discovery-core"
 
 const resolved = await import.meta.resolve("litellm-discovery-core")
 assert.match(resolved, /\\/node_modules\\/litellm-discovery-core\\/dist\\/index\\.js$/)
@@ -34,6 +36,39 @@ assert.deepEqual(normalizeLiteLLMURL("http://litellm.example:4000/v1"), {
   modelInfoURL: "http://litellm.example:4000/v1/model/info",
   legacyModelInfoURL: "http://litellm.example:4000/model/info",
 })
+const body = { data: [{ model_name: "consumer-model", model_info: { mode: "chat" }, litellm_params: {} }] }
+const record = { id: "consumer-model", canonical_model_id: "lab/consumer-model", tool_call: true, reasoning: true,
+  reasoning_options: [{ type: "effort", values: ["low", "max"] }], modalities: { input: ["text"], output: ["text"] },
+  limit: { context: 100000, output: 10000 } }
+const catalog = { models: { "lab/consumer-model": {} }, providers: { lab: { models: { "consumer-model": record } } } }
+const options = { contextTierCap: true, protocolOverrides: {} }
+const group = groupLiteLLMDeployments(body)[0]
+const selected = selectModelsDevRecord(group, catalog)
+assert.equal(selected.providerID, "lab")
+const resolvedModel = resolveModel(group, catalog, options)
+assert.equal(resolvedModel.publishable, true)
+assert.deepEqual(resolvedModel.spec.variants.map(({ id }) => id), ["low", "max"])
+assert.deepEqual(mapCapabilities(group, selected, true), {
+  capabilities: resolvedModel.spec.capabilities, limit: resolvedModel.spec.limit, cost: resolvedModel.spec.cost,
+})
+assert.equal(resolveNumericField({ group, field: "context", intrinsic: 100000 }).value, 100000)
+assert.equal(resolveBooleanField({ group, field: "reasoning", descriptiveKey: "supports_reasoning", intrinsic: true, fallbackState: "unknown", fallbackConflict: false }).state, "supported")
+assert.equal(resolveModalityField({ group, direction: "input", intrinsic: ["text"] }).known, true)
+const namespacedGroup = groupLiteLLMDeployments({ data: [{ model_name: "lab/model", model_info: { mode: "chat" } }] })[0]
+assert.equal(resolveNumericField({ group: namespacedGroup, field: "context", intrinsic: 100000 }).value, 100000)
+assert.equal(resolveNumericField({ group: namespacedGroup, field: "context", intrinsic: 100000 }).known, true)
+assert.equal(resolveBooleanField({ group: namespacedGroup, field: "reasoning", descriptiveKey: "supports_reasoning", intrinsic: true, fallbackState: "unknown", fallbackConflict: false }).state, "supported")
+assert.equal(resolveBooleanField({ group: namespacedGroup, field: "capabilities.tools", descriptiveKey: "supports_function_calling", intrinsic: false, fallbackState: "unknown", fallbackConflict: false }).state, "unsupported")
+assert.deepEqual(resolveModalityField({ group: namespacedGroup, direction: "input", intrinsic: ["text", "image"] }).values, ["text", "image"])
+assert.equal(resolveModalityField({ group: namespacedGroup, direction: "input", intrinsic: ["text", "image"] }).known, true)
+const live = buildPublicationResult(body, catalog, options).publishable[0]
+const entry = createLastKnownGoodEntry(group, selected, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), catalog, options)
+const store = createLastKnownGoodStore(); store.set("consumer-model", entry)
+const restored = buildPublicationResult(body, undefined, options, { store }).publishable[0]
+assert.equal(restored.assessment.status, "configured-lkg")
+assert.equal(restored.assessment.reasoning.state, "supported")
+assert.deepEqual(restored.spec, live.spec)
+assert.deepEqual(diagnoseModelSpecs(body, catalog, options).models[0], live.spec)
 console.log("external consumer import and call ok")
 `
 
