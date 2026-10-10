@@ -1,6 +1,6 @@
 # Core 实施记录（2026-10-10）
 
-状态：Core 代码已实施；用户批准的 DeepSeek 官方 API 别名最小修复已通过定向回归，完整本地门禁及当前 PR CI 正在验证。Pi/OpenCode 仍待 Core Review 和授权合入。
+状态：Core 代码、完整本地门禁及实现提交 CI 全部通过，提交代码 Review。Pi/OpenCode 仍待 Core Review 和授权合入；本轮不合并或发布。
 
 ## 基线与范围
 
@@ -35,14 +35,16 @@ src/index.ts 为 wildcard 公共入口。保留 selectModelsDevRecord[Detailed]�
 | npm run typecheck | PASS |
 | DeepSeek 修复前回归 | 新测试先复现：18 PASS / 2 FAIL；原冻结用例及新 canonical 别名用例失败，两个精确旧 API 用例通过 |
 | 元数据定向回归 | 50/50 PASS；16条冻结配置全部通过，包括官方 DeepSeek Flash 输出393216、low/high/max；两个 deprecated 精确 API 仍匹配 |
-| bun test（本次完整） | 正在运行；完成后记录实际结果，不能用之前194 PASS / 1 FAIL的结果作为通过证据 |
+| bun test（本次完整） | PASS：198/198，0 FAIL，636 assertions，19 files；Windows运行373.47秒 |
 | npm run build:dist | PASS |
 | npm run test:package | PASS：外部 JS/TS consumer、元数据/公共 helpers/LKG/diagnostics、缺失 entry 负向 |
 | npm run validate:spec | PASS：13/13 strict all |
 | npm run test:openspec-closure | PASS：32/32，0 closure mismatches；active tasks 保留真实未完成项，不提前 archive |
 | npm run test:codebase-memory | PASS：42/42（Node），另有完整 Bun suite 同步执行 |
 
-Scenario 逐项测试名见 scenario-evidence.md。PR #34 的当前 HEAD checks 提供 CI run 与日志；之前设计 HEAD 的绿灯不作为实施证据。未运行 live 全目录网络 audit 或真实宿主 E2E，不能据此宣称两宿主已修复。
+实现提交 1f1ee6e27a637849c4c75cdf6795ef3b1ba959de 的 [完整 CI run38057696387](https://github.com/rpchen/litellm-discovery-core/actions/runs/38057696387) 为 SUCCESS：Node索引测试、typecheck、完整Bun、build、外部消费者、strict规格、closure和准确源码SHA的原生索引生成全部通过。PR条件下consumer dispatch按既有规则SKIPPED，不运行宿主适配。后续仅回填本证据的提交仍须通过 [PR #34 最新 HEAD checks](https://github.com/rpchen/litellm-discovery-core/pull/34/checks)，本轮交付报告记录其最终SHA和CI。
+
+Scenario 逐项测试名见 scenario-evidence.md，40/40映射到实际测试及上述实现CI；之前设计HEAD的绿灯不作为实施证据。未运行live全目录网络audit或真实宿主E2E，不能据此宣称两宿主已修复。
 
 ## 已批准的最小修复：DeepSeek 官方别名
 

@@ -23,12 +23,12 @@
 
 - [x] 4.1 简化默认诊断为配置、来源、推理与实际错误；主动审计保留公开来源和最终配置，T22/T23验证无敏感泄漏。
 - [x] 4.2 实施时同步README、testing-standard §8、ADR、OpenSpec context及本deltas；修正Purpose旧proof/degraded说明。T27只检查相关有效规则，历史archive不改。
-- [ ] 4.3 回填每个保留Scenario的真实测试名与CI证据；不把设计数据检查作为实现或真实宿主证据。
+- [x] 4.3 回填每个保留Scenario的真实测试名与CI证据；不把设计数据检查作为实现或真实宿主证据。
 
 ## 5. 验证与交付
 
-- [ ] 5.1 执行既有typecheck、bun test、build:dist、test:package、validate:spec、closure门禁；记录实际结果。
+- [x] 5.1 执行既有typecheck、bun test、build:dist、test:package、validate:spec、closure门禁；记录实际结果。
 - [ ] 5.2 Core独立Review且获授权合入后，Pi再OpenCode以同一稳定Core SHA执行T28–T34和真实宿主门禁。
 - [ ] 5.3 实现与证据齐全后才按CLI archive新change；合并、finish与版本发布均按既有授权流程，本轮不执行。
 
-实施注记（2026-10-10）：用户已批准非精确官方 canonical relation 别名查找排除 deprecated 的最小修复；精确指定旧 API 保留。T01–T04/T07–T26 定向 50/50 PASS，16项冻结期望全部通过；不修改 oracle、不实施 T05/T06 排序/比较/裁决。4.3/5.1 待完整 Core 门禁与当前 HEAD CI；5.2/5.3 待 Core Review/授权合入及宿主验收，不提前打勾。
+实施注记（2026-10-10）：用户已批准非精确官方 canonical relation 别名查找排除 deprecated 的最小修复；精确指定旧 API 保留。定向50/50、完整198/198、16项冻结期望及全部Core门禁通过；实现提交1f1ee6e的CI run38057696387为SUCCESS，含源码索引生成。证据见implementation.md/scenario-evidence.md及PR最新HEAD checks；不修改oracle、不实施T05/T06排序/比较/裁决。5.2/5.3待Core Review/授权合入及宿主验收，不提前打勾。
