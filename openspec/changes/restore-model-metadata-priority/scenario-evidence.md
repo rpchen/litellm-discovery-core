@@ -2,6 +2,8 @@
 
 Core 代码实施（2026-10-10）；T05/T06 撤回。具体自动化入口如下，状态反映实际结果。真实宿主 T28–T34 待 Core Review/授权合入，不以本地合成输入冒充 E2E。固定输入为 test/fixtures/metadata-priority/ 中与设计 evidence 字节一致的副本，避免归档改变测试路径。
 
+PR #34 对 bb07ca3 的 Review 只要求修复公共 helper 命名空间兼容。既有 T24 补充 test/metadata-publication.test.ts 的 `[T24] numeric helper preserves intrinsic limits for <name>`、`[T24] boolean helper preserves true, false and unknown for <name>`、`[T24] modality helper preserves declared arrays and unknown for <name>`（name 为 lab/model、Lab/Model），以及 scripts/test-package.mjs 独立包消费者的 namespacedGroup 断言。修复前6个用例及包消费失败；修复后25/25定向与包消费通过。该修复的完整CI以[PR最新HEAD checks](https://github.com/rpchen/litellm-discovery-core/pull/34/checks)及对应交付报告为准，不新增Scenario或改变冻结预期。
+
 | Capability | Requirement | Scenario / Matrix | 自动化证据 | 当前状态 |
 |---|---|---|---|---|
 | discovery-core | Preserve discovery entrypoints with corrected metadata | [T24] 公共消费者 | test/metadata-publication.test.ts: [T22/T23/T24] build, publication, diagnostics and public mapping share facts and allowlisted output；scripts/test-package.mjs 外部消费者 | 本地 / 实现 CI PASS |

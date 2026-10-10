@@ -1,5 +1,5 @@
 import { isRecord, optionalNumber, type DeploymentGroup, type LiteLLMDeployment } from "./litellm.js";
-import type { SelectedModelRecord } from "./modelsdev.js";
+import { canonicalModelID, type SelectedModelRecord } from "./modelsdev.js";
 import { resolveSelectedModel, type FieldResolutionWithBasis } from "./resolve.js";
 export interface FieldEvidence {
   readonly source: EvidenceSource;
@@ -126,7 +126,9 @@ export function modalityDimensions(direction: "input" | "output"): readonly Moda
   return direction === "input" ? INPUT_MODALITY_DIMENSIONS : OUTPUT_MODALITY_DIMENSIONS;
 }
 function projection(group: DeploymentGroup, record?: Record<string, unknown>) {
-  return resolveSelectedModel(group, record ? { providerID: "metadata", modelID: group.modelName, record } : undefined);
+  const name = canonicalModelID(group.modelName);
+  const providerID = name.includes("/") ? name.split("/")[0]! : "metadata";
+  return resolveSelectedModel(group, record ? { providerID, modelID: group.modelName, record } : undefined);
 }
 function evidence(item: FieldResolutionWithBasis): FieldResolution {
   return { field: item.field, value: item.value, status: item.status, selectedSource: item.basis === "models.dev" ? "models.dev" : item.basis === "litellm-declared" ? "litellm" : "none", resolution: item.resolution, evidence: [] };

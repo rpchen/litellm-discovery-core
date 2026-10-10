@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { buildModelSpecs, criticalModelFingerprint } from "../src/core/build.ts";
 import { mapCapabilities } from "../src/core/capabilities.ts";
 import { diagnoseModelSpecs } from "../src/core/diagnostics.ts";
+import { resolveBooleanField, resolveModalityField, resolveNumericField } from "../src/core/evidence.ts";
 import { buildVariants, resolveReasoningState, selectModelsDevRecord } from "../src/core/modelsdev.ts";
 import { assessModelConfiguration, buildPublicationResult, capturedPublicationVerdict, createLastKnownGoodEntry, createLastKnownGoodStore, describeAssessment, hostReasoningFlag, hostToolsFlag, isLKGEntryCompatible, PUBLICATION_SCHEMA_VERSION, validateLastKnownGood, withheldReasons } from "../src/core/publication.ts";
 import { resolveModel } from "../src/core/resolve.ts";
@@ -47,6 +48,31 @@ test("[T14/T24] effort options alone never supply reasoning support in a public 
   expect(resolveReasoningState(group(), selected).state).toBe("unknown");
   expect(buildVariants(selected, "chat")).toEqual([]);
   expect(resolveModel(group(), metadataCatalog(record)).spec.variants).toEqual([]);
+});
+test.each(["lab/model", "Lab/Model"])("[T24] numeric helper preserves intrinsic limits for %s", (name) => {
+  for (const field of ["context", "input", "output"] as const) {
+    expect(resolveNumericField({ group: group(name), field, intrinsic: 100000 }))
+      .toMatchObject({ value: 100000, known: true, resolution: { selectedSource: "models.dev" } });
+    expect(resolveNumericField({ group: group(name), field }).value).toBeUndefined();
+  }
+});
+test.each(["lab/model", "Lab/Model"])("[T24] boolean helper preserves true, false and unknown for %s", (name) => {
+  for (const field of ["reasoning", "capabilities.tools"]) {
+    const input = { group: group(name), field, descriptiveKey: "supports_reasoning", fallbackState: "unknown" as const, fallbackConflict: false };
+    expect(resolveBooleanField({ ...input, intrinsic: true }).state).toBe("supported");
+    expect(resolveBooleanField({ ...input, intrinsic: false }).state).toBe("unsupported");
+    expect(resolveBooleanField(input).state).toBe("unknown");
+  }
+});
+test.each(["lab/model", "Lab/Model"])("[T24] modality helper preserves declared arrays and unknown for %s", (name) => {
+  for (const direction of ["input", "output"] as const) {
+    expect(resolveModalityField({ group: group(name), direction, intrinsic: ["text", "image"] }))
+      .toMatchObject({ values: ["text", "image"], known: true });
+    expect(resolveModalityField({ group: group(name), direction, intrinsic: [] }))
+      .toMatchObject({ values: [], known: true });
+    expect(resolveModalityField({ group: group(name), direction }))
+      .toMatchObject({ values: [], known: false });
+  }
 });
 test("[T12] invalid selected context/output cannot publish and another model remains available", () => {
   for (const value of [0, 0.5, -1, Infinity, NaN, "100"]) {

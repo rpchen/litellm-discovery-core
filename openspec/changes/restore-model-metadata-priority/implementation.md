@@ -55,3 +55,9 @@ Scenario 逐项测试名见 scenario-evidence.md，40/40映射到实际测试及
 ## Retrospective
 
 算法没有按16模型硬编码；此次条件适用于官方relation别名查找，两个精确旧API负向回归保护兼容行为。既有协议/refresh/通知保留，冻结数据和历史archive不改。临时日志在忽略的.tmp，构建dist未入库。跨仓库5.2/5.3仍待办；完整Core门禁与CI通过后提交代码Review，不合并、不发布、不提前实施宿主。
+
+## PR #34 Review 修复：公共 helper 命名空间
+
+Review 基于 bb07ca3953e931a6247ac3805579ad2bbe4dddcb，复现 projection 固定 metadata provider 导致 lab/model 的显式 intrinsic 丢失。只在 src/core/evidence.ts 用既有 canonicalModelID 取得临时记录的命名空间，继续委托同一 resolveSelectedModel；不改 resolver、匹配优先级或其他业务规则。
+
+T24新增6个直接helper回归（数值、true/false/unknown、模态声明/空数组/unknown；lab/model和既有大小写归一化），修复前19 PASS / 6 FAIL，修复后25/25 PASS。独立npm包消费者同样先复现context为undefined，再验证三个helper保持传入值。README与Scenario证据同步；完整该修复HEAD的门禁、CI与提交SHA见[PR #34最新checks](https://github.com/rpchen/litellm-discovery-core/pull/34/checks)和本次复核报告。上表198/198及1f1ee6e CI保留为之前实施提交的历史结果；不据其宣称此次修复CI通过。

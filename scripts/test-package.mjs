@@ -54,6 +54,13 @@ assert.deepEqual(mapCapabilities(group, selected, true), {
 assert.equal(resolveNumericField({ group, field: "context", intrinsic: 100000 }).value, 100000)
 assert.equal(resolveBooleanField({ group, field: "reasoning", descriptiveKey: "supports_reasoning", intrinsic: true, fallbackState: "unknown", fallbackConflict: false }).state, "supported")
 assert.equal(resolveModalityField({ group, direction: "input", intrinsic: ["text"] }).known, true)
+const namespacedGroup = groupLiteLLMDeployments({ data: [{ model_name: "lab/model", model_info: { mode: "chat" } }] })[0]
+assert.equal(resolveNumericField({ group: namespacedGroup, field: "context", intrinsic: 100000 }).value, 100000)
+assert.equal(resolveNumericField({ group: namespacedGroup, field: "context", intrinsic: 100000 }).known, true)
+assert.equal(resolveBooleanField({ group: namespacedGroup, field: "reasoning", descriptiveKey: "supports_reasoning", intrinsic: true, fallbackState: "unknown", fallbackConflict: false }).state, "supported")
+assert.equal(resolveBooleanField({ group: namespacedGroup, field: "capabilities.tools", descriptiveKey: "supports_function_calling", intrinsic: false, fallbackState: "unknown", fallbackConflict: false }).state, "unsupported")
+assert.deepEqual(resolveModalityField({ group: namespacedGroup, direction: "input", intrinsic: ["text", "image"] }).values, ["text", "image"])
+assert.equal(resolveModalityField({ group: namespacedGroup, direction: "input", intrinsic: ["text", "image"] }).known, true)
 const live = buildPublicationResult(body, catalog, options).publishable[0]
 const entry = createLastKnownGoodEntry(group, selected, live.spec, Date.now(), capturedPublicationVerdict(live.assessment, live.spec), catalog, options)
 const store = createLastKnownGoodStore(); store.set("consumer-model", entry)
