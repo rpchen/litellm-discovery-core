@@ -111,7 +111,7 @@ function selectRecord(group: DeploymentGroup, catalog: NormalizedCatalog): {
     const exactRecords = corresponding.filter(([key, record]) => exactName(key, record, name, canonicalID));
     // Renamed official APIs can use explicit canonical relations. Resellers
     // must match the model name, so free/pro/highspeed SKUs stay distinct.
-    const aliases = official.includes(providerID) ? corresponding.filter(([, record]) => recordCanonical(record) === canonicalID) : [];
+    const aliases = official.includes(providerID) ? corresponding.filter(([, record]) => recordCanonical(record) === canonicalID && record.status !== "deprecated") : [];
     const matches = exactRecords.length ? exactRecords : aliases;
     if (matches.length !== 1)
       continue;

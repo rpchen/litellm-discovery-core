@@ -28,6 +28,33 @@ describe("restore-model-metadata-priority", () => {
       expect(resolved.spec.cost).toEqual({ input: cost.input ?? 0, output: cost.output ?? 0, cacheRead: cost.cache_read ?? 0, cacheWrite: cost.cache_write ?? 0 });
     });
   }
+  test("[T02] DeepSeek canonical name selects the non-deprecated official API alias", () => {
+    const expected = oracle.models.find(({ id }) => id === "deepseek-v4.1-flash")!;
+    const group = groupLiteLLMDeployments(discovery).find(({ modelName }) => modelName === expected.id)!;
+    const resolved = resolveModel(group, catalog, options);
+    expect(resolved.selected?.providerID).toBe("deepseek");
+    expect(resolved.selected?.modelID).toBe("deepseek-flash");
+    expect(resolved.selected?.matchKind).toBe("relation");
+    expect(resolved.publishable).toBe(true);
+    expect(resolved.spec.id).toBe(expected.id);
+    expect(resolved.spec.limit.output).toBe(expected.limit.output);
+    expect(resolved.spec.variants.map(({ id }) => id)).toEqual(expected.levels);
+  });
+  test.each(["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"])(
+    "[T02] exact deprecated official API %s remains matchable",
+    (modelName) => {
+      const group = groupLiteLLMDeployments({ data: [{ model_name: modelName, model_info: { mode: "chat" } }] })[0]!;
+      const resolved = resolveModel(group, catalog, options);
+      expect(resolved.selected?.providerID).toBe("deepseek");
+      expect(resolved.selected?.modelID).toBe(modelName);
+      expect(resolved.selected?.record.status).toBe("deprecated");
+      expect(resolved.selected?.matchKind).toBe("exact");
+      expect(resolved.identity.canonicalModelID).toBe("deepseek/deepseek-v4.1-flash");
+      expect(resolved.publishable).toBe(true);
+      expect(resolved.spec.id).toBe(modelName);
+      expect(resolved.spec.variants.map(({ id }) => id)).toEqual(["low", "high", "max"]);
+    },
+  );
   test("[T01] all 16 discovered names are published without provider declarations", () => {
     const result = buildPublicationResult(discovery, catalog, options);
     expect(result.blocked).toEqual([]);

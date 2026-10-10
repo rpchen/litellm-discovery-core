@@ -27,6 +27,8 @@ LiteLLM model_name 原样作为宿主 ID、显示名、请求 ID 及 LKG 模型�
 
 先找明确对应的精确记录，官方 API 名称不同则用明确 canonical relation。组织主名优先，已确认别名只用于找整条记录，不用于补字段。OpenCode/OpenRouter 同样只采用名称/明确关系对应的型号，不把 free/pro 等不同 SKU 当成普通型号。
 
+用户于 2026-10-10 批准冻结 DeepSeek 数据所需的最小修复：仅在没有精确 API 名称匹配、通过官方 canonical relation 查找别名时排除 status=deprecated 记录。deepseek-v4.1-flash 因而选中 deepseek-flash；用户精确指定 deepseek-v4-flash 或 deepseek-v4-flash-vision-exp 时仍正常匹配该旧 API。此过滤不用于精确匹配或 OpenCode/OpenRouter，不排序、不比较能力字段、不增加证明或冲突机制。
+
 删除无实证的非 deprecated 排序、关键字段等价比较、字典序代表项和候选冲突裁决。对无法明确对应的记录不猜测，沿用未匹配处理；不新建候选证明系统。
 
 ### D3. 官方 → OpenCode → OpenRouter，选一条整记录

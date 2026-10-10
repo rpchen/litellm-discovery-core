@@ -37,4 +37,4 @@ T01–T34沿用原编号，T05/T06明确撤回且不再生成Scenario/实施任�
 
 Pi省略map会补档位、全null返回空列表已实测；真正picker/请求行为需要T29。OpenCode现有Model.Info映射需要T33验证最终请求。Pi无独立tools注册位，当前16条tools=true，不阻断此次设计，也不新增工具控制。旧错误配置快照需要一次成功刷新重建，沿已有schema门禁。无需真实/v1/model/info或实际serving证明。
 
-本段记录设计 Review 时的状态；当前 Core 已实施，仍有 DeepSeek 官方别名待决，具体结果以 implementation.md 与本次 PR HEAD CI 为准。PR CI结果以对应新HEAD的GitHub运行记录为准，既有宿主E2E通过也不代表新增模型匹配与档位场景已实施。停在Review，不合并、归档或发布。
+本段记录设计 Review 时的状态；当前 Core 已实施，DeepSeek 官方别名最小修复已获用户批准并通过定向回归，具体完整结果以 implementation.md 与本次 PR HEAD CI 为准。PR CI结果以对应新HEAD的GitHub运行记录为准，既有宿主E2E通过也不代表新增宿主模型匹配与档位场景已实施。停在代码Review，不合并、归档或发布。

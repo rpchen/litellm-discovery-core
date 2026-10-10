@@ -14,6 +14,8 @@ LiteLLM model_name 原样作为模型 ID、显示名和请求名。完整 canoni
 
 按 **官方服务商 → OpenCode → OpenRouter** 选择一条明确对应的完整记录。官方服务商由 canonical owner 和已核实的组织别名识别（tencent → tencent-tokenhub、zhipuai → zai）。官方 API 名称可以不同，但必须有明确 canonical 关系。不同日期或 free/pro SKU 不替代原型号。
 
+没有精确 API 名称匹配、需要通过官方 canonical 关系找别名时，排除 `status=deprecated` 的记录；精确指定 deprecated API 名称仍可匹配。例如 `deepseek-v4.1-flash` 使用官方 `deepseek-flash`，精确指定 `deepseek-v4-flash` 仍使用该旧 API 的记录。
+
 选中记录独立提供 tools、reasoning、modalities、limit、reasoning_options、release_date 和参考价格；缺字段不从 canonical、其他服务商或 LiteLLM 回填。false 是明确不支持，缺失为未知。发布仍要求有限正 context/output、明确 tools/reasoning 及非空已知输入/输出模态；可选 input/release/price 不阻止发布。input capacity 不充当 context。
 
 推理支持和档位分开：reasoning=false 不支持；true 且没有 effort 选项表示支持但无可选档位；true 且有 effort 则只使用该记录的 values。没有统一 GPT 档位模板。既有协议选择、mixed fallback、override 和 Messages 映射保持不变。

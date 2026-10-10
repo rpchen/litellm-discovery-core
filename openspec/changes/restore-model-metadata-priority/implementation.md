@@ -1,10 +1,11 @@
 # Core 实施记录（2026-10-10）
 
-状态：Core 代码已实施，尚未达到 Review-ready。唯一已知失败为 T01/T02 的 DeepSeek 官方 API 别名选择；不得用忽略测试、修改冻结 oracle 或硬编码模型表掩盖。
+状态：Core 代码已实施；用户批准的 DeepSeek 官方 API 别名最小修复已通过定向回归，完整本地门禁及当前 PR CI 正在验证。Pi/OpenCode 仍待 Core Review 和授权合入。
 
 ## 基线与范围
 
 - 当前续做分支 codex/restore-model-metadata-priority；实施前 HEAD 80dac9d74a16285b7d8d073031d2b6befd0dfda4，main/origin/main a13f16fd983478572502f3896fd5509978027261（0/0），工作区干净。
+- 本次最小修复续做 HEAD e8fb92814ae3eda541eba3ec788898f4192d501a，工作区干净；CLI prepare(mode=resume) 返回 working / existing work preserved，未切换或覆盖任务分支。
 - Pi / OpenCode 分支、dist/provenance 和代码保持原状，当前编入同一 Core main a13f16fd983478572502f3896fd5509978027261。宿主 T28–T34 未实施、未验收。
 - prepare(mode=resume) MCP 未正常解析选择，图查询报 project identity cannot be resolved；官方 CLI 后备返回 working / existing work preserved。原生 marker 为 Core project，commit 80dac9d74a16285b7d8d073031d2b6befd0dfda4；本轮基于实时 Git/源码，未把该基线索引称为已覆盖实施改动。
 - 未修改历史 archive、版本、用户配置、三个子仓库 AGENTS.md 或 Workspace 内容；未合并、打 tag、发版或执行 finish。
@@ -32,8 +33,9 @@ src/index.ts 为 wildcard 公共入口。保留 selectModelsDevRecord[Detailed]�
 | 门禁 | 实际结果 |
 |---|---|
 | npm run typecheck | PASS |
-| bun test（完整，首次实施树） | 194 PASS / 1 FAIL；失败为 DeepSeek 选中官方记录，不是测试框架故障 |
-| 最后补充能力错误诊断 / helper 独立支持测试 | 定向 30/30 PASS；当前产品目录 120 PASS / 同一 1 FAIL；完整当前 HEAD 以 PR CI 为准 |
+| DeepSeek 修复前回归 | 新测试先复现：18 PASS / 2 FAIL；原冻结用例及新 canonical 别名用例失败，两个精确旧 API 用例通过 |
+| 元数据定向回归 | 50/50 PASS；16条冻结配置全部通过，包括官方 DeepSeek Flash 输出393216、low/high/max；两个 deprecated 精确 API 仍匹配 |
+| bun test（本次完整） | 正在运行；完成后记录实际结果，不能用之前194 PASS / 1 FAIL的结果作为通过证据 |
 | npm run build:dist | PASS |
 | npm run test:package | PASS：外部 JS/TS consumer、元数据/公共 helpers/LKG/diagnostics、缺失 entry 负向 |
 | npm run validate:spec | PASS：13/13 strict all |
@@ -42,12 +44,12 @@ src/index.ts 为 wildcard 公共入口。保留 selectModelsDevRecord[Detailed]�
 
 Scenario 逐项测试名见 scenario-evidence.md。PR #34 的当前 HEAD checks 提供 CI run 与日志；之前设计 HEAD 的绿灯不作为实施证据。未运行 live 全目录网络 audit 或真实宿主 E2E，不能据此宣称两宿主已修复。
 
-## 唯一产品待决：DeepSeek 官方别名
+## 已批准的最小修复：DeepSeek 官方别名
 
-公开冻结目录的 deepseek/deepseek-v4.1-flash 对应三条官方记录：deepseek-flash；deepseek-v4-flash（status=deprecated）；deepseek-v4-flash-vision-exp（status=deprecated）。期望值要求 deepseek-flash，但 D2 / T05 明确撤回 non-deprecated 排序，未说明多个该关系如何选定。
+公开冻结目录的 deepseek/deepseek-v4.1-flash 对应三条官方记录：deepseek-flash；deepseek-v4-flash（status=deprecated）；deepseek-v4-flash-vision-exp（status=deprecated）。原实现转到 OpenCode，导致官方来源/输出上限不符合 expected-16（393216）。此前失败 CI e8fb928 / run38054861236 保留为问题证据，不作为通过证据。
 
-目前 resolver 不猜测三条关系，转到 OpenCode，导致官方来源/输出上限不符合 expected-16（393216）。这是真实数据问题。已向用户提出只在非精确官方 API 别名查找时排除 deprecated 的最小规则；不增加排序、关键字段比较、证明或新状态，精确点名旧 API 仍按名称匹配。未获答复前不实施该条件，也不修改 oracle。
+用户于2026-10-10批准：只在没有精确 API 名称匹配、通过官方 canonical relation 查找别名时排除 deprecated。src/core/resolve.ts 只增加一个 aliases 过滤条件；exactRecords 分支不变。同步 D2、原 T02 Scenario/矩阵和 README，新增真实冻结目录回归；不增加排序、关键字段比较、证明、冲突机制或状态，不修改正确 oracle。T05/T06 仍撤回。
 
 ## Retrospective
 
-算法没有按 16 模型硬编码；仅使用已核实组织别名。既有协议/refresh/通知保留。旧规则和对应错误测试已删除，新增测试首先比较最终 ModelSpec 与公开记录。文件变更限 Core 本次契约、测试及文档；临时草稿在忽略的 .tmp，构建 dist 未入库。Core 不闭环的事实和跨仓库后续 tasks 保持未勾选，PR 保持 Draft。
+算法没有按16模型硬编码；此次条件适用于官方relation别名查找，两个精确旧API负向回归保护兼容行为。既有协议/refresh/通知保留，冻结数据和历史archive不改。临时日志在忽略的.tmp，构建dist未入库。跨仓库5.2/5.3仍待办；完整Core门禁与CI通过后提交代码Review，不合并、不发布、不提前实施宿主。

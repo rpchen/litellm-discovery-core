@@ -73,8 +73,8 @@ Core SHALL 以 LiteLLM model_name 为模型身份和请求 ID，只按该名称�
 - **THEN** 选中记录及完整能力等于冻结 expected-16。
 
 #### Scenario: [T02] 官方API名称不同
-- **WHEN** deepseek-v4.1-flash 对应官方 deepseek-flash 的明确 relation
-- **THEN** 读取该官方记录，保留原请求名。
+- **WHEN** deepseek-v4.1-flash 无精确 API 名称匹配，通过官方 canonical relation 查找别名
+- **THEN** 仅在该别名查找中排除 status=deprecated，读取 deepseek-flash 并保留原请求名；精确指定旧 deprecated API 名称时仍匹配该记录，不使用此过滤。
 
 #### Scenario: [T03] 整记录三级选择
 - **WHEN** 官方、OpenCode、OpenRouter 的对应记录逐级不存在

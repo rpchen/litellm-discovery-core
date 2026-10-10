@@ -9,9 +9,9 @@
 
 ## 2. 名称与整记录
 
-- [ ] 2.1 用model_name与明确models.dev关系替换内部route/base_model和serving证明；按官方→OpenCode→OpenRouter选整记录。T01–T04/T07–T10验证；不实现T05/T06。
+- [x] 2.1 用model_name与明确models.dev关系替换内部route/base_model和serving证明；按官方→OpenCode→OpenRouter选整记录。T01–T04/T07–T10验证；不实现T05/T06。
 - [x] 2.2 删除跨provider/LL字段补齐、候选等价裁决，复用现有完整性与正上限检查；T10/T12/T26保留false/空值、版本/SKU与未知顶层字段兼容。
-- [ ] 2.3 精确读取所选记录reasoning_options，T13/T14逐模型核对；T11/T15只回归既有协议和Messages映射，不新增冲突阻断或预算推导。
+- [x] 2.3 精确读取所选记录reasoning_options，T13/T14逐模型核对；T11/T15只回归既有协议和Messages映射，不新增冲突阻断或预算推导。
 
 ## 3. 价格与缓存
 
@@ -31,4 +31,4 @@
 - [ ] 5.2 Core独立Review且获授权合入后，Pi再OpenCode以同一稳定Core SHA执行T28–T34和真实宿主门禁。
 - [ ] 5.3 实现与证据齐全后才按CLI archive新change；合并、finish与版本发布均按既有授权流程，本轮不执行。
 
-实施注记（2026-10-10）：2.1/2.3 和 T01/T02 尚有实际目录歧义：三条官方 API 指向同一 DeepSeek Flash canonical，其中两条 deprecated；D2 撤回该筛选/排序，oracle 仍要求 deepseek-flash。已向用户提出产品澄清，未擅自加入规则。4.3/5.1 须待该回归与本 HEAD CI 完整通过；5.2/5.3 待 Core Review/授权合入及宿主验收，不提前打勾。
+实施注记（2026-10-10）：用户已批准非精确官方 canonical relation 别名查找排除 deprecated 的最小修复；精确指定旧 API 保留。T01–T04/T07–T26 定向 50/50 PASS，16项冻结期望全部通过；不修改 oracle、不实施 T05/T06 排序/比较/裁决。4.3/5.1 待完整 Core 门禁与当前 HEAD CI；5.2/5.3 待 Core Review/授权合入及宿主验收，不提前打勾。

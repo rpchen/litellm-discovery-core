@@ -13,10 +13,10 @@
 | ID | 输入/验证 | 预期与依据 |
 |---|---|---|
 | T01 | 16真实名称，无内部身份线索、无models_dev_provider；逐字段对比oracle | 正确记录、能力、限制、推理、同记录价格；用户实际基线 |
-| T02 | model_name=deepseek-v4.1-flash；官方deepseek-flash；MiMo精确owner/id | 按公开关系匹配，无路由证明；冻结记录已核实 |
+| T02 | model_name=deepseek-v4.1-flash；同relation的deepseek-flash及两条deprecated旧API；分别精确指定旧API；MiMo精确owner/id | 无exact时官方relation别名排除deprecated，选deepseek-flash；精确指定旧API仍匹配。用户批准的最小过滤，无排序/字段比较/证明 |
 | T03 | 依次移除对应官方记录、OpenCode记录 | 整记录官方→OpenCode→OpenRouter；不做字段fallback，用户规则B/C |
 | T04 | Tencent与Tencent TokenHub等已确认组织名称差异 | 组织级别名找整记录，无模型硬编码；source-notes公开依据 |
-| T05 | 撤回：非deprecated/关键等价/字典序候选代表项 | 未观察到必要性，删除对应Scenario与任务，不实施 |
+| T05 | 撤回：候选排序/关键等价/字典序代表项 | 不实施这些机制；T02仅覆盖用户批准的非精确官方relation别名deprecated过滤 |
 | T06 | 撤回：无exact多候选能力冲突裁决及额外withheld | 无实际问题证据，不以Review创造机制 |
 | T07 | 仅model_name、完整或唯一bare公开名 | 不依赖base_model、route或transport剥离；不改请求ID，规则A |
 | T08 | 同model_name下增删/更改base_model、route、deployment ID；元数据声明变化 | 身份、选中记录、能力不变，无新增阻断；协议按既有算法独立回归 |
