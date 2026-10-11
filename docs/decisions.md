@@ -32,11 +32,11 @@
 
 ## ADR-005：按模型名选整条元数据记录
 
-- **状态**：设计已于 2026-10-10 获用户批准；Core 实施提交独立代码 Review，合入另需授权。
+- **状态**：设计于 2026-10-10 获用户批准；Core PR #34 已于 2026-10-10 squash 合并，merge SHA 为 `cf797e953eb1f6de8e7c3e0fd5e98094398c26f9`；该 SHA 的完整 CI 与索引发布已通过。
 - **依据**：用户实际 16 个 model_name 及已冻结公开目录，旧 serving proof 阻断正确的能力/档位；没有跨 provider 补字段的实际需求。
 - **决定**：model_name + 明确目录关系；官方 → OpenCode → OpenRouter 选整条记录，false 与未知分开，reasoning_options 逐模型保真。价格为所选参考值或 0，绝不影响发布/限制/恢复；contextTierCap 忽略。
 - **删除**：内部 route/base_model 身份、serving proof、逐字段多来源回填、候选等价裁决、operator 价格权威/最高价、tier cap、LKG multiset/多重 proof。保留必要能力准入、已有协议、scope、内容校验和恢复入口；旧缓存经 8→9、1→2 重建。
-- **交付**：Core → Pi → OpenCode，同一稳定 Core SHA；本轮不合并、不发布，宿主 E2E 在 Core 获授权合入后执行。详见同名 OpenSpec design/test-matrix。
+- **交付**：Core → Pi → OpenCode 已完成。Pi PR #55 与 OpenCode PR #63 均固定 Core SHA `cf797e953eb1f6de8e7c3e0fd5e98094398c26f9`；Real Pi 0.87.1 E2E 与 Real OpenCode 2.0.16 E2E 均通过。Pi 和 OpenCode 的 `v0.10.1` Release 已于 2026-10-11 发布。详见[已归档设计](../openspec/changes/archive/2026-10-11-restore-model-metadata-priority/design.md)。
 
 ## 开发代码索引（2026-10-02）
 

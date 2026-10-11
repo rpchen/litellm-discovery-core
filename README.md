@@ -32,9 +32,9 @@ LKG 继续使用 endpoint/凭据 scope、model_name、有效关键配置、schem
 
 默认 diagnostics 提供配置状态、所选公开来源、推理支持/档位和实际错误。主动审计可查看公开 canonical/record 引用及最终配置；输出不包含原始凭据、内部地址、候选服务商证明或 models_dev_provider 修复提示。
 
-公开字段解析 helper 保留兼容入口并委托同一 resolver；裸名称和带命名空间名称（如 lab/model）均保留显式传入的 intrinsic 限制、布尔能力与模态。LegacyFamilyCompatibilityProvider、deploymentConstraintValue 和 runtime constraint 常量只用于旧 API 兼容，不参与选择、发布或 LKG。已删除的 serving/proof 字段需要 adapter 按各自批准的 change 更新。
+公开字段解析 helper 保留兼容入口并委托同一 resolver；裸名称和带命名空间名称（如 lab/model）均保留显式传入的 intrinsic 限制、布尔能力与模态。LegacyFamilyCompatibilityProvider、deploymentConstraintValue 和 runtime constraint 常量只用于旧 API 兼容，不参与选择、发布或 LKG。已删除的 serving/proof 字段已由 [Pi PR #55](https://github.com/rpchen/pi-litellm-provider/pull/55) 和 [OpenCode PR #63](https://github.com/rpchen/opencode-litellm-provider/pull/63) 按新 Core 契约适配。
 
-本轮规格以 [restore-model-metadata-priority](openspec/changes/restore-model-metadata-priority/design.md) 增量覆盖 canonical 基线；跨仓库收尾后按既有流程归档，历史 archive 不修改。
+本轮规格已归档；详见 [restore-model-metadata-priority 设计](openspec/changes/archive/2026-10-11-restore-model-metadata-priority/design.md)。当前行为以本 README 和 canonical `openspec/specs/` 为准。
 
 ## 开发
 
