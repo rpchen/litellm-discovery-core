@@ -1,7 +1,7 @@
 # publication Specification
 
 ## Purpose
-Defines essential capability admission, false versus unknown, whole-configuration LKG recovery and existing metadata failures. Prices never determine availability. The active restore-model-metadata-priority delta supersedes the baseline requirements until closure.
+Defines essential capability admission, false versus unknown, whole-configuration LKG recovery and existing metadata failures. Prices never determine availability. Its canonical requirements include the completed restore-model-metadata-priority change.
 
 ## Requirements
 

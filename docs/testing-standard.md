@@ -149,7 +149,7 @@ Archive closure SHALL also verify the archived delta against the canonical speci
 
 ## 8. Discovery 元数据优先级与可用性不变量
 
-Core 是业务真源；adapter 消费其发布判定与配置，不复制元数据匹配算法。生效变更 restore-model-metadata-priority 的 T01–T27 为 Core 验收，T28–T34 在 Core 获授权合入后验证真实宿主。
+Core 是业务真源；adapter 消费其发布判定与配置，不复制元数据匹配算法。restore-model-metadata-priority 的 T01–T27 由 Core 验收；T28–T34 已分别通过 [Pi PR #55 的 Real Pi 0.87.1 E2E](https://github.com/rpchen/pi-litellm-provider/actions/runs/38072917401) 和 [OpenCode PR #63 的 Real OpenCode 2.0.16 E2E](https://github.com/rpchen/opencode-litellm-provider/actions/runs/38097388382)。
 
 - LiteLLM model_name 是模型/请求身份；只用完整 canonical、唯一 bare 或明确目录关系匹配。版本、日期、SKU 必须保留。内部 route/base_model/deployment ID/models_dev_provider 不决定匹配或缓存有效性。
 - 官方 owner（含已核实组织别名）→ OpenCode → OpenRouter 选一条记录，所有能力/选项/可选价格均来自该记录。不得跨 provider、canonical 或 LiteLLM 补字段；不同型号不合并。保留目录形状检查和未知额外顶层字段兼容。

@@ -3,7 +3,7 @@
 # modelsdev-catalog Specification
 
 ## Purpose
-Defines model-name and explicit canonical relationships, official → OpenCode → OpenRouter whole-record selection, exact reasoning options and optional prices. The active restore-model-metadata-priority delta supersedes the baseline requirements until closure.
+Defines model-name and explicit canonical relationships, official → OpenCode → OpenRouter whole-record selection, exact reasoning options and optional prices. Its canonical requirements include the completed restore-model-metadata-priority change.
 
 ## Requirements
 
