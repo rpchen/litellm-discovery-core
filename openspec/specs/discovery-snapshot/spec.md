@@ -5,42 +5,6 @@ Defines endpoint-bound discovery snapshots, compatibility checks, schema and int
 
 ## Requirements
 
-### Requirement: versioned snapshot
-Core SHALL define a schema-versioned persisted discovery snapshot containing endpoint identity, discovery time, model fingerprint, and neutral model specs.
-
-#### Scenario: snapshot creation
-- **WHEN** a successful discovery result is converted to a snapshot
-- **THEN** the snapshot records the current schema version and a stable fingerprint of its models
-
-### Requirement: endpoint-bound compatibility
-Core SHALL bind a persisted snapshot to a fingerprint derived from normalized endpoint identity, credential, and result-affecting discovery options.
-
-#### Scenario: changed endpoint or credential
-- **WHEN** a snapshot is restored for a different endpoint fingerprint
-- **THEN** it is rejected as endpoint-incompatible
-
-#### Scenario: sensitive input
-- **WHEN** an endpoint fingerprint is persisted
-- **THEN** it does not contain the raw credential or URL
-
-### Requirement: defensive restore
-Core SHALL classify missing, malformed, unsupported-version, endpoint-mismatched, and content-tampered snapshots without throwing for ordinary invalid persisted data.
-
-#### Scenario: model content changed after persistence
-- **WHEN** stored models no longer match the stored model fingerprint
-- **THEN** the snapshot is rejected as corrupt
-
-### Requirement: drift comparison
-Core SHALL compare two valid snapshots and report endpoint changes, model additions/removals, protocol changes, capability changes, and metadata-only changes.
-
-#### Scenario: compatibility drift
-- **WHEN** endpoint, model membership, protocol, or capabilities change
-- **THEN** the comparison marks drift
-
-#### Scenario: metadata-only update
-- **WHEN** only cost, limits, release data, or equivalent non-compatibility model metadata changes
-- **THEN** the comparison reports a change without independently marking compatibility drift
-
 ### Requirement: host independence
 Core SHALL NOT read or write filesystem paths, host storage, credentials stores, or plugin lifecycle state.
 
@@ -69,3 +33,39 @@ Core SHALL expose the shared endpoint identifier contract as a lowercase ASCII s
 #### Scenario: invalid endpoint identifier
 - **WHEN** an endpoint ID starts with punctuation, contains uppercase/non-ASCII characters, or is empty
 - **THEN** Core rejects it before fingerprinting
+
+### Requirement: Metadata policy snapshot version
+Core SHALL 使用snapshot schema2保存新策略中立模型和关键内容指纹；publication schema9对应新的LKG策略。旧schema不得直接回放为已校验新结果。
+
+#### Scenario: [T19] 旧快照升级
+- **WHEN** 遇到schema1持久快照
+- **THEN** 拒绝恢复并等待成功刷新重建2
+
+### Requirement: Endpoint-scoped critical configuration
+Core SHALL 验证endpoint/credential/协议相关选项scope；废弃contextTierCap和价格不参与有效性，仍保留端点ID隔离。
+
+#### Scenario: [T21] 端点改变
+- **WHEN** 快照scope与当前endpoint或credential不符
+- **THEN** 不恢复
+
+#### Scenario: [T17] 旧cap配置改变
+- **WHEN** 仅contextTierCap变化
+- **THEN** 新策略兼容性不变
+
+### Requirement: Critical snapshot integrity
+Core SHALL 验证关键模型结构与关键指纹并隔离坏数据；cost缺失/错误单独归零，MUST NOT 拒绝其他完整关键配置。模型身份、协议或关键内容损坏仍拒绝。
+
+#### Scenario: [T19] 价格损坏
+- **WHEN** 合法关键快照的cost被移除或损坏
+- **THEN** 恢复关键配置并填0
+
+#### Scenario: [T19] 能力损坏
+- **WHEN** 关键context被修改而校验不符
+- **THEN** 拒绝该不可信快照
+
+### Requirement: Separate display changes from availability
+Core SHALL 区分需要宿主更新的内容变化和影响模型可用性的关键变化；价格变更可刷新显示，MUST NOT 引发能力regression、LKG失效或通知问题指纹变化。
+
+#### Scenario: [T16] 显示价格更新
+- **WHEN** 仅cost变化
+- **THEN** 可更新显示但模型持续可用

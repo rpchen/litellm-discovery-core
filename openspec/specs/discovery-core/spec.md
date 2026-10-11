@@ -23,15 +23,6 @@ The core SHALL have zero runtime dependencies and SHALL NOT import Pi, OpenCode,
 - **WHEN** the package is built from `src/`
 - **THEN** the emitted ESM and declarations contain only core modules and standard runtime APIs
 
-### Requirement: Preserve discovery behavior
-
-The core SHALL preserve the established LiteLLM and models.dev behavior for conversational filtering, deployment grouping, protocol selection, metadata fallback, capability and price mapping, context tier capping, reasoning variants, and stable fingerprints.
-
-#### Scenario: Offline fixture regression
-
-- **WHEN** the migrated sanitized fixtures are passed to `buildModelSpecs`
-- **THEN** the core regression tests and snapshot remain stable without network access or credentials
-
 ### Requirement: Host mapping stays outside core
 
 The core SHALL return neutral `Protocol` and `ModelSpec` values and SHALL NOT include host package names or provider registration configuration.
@@ -40,3 +31,10 @@ The core SHALL return neutral `Protocol` and `ModelSpec` values and SHALL NOT in
 
 - **WHEN** a deployment resolves to Responses
 - **THEN** the result contains `protocol: "responses"` and no host SDK package field
+
+### Requirement: Preserve discovery entrypoints with corrected metadata
+Core SHALL 保留地址归一化、模式过滤、model_name分组、正常协议选择、稳定排序和宿主无关API；元数据优先级、价格与LKG行为以modelsdev-catalog/publication为准，MUST NOT 为迁移兼容保留价格tier截断或serving证明。
+
+#### Scenario: [T24] 公共消费者
+- **WHEN** 外部消费者使用公开入口处理固定输入
+- **THEN** 取得同一新resolver结果，不依赖宿主或平级仓库

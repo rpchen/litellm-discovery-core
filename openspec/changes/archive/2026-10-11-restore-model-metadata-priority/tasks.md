@@ -1,6 +1,6 @@
 # Tasks
 
-用户已批准实施；本轮仅推进 Core，未勾选项保持待办。证据见原 T01–T34 与 scenario-evidence.md；T05/T06 已撤回。
+用户已批准按 Core→Pi→OpenCode 完成实施与验收。证据见原 T01–T34 与 scenario-evidence.md；T05/T06 已撤回。
 
 ## 1. 设计审查
 
@@ -28,7 +28,7 @@
 ## 5. 验证与交付
 
 - [x] 5.1 执行既有typecheck、bun test、build:dist、test:package、validate:spec、closure门禁；记录实际结果。
-- [ ] 5.2 Core独立Review且获授权合入后，Pi再OpenCode以同一稳定Core SHA执行T28–T34和真实宿主门禁。
-- [ ] 5.3 实现与证据齐全后才按CLI archive新change；合并、finish与版本发布均按既有授权流程，本轮不执行。
+- [x] 5.2 Core独立Review并获授权合入；Pi再OpenCode以同一稳定Core SHA执行T28–T34和真实宿主门禁。
+- [x] 5.3 实现与证据齐全后按CLI archive新change；授权合并后finish并核对索引；版本发布按独立授权流程执行。
 
-实施注记（2026-10-10）：用户已批准非精确官方 canonical relation 别名查找排除 deprecated 的最小修复；精确指定旧 API 保留。定向50/50、完整198/198、16项冻结期望及全部Core门禁通过；实现提交1f1ee6e的CI run38057696387为SUCCESS，含源码索引生成。证据见implementation.md/scenario-evidence.md及PR最新HEAD checks；不修改oracle、不实施T05/T06排序/比较/裁决。5.2/5.3待Core Review/授权合入及宿主验收，不提前打勾。
+实施与收尾注记（2026-10-11）：Core #34 以审核 HEAD 69b3208 合并，main SHA cf797e953eb1f6de8e7c3e0fd5e98094398c26f9；main CI 38063778052、索引发布 38063887657 均成功，finish_codebase_task READY。Pi #55 与 OpenCode #63 均以审核通过 HEAD 和同一 Core SHA 完成真实宿主验收并合入；具体门禁及各自 main/index SHA 见对应宿主 scenario-evidence.md 与交付报告。本 change 的宿主验收完成后执行本次获授权的 CLI 归档；Pi/OpenCode v0.10.1 Release 按独立授权阶段执行，不改变冻结验收预期或历史 archive。
