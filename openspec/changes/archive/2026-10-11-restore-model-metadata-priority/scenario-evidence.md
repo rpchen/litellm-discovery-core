@@ -1,6 +1,6 @@
 # Scenario 实施证据
 
-Core 代码实施（2026-10-10）；T05/T06 撤回。具体自动化入口如下，状态反映实际结果。真实宿主 T28–T34 待 Core Review/授权合入，不以本地合成输入冒充 E2E。固定输入为 test/fixtures/metadata-priority/ 中与设计 evidence 字节一致的副本，避免归档改变测试路径。
+Core 代码实施（2026-10-10）；T05/T06 撤回。下表记录 Core 的离线自动化证据；真实宿主 T28–T34 的最终 Pi/OpenCode CI 与 E2E 证据见文末。固定输入为 test/fixtures/metadata-priority/ 中与设计 evidence 字节一致的副本，避免归档改变测试路径。
 
 PR #34 对 bb07ca3 的 Review 只要求修复公共 helper 命名空间兼容。既有 T24 补充 test/metadata-publication.test.ts 的 `[T24] numeric helper preserves intrinsic limits for <name>`、`[T24] boolean helper preserves true, false and unknown for <name>`、`[T24] modality helper preserves declared arrays and unknown for <name>`（name 为 lab/model、Lab/Model），以及 scripts/test-package.mjs 独立包消费者的 namespacedGroup 断言。修复前6个用例及包消费失败；修复后25/25定向与包消费通过。该修复的完整CI以[PR最新HEAD checks](https://github.com/rpchen/litellm-discovery-core/pull/34/checks)及对应交付报告为准，不新增Scenario或改变冻结预期。
 
@@ -49,4 +49,18 @@ PR #34 对 bb07ca3 的 Review 只要求修复公共 helper 命名空间兼容。
 
 DeepSeek Flash 官方别名修复已获用户批准；50/50定向、198/198完整回归通过，包括16个冻结配置和两个精确旧API。40个Scenario沿用原映射，不新增Requirement/Scenario或候选机制。
 
-上述各行实现CI证据对应源码提交 **1f1ee6e27a637849c4c75cdf6795ef3b1ba959de**：[run38057696387 / SUCCESS](https://github.com/rpchen/litellm-discovery-core/actions/runs/38057696387)。该运行完整执行所有所列Core测试、外部包消费、规格/closure和原生索引生成，不能替代尚未实施的T28–T34宿主E2E。后续证据回填提交的状态以[PR #34最新HEAD checks](https://github.com/rpchen/litellm-discovery-core/pull/34/checks)及交付报告为准。
+上述 Core 实现测试对应源码提交 **1f1ee6e27a637849c4c75cdf6795ef3b1ba959de**：[run38057696387 / SUCCESS](https://github.com/rpchen/litellm-discovery-core/actions/runs/38057696387)。PR #34 合并后的 main CI [run38063778052 / SUCCESS](https://github.com/rpchen/litellm-discovery-core/actions/runs/38063778052) 与索引发布 [run38063887657 / SUCCESS](https://github.com/rpchen/litellm-discovery-core/actions/runs/38063887657) 对应 Core main SHA `cf797e953eb1f6de8e7c3e0fd5e98094398c26f9`。
+
+## T28–T34 真实宿主与交付证据
+
+Pi #55 和 OpenCode #63 均以内含同一 Core provenance `cf797e953eb1f6de8e7c3e0fd5e98094398c26f9` 的已合并 main SHA 完成完整 CI。证据为：
+
+| Scenario | 真实宿主证据 | 结果 |
+|---|---|---|
+| T28：同 Core SHA 与相同 fixture | [Pi main CI](https://github.com/rpchen/pi-litellm-provider/actions/runs/38101305088)；[OpenCode main CI](https://github.com/rpchen/opencode-litellm-provider/actions/runs/38101504070) | 两宿主固定 Core provenance 一致，使用同一16模型配置验收输入 |
+| T29：Pi注册、picker与逐档请求 | [Real Pi 0.87.1 E2E](https://github.com/rpchen/pi-litellm-provider/actions/runs/38101305088/job/114357613117)，package main SHA `6007c4b5d5588ad2dfa14d1577c00df7ce74d844` | 16/16模型注册与选择通过；已声明推理档位进入真实请求；无默认思考档位泄漏 |
+| T30：Pi模态、工具与限制映射 | [Real Pi 0.87.1 E2E](https://github.com/rpchen/pi-litellm-provider/actions/runs/38101305088/job/114357613117) | 16模型最终注册字段与宿主能力表达通过 |
+| T31：Core→状态→命令/UI与请求 | [Pi E2E](https://github.com/rpchen/pi-litellm-provider/actions/runs/38101305088/job/114357613117)；[OpenCode E2E](https://github.com/rpchen/opencode-litellm-provider/actions/runs/38101504070/job/114358190469) | 端到端宿主验收通过；OpenCode实际执行63个 Chat/Responses/Messages 请求 |
+| T32：Pi恢复、scope、重启与持久化行为 | [Real Pi 0.87.1 E2E](https://github.com/rpchen/pi-litellm-provider/actions/runs/38101305088/job/114357613117) | 既有激活、隔离、缓存恢复和持久化边界通过 |
+| T33：OpenCode注册、picker与请求 | [Real OpenCode 2.0.16 E2E](https://github.com/rpchen/opencode-litellm-provider/actions/runs/38101504070/job/114358190469)，package main SHA `d205122d07f90493be6682f9053f0c1c3b5a3780` | 16/16模型最终配置通过；variants未扩张未声明档位 |
+| T34：固定provenance、dist与独立消费 | [Pi CI](https://github.com/rpchen/pi-litellm-provider/actions/runs/38101305088/job/114357613022)；[OpenCode CI](https://github.com/rpchen/opencode-litellm-provider/actions/runs/38101504070/job/114358190630) | 两仓完整CI通过；verify:dist、真实宿主安装及独立package消费均成功，provenance保持同一Core SHA |
