@@ -2,9 +2,9 @@
 
 ## 1. Core shared logic
 
-- [ ] 1.1 Add and export pure incremental model-name, response-filter, publication-merge, catalog-miss, recovery-candidate and diagnostics-merge helpers.
-- [ ] 1.2 Add Core unit tests for delta identity, retained publication, degraded metadata recovery candidates, stable unmatched exclusion and diagnostics statistics.
-- [ ] 1.3 Update Core README public API notes and canonical specs through OpenSpec archive.
+- [x] 1.1 Add and export pure incremental model-name, response-filter, publication-merge, catalog-miss, recovery-candidate and diagnostics-merge helpers.
+- [x] 1.2 Add Core unit tests for delta identity, retained publication, degraded metadata recovery candidates, stable unmatched exclusion and diagnostics statistics.
+- [x] 1.3 Update Core README public API notes and OpenSpec spec delta; archive remains part of post-merge cross-repository closure.
 
 ## 2. Adapter migration (after Core merge)
 
