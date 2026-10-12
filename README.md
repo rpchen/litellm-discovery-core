@@ -6,7 +6,7 @@
 
 ## 公共 API
 
-Core 从 src/index.ts 导出发现入口、协议选择、models.dev 选择、ModelSpec、发布判定、LKG、refresh coordinator、endpoint snapshot 和 diagnostics。Core 不引用宿主 SDK，也不管理凭据或持久化。
+Core 从 src/index.ts 导出发现入口、协议选择、models.dev 选择、ModelSpec、发布判定、LKG、refresh coordinator、endpoint snapshot、diagnostics 和宿主无关的增量 discovery helpers。Core 不引用宿主 SDK，也不管理凭据或持久化；增量 helpers 只处理传入的 model_name、Core 结果和 diagnostics，不执行网络或重试。
 
 ## 模型元数据
 
