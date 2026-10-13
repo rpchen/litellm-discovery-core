@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildPublicationResult,
   diagnoseModelSpecs,
+  mergeDiscoveryDiagnostics,
   mergePublicationResults,
   modelNameDelta,
   modelNamesOfResponse,
@@ -58,6 +59,24 @@ describe("incremental discovery core helpers", () => {
     const merged = mergePublicationResults(previous, processed, new Set(["a"]))
     expect(merged.publishable.map((entry) => entry.spec.id)).toEqual(["a", "b"])
     expect(needsCatalogRefresh(merged, new Set(["b"]))).toBeFalse()
+    const localMiss = buildPublicationResult(response(["b"]), {}, options)
+    expect(needsCatalogRefresh(localMiss, new Set(["b"]))).toBeTrue()
+  })
+
+  test("merges diagnostics for additions and deletions using current response statistics", () => {
+    const previousResponse = response(["a", "deleted"])
+    const addedResponse = response(["b"])
+    const currentResponse = response(["a", "b"])
+    const previous = diagnoseModelSpecs(previousResponse, catalog(["a", "deleted"]), options).diagnostics
+    const changed = diagnoseModelSpecs(addedResponse, catalog(["b"]), options).diagnostics
+
+    const afterAdd = mergeDiscoveryDiagnostics(previous, changed, currentResponse, ["a", "b"], new Set(["b"]))
+    expect(afterAdd.models.map((model) => model.id)).toEqual(["a", "b"])
+    expect(afterAdd.stats).toMatchObject({ responseEntries: 2, deployments: 2, models: 2, modelsDevMatched: 2, modelsDevUnmatched: 0 })
+
+    const afterDelete = mergeDiscoveryDiagnostics(previous, undefined, response(["a"]), ["a"], new Set())
+    expect(afterDelete.models.map((model) => model.id)).toEqual(["a"])
+    expect(afterDelete.stats).toMatchObject({ responseEntries: 1, deployments: 1, models: 1, modelsDevMatched: 1, modelsDevUnmatched: 0 })
   })
 
   test("only degraded metadata-withheld models are recovery candidates", () => {
