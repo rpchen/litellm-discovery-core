@@ -20,7 +20,9 @@ const consumerSource = `
 import assert from "node:assert/strict"
 import { buildModelSpecs, normalizeLiteLLMURL, groupLiteLLMDeployments, selectModelsDevRecord, mapCapabilities,
   buildPublicationResult, resolveModel, createLastKnownGoodEntry, createLastKnownGoodStore, capturedPublicationVerdict,
-  diagnoseModelSpecs, resolveNumericField, resolveBooleanField, resolveModalityField } from "litellm-discovery-core"
+  diagnoseModelSpecs, resolveNumericField, resolveBooleanField, resolveModalityField,
+  mergeDiscoveryDiagnostics, mergePublicationResults, modelNameDelta, modelNamesOfResponse,
+  needsCatalogRefresh, responseForModelNames, temporaryMetadataFailureModelNames } from "litellm-discovery-core"
 
 const resolved = await import.meta.resolve("litellm-discovery-core")
 assert.match(resolved, /\\/node_modules\\/litellm-discovery-core\\/dist\\/index\\.js$/)
@@ -37,6 +39,9 @@ assert.deepEqual(normalizeLiteLLMURL("http://litellm.example:4000/v1"), {
   legacyModelInfoURL: "http://litellm.example:4000/model/info",
 })
 const body = { data: [{ model_name: "consumer-model", model_info: { mode: "chat" }, litellm_params: {} }] }
+assert.deepEqual(modelNamesOfResponse(body), ["consumer-model"])
+assert.deepEqual(modelNameDelta(["consumer-model"], ["consumer-model", "consumer-new"]).added, ["consumer-new"])
+assert.equal(responseForModelNames({ data: [...body.data, { model_name: "consumer-new" }] }, new Set(["consumer-new"])).data.length, 1)
 const record = { id: "consumer-model", canonical_model_id: "lab/consumer-model", tool_call: true, reasoning: true,
   reasoning_options: [{ type: "effort", values: ["low", "max"] }], modalities: { input: ["text"], output: ["text"] },
   limit: { context: 100000, output: 10000 } }
@@ -69,11 +74,39 @@ assert.equal(restored.assessment.status, "configured-lkg")
 assert.equal(restored.assessment.reasoning.state, "supported")
 assert.deepEqual(restored.spec, live.spec)
 assert.deepEqual(diagnoseModelSpecs(body, catalog, options).models[0], live.spec)
+
+const addedRecord = { ...record, id: "consumer-new", canonical_model_id: "lab/consumer-new" }
+const addedCatalog = {
+  models: { "lab/consumer-model": {}, "lab/consumer-new": {} },
+  providers: { lab: { models: { "consumer-model": record, "consumer-new": addedRecord } } },
+}
+const addedBody = { data: [{ ...body.data[0], model_name: "consumer-new" }] }
+const addedSet = new Set(["consumer-new"])
+const addedPublication = buildPublicationResult(addedBody, addedCatalog, options)
+assert.equal(needsCatalogRefresh(addedPublication, addedSet), false, "a locally matched added model needs no latest catalog")
+assert.equal(needsCatalogRefresh(buildPublicationResult(addedBody, {}, options), addedSet), true, "a local miss requests the latest catalog")
+const mergedPublication = mergePublicationResults(buildPublicationResult(body, catalog, options), addedPublication, new Set(["consumer-model"]))
+assert.deepEqual(mergedPublication.publishable.map(entry => entry.spec.id), ["consumer-model", "consumer-new"])
+
+const previousDiagnostics = diagnoseModelSpecs({ data: [body.data[0], { ...body.data[0], model_name: "consumer-deleted" }] }, {
+  models: { "lab/consumer-model": {}, "lab/consumer-deleted": {} },
+  providers: { lab: { models: { "consumer-model": record, "consumer-deleted": { ...record, id: "consumer-deleted", canonical_model_id: "lab/consumer-deleted" } } } },
+}, options).diagnostics
+const addedDiagnostics = diagnoseModelSpecs(addedBody, addedCatalog, options).diagnostics
+const currentBody = { data: [body.data[0], addedBody.data[0]] }
+const mergedDiagnostics = mergeDiscoveryDiagnostics(previousDiagnostics, addedDiagnostics, currentBody,
+  ["consumer-model", "consumer-new"], addedSet)
+assert.deepEqual(mergedDiagnostics.models.map(model => model.id), ["consumer-model", "consumer-new"])
+assert.deepEqual(mergedDiagnostics.stats, { ...mergedDiagnostics.stats, responseEntries: 2, deployments: 2, models: 2, modelsDevMatched: 2, modelsDevUnmatched: 0 })
+const deletedDiagnostics = mergeDiscoveryDiagnostics(previousDiagnostics, undefined, body, ["consumer-model"], new Set())
+assert.deepEqual(deletedDiagnostics.models.map(model => model.id), ["consumer-model"])
+assert.deepEqual(deletedDiagnostics.stats, { ...deletedDiagnostics.stats, responseEntries: 1, deployments: 1, models: 1, modelsDevMatched: 1, modelsDevUnmatched: 0 })
+assert.deepEqual(temporaryMetadataFailureModelNames(buildPublicationResult(addedBody, {}, options), diagnoseModelSpecs(addedBody, {}, options).diagnostics), ["consumer-new"])
 console.log("external consumer import and call ok")
 `
 
 const typeConsumerSource = `
-import { buildModelSpecs, type ModelSpec } from "litellm-discovery-core"
+import { buildModelSpecs, modelNameDelta, type ModelNameDelta, type ModelSpec } from "litellm-discovery-core"
 
 const models: ModelSpec[] = buildModelSpecs(
   { data: [] },
@@ -81,6 +114,8 @@ const models: ModelSpec[] = buildModelSpecs(
   { contextTierCap: true, protocolOverrides: {} },
 )
 void models
+const delta: ModelNameDelta = modelNameDelta([], ["consumer-model"])
+void delta
 `
 
 try {
