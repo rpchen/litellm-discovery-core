@@ -18,10 +18,10 @@
 
 ## 2. Adapter migration (after Core merge)
 
-- [ ] 2.1 Replace duplicated Pi helpers with the Core API; preserve Pi cache/LKG/registration behavior and add temporary-failure recovery coverage.
-- [ ] 2.2 Replace duplicated OpenCode helpers with the Core API; restore real-host outage/LKG/recovery scenarios and retain incremental discovery coverage.
-- [ ] 2.3 Rebuild both adapters from the single merged Core SHA, update provenance/dist, and run their complete gates plus real host E2E.
+- [x] 2.1 Replace duplicated Pi helpers with the Core API; preserve Pi cache/LKG/registration behavior and add temporary-failure recovery coverage. Pi PR #59 final HEAD `94a6ef6a9e83d5586993e9354e57525853c4daae`; CI and Real Pi E2E run `38337780912` passed.
+- [x] 2.2 Replace duplicated OpenCode helpers with the Core API; restore real-host outage/LKG/recovery scenarios and retain incremental discovery coverage. OpenCode PR #67 final HEAD `b1a92e63d35bd53e47eb583f714ea198208c2ce9`; CI and Real OpenCode E2E run `38338680070` passed.
+- [x] 2.3 Rebuild both adapters from the single merged Core SHA `a08db4a70498ae7f397c264bb3f7c01eb196e1f8`, update provenance/dist, and run their complete gates plus real host E2E. Both adapters' `dist/core-provenance.json` match that SHA.
 
 ## 3. Delivery
 
-- [ ] 3.1 Create Core PR first; after explicit merge authorization and stable Core SHA, update Pi/OpenCode PRs without merging or releasing.
+- [x] 3.1 Create Core PR #37 first, merge only after explicit authorization, then update Pi/OpenCode PRs from its stable SHA. Core #37 merged as `a08db4a70498ae7f397c264bb3f7c01eb196e1f8`; Pi #59 and OpenCode #67 remain open pending separate merge authorization. No tag or Release was created.
