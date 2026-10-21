@@ -101,6 +101,7 @@ export function groupLiteLLMDeployments(input: unknown): DeploymentGroup[] {
 
     const litellmParams = isRecord(raw.litellm_params) ? raw.litellm_params : {}
     const modelInfo = isRecord(raw.model_info) ? raw.model_info : {}
+    if (modelInfo.blocked === true) continue
     if (!isConversational(modelName, modelInfo)) continue
 
     const deployment: LiteLLMDeployment = {
