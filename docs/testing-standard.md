@@ -222,5 +222,6 @@ PR9 及后续多 endpoint 能力必须把 endpoint ID 视为稳定的隔离边�
 - 两个 endpoint 即使 URL、credential 或模型清单相同，也必须拥有独立的 snapshot、refresh/cache/singleflight/backoff、diagnostics 与 destructive-failure 状态；共享 Core 允许复用纯算法，但不得共享 endpoint runtime state。
 - 401/403、logout、URL 变化、停用或单 endpoint 网络失败只能影响目标 endpoint。任何跨 endpoint 清空模型、污染 snapshot 或共用 backoff 都是回归。
 - activation 是宿主插件状态，不属于 Core，也不应写回用户 endpoint 配置；停用 endpoint 不发现、不轮询、不注册 provider，但可保留其可信 snapshot、credential 与历史 diagnostics。
+- LiteLLM Models Disable 是 deployment 的 `model_info.blocked=true`，不同于宿主 endpoint activation。Core 分组前必须排除明确暂停的 deployment；全部暂停的模型从增量身份和 publication 移除，不能经 LKG 复活；混合组只消费仍启用的 deployment。回归须同时验证非对话模型仍被过滤，不把可见列表条数当作最终可发布对话模型数。
 - legacy 单 endpoint 与显式 multi-endpoint 模式不得在一次配置解析中混合。兼容路径必须保持旧 provider/credential/snapshot identity，禁止为了新模式强制迁移旧用户。
 - 多 endpoint 新能力的 Scenario evidence 至少包含：同 URL 双 endpoint 隔离、单 endpoint auth destructive failure 不波及其他 endpoint、0 active、activation 立即生效，以及 diagnostics 不泄漏 URL/Key/raw error。

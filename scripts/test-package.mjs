@@ -40,6 +40,9 @@ assert.deepEqual(normalizeLiteLLMURL("http://litellm.example:4000/v1"), {
 })
 const body = { data: [{ model_name: "consumer-model", model_info: { mode: "chat" }, litellm_params: {} }] }
 assert.deepEqual(modelNamesOfResponse(body), ["consumer-model"])
+const pausedBody = { data: [{ model_name: "consumer-paused", model_info: { mode: "chat", blocked: true } }, ...body.data] }
+assert.deepEqual(modelNamesOfResponse(pausedBody), ["consumer-model"])
+assert.deepEqual(buildModelSpecs(pausedBody, {}, { contextTierCap: false, protocolOverrides: {} }).map(model => model.id), ["consumer-model"])
 assert.deepEqual(modelNameDelta(["consumer-model"], ["consumer-model", "consumer-new"]).added, ["consumer-new"])
 assert.equal(responseForModelNames({ data: [...body.data, { model_name: "consumer-new" }] }, new Set(["consumer-new"])).data.length, 1)
 const record = { id: "consumer-model", canonical_model_id: "lab/consumer-model", tool_call: true, reasoning: true,

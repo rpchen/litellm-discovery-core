@@ -2,6 +2,8 @@
 
 `litellm-discovery-core` 是 LiteLLM 模型发现与元数据处理的宿主无关 TypeScript core。它把 LiteLLM `/v1/model/info` 响应和脱敏的 models.dev catalog 归一化为可供宿主适配层消费的 `ModelSpec[]`。
 
+LiteLLM 的 Models Disable 操作会将 deployment 标记为 `model_info.blocked: true`；`model/info` 仍可返回它。Core 在分组前排除这些暂停 deployment：同名模型仍有启用的对话 deployment 时继续保留，全暂停时从发现、发布及增量身份集合移除。embedding 等非对话模型和缺少关键配置的模型继续按既有规则过滤。参见 [LiteLLM 1.99.0 官方语义](https://github.com/BerriAI/litellm/blob/fa647f742d7baefe8eb1181899d9c81b41559772/litellm/router.py#L10129-L10148)。
+
 本仓库不是可直接安装的 Pi 或 OpenCode 插件。`rpchen/pi-litellm-provider` 与 `rpchen/opencode-litellm-provider` 已在构建阶段消费本仓库：更新构建解析 core `main` 的实际 commit SHA，把同一份 Core 编译进各自提交的 `dist/` 并记录 provenance。插件安装和运行时不下载本仓库，也不依赖平级源码目录。
 
 ## 公共 API
