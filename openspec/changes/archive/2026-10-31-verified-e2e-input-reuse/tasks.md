@@ -18,11 +18,11 @@
 
 ## 3. 真实证据与收口（父会话验收）
 
-- [ ] 3.1 adapter 实际运行证据：OpenCode 与 Pi 各自 change 落地后，取得完整矩阵基线与复用分支的真实 CI 运行（含 host input/host lock、run/attempt、job 与全部步骤），并附运行链接。验证：运行可回读且与 4.1 的输入面要求一致。
-- [ ] 3.2 adapter 负向证据：组失败、取消、意外 skipped、缺组、基线缺失/不匹配、delivery 结果冒充基线，全部不得绿；确认不触发 main 索引发布。验证：单元负向覆盖所有状态，至少一次真实组失败传播；不为每种状态重复运行整套E2E。
-- [ ] 3.3 两个 adapter 各自的 `release-governance`/E2E change 与 AGENTS/decisions 引用本政策，Pi tag 完整 E2E 与 Release 责任不变，OpenCode tag 未被声称新增真实宿主 E2E。验证：PR 描述互链并写明 `Core → adapters → workspace` 顺序。
-- [ ] 3.4 Core 与 workspace PR 的 CI 通过（Core：`npm run validate:spec`、`npm run test:openspec-closure`；workspace：既有校验），常规 CI 与准确 main SHA 索引发布仍照常。验证：PR检查及未改动的main索引依赖；未授权合并时不要求新main运行。
-- [ ] 3.5 父会话验收全部证据后，才勾选 3.x 并通过 OpenSpec CLI archive、同步 canonical spec、再次 strict validation；本轮不得手工移动目录或提前 archive。
+- [x] 3.1 adapter 实际运行证据：OpenCode 与 Pi 各自 change 落地后，取得完整矩阵基线与复用分支的真实 CI 运行（含 host input/host lock、run/attempt、job 与全部步骤），并附运行链接。验证：运行可回读且与 4.1 的输入面要求一致。
+- [x] 3.2 adapter 负向证据：组失败、取消、意外 skipped、缺组、基线缺失/不匹配、delivery 结果冒充基线，全部不得绿；确认不触发 main 索引发布。验证：单元负向覆盖所有状态，至少一次真实组失败传播；不为每种状态重复运行整套E2E。
+- [x] 3.3 两个 adapter 各自的 `release-governance`/E2E change 与 AGENTS/decisions 引用本政策，Pi tag 完整 E2E 与 Release 责任不变，OpenCode tag 未被声称新增真实宿主 E2E。验证：PR 描述互链并写明 `Core → adapters → workspace` 顺序。
+- [x] 3.4 Core 与 workspace PR 的 CI 通过（Core：`npm run validate:spec`、`npm run test:openspec-closure`；workspace：既有校验），常规 CI 与准确 main SHA 索引发布仍照常。验证：PR检查及未改动的main索引依赖；未授权合并时不要求新main运行。
+- [x] 3.5 父会话验收全部证据后，才勾选 3.x 并通过 OpenSpec CLI archive、同步 canonical spec、再次 strict validation；本轮不得手工移动目录或提前 archive。
 
 ### Scenario evidence mapping
 
@@ -34,3 +34,11 @@
 | baselines are complete and never recursive | 4.1 基线与禁止递归条目；adapter 基线校验与负向用例（3.2） |
 | aggregate result is reported honestly | 4.1 "汇总必须如实"；adapter 汇总 check 的真实输出（3.1） |
 | release obligations are unchanged by reuse | `docs/testing-standard.md` 4.1 末段与第 10 节第 7 段；Pi Release工作流保持不变的Git差异核对（3.3），发行时再做附件验收 |
+
+## 父会话真实验收回填
+
+OpenCode完整41178587569/41179401172 full/complete，metadata PR41179240839正确引用41178587569/1、只跑当前真实交付；Pi完整41179193705 full/complete，metadata同PR追加commit运行41179482645正确复用41179193705/1、只跑当前交付，均不产出递归full记录。OpenCode实际B失败41179266423→aggregate失败，Pi当前delivery故障41179734333→required失败；取消/意外skip/缺组/旧attempt/缺失或不匹配基线由Node负向覆盖，不重复整套E2E。
+
+父已回读两仓在线Protect main：CI+对应latesthostcheck/strict/squash保持，Release/index/merge-gate文件无差异；失败PR不满足既有main push/success索引条件。没有要求或执行未授权main合并/finish。Core候选db9c695 CI41178129031通过；workspace候选a2b653c CI41178181776通过。三侧AGENTS/decisions/OpenSpec已互引，Pi tagfull和附件发行责任保留。Astra独立审核问题由父修复并真实验收。
+
+PR为Core40→adapters OpenCode74/Pi64→workspace4，均未合并，政策不会在权威文本合入前被宣称已经在main生效。三仓由CLI同步canonical并archive，随后strict/closure验证；归档后最终准确SHA CI仍由各PR最后检查确认。临时验收PR/branch/worktree已清理。
