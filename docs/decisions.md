@@ -57,3 +57,15 @@
 ## 异步准备生命周期修复（2026-10-03）
 
 复审指出上一轮仍有三处 P2 异步生命周期缺陷和一处回归时序失效，本轮集中修复：门禁准备结果按仓库与准备轮次隔离，较早轮次的回调不得覆盖较新轮次的门禁结论；宿主连接关闭（EOF）或 SIGINT/SIGTERM 后进入关闭状态，取消在跑准备并立即释放已建立与正在建立的 native 会话；启动根解析、宿主上报根归一化与工作区清单扫描移出协议进程，initialize/tools/list 不因慢扫描阻塞且扫描期间的查询仍等门禁结果。回归侧把排队 barrier 注入实现自身锁前的 `services.repository` 读取（旧实现才会真实失败），历史回放只替换 `api()` 签名与函数体并保留旧状态机其余部分。共享脚本、Git API fixture、历史回放与共享回归在四仓库逐字节同步；workspace 客户端与客户端回归保持 workspace 专属。详细协议与回归入口见 docs/codebase-memory.md。
+
+## 真实宿主 E2E 输入复用政策（2026-10-31）
+
+用户批准的 phase 3 分流政策，权威措辞只维护在 `docs/testing-standard.md` 第 4 节与 4.1 节，本条目只记录决策与边界：
+
+- 每个 PR 与 main 仍运行常规 CI；main 仍只对准确 main SHA 生成并发布索引快照。复用不减少这些门禁与既有 delivery/OpenSpec/打包检查。
+- 真实宿主 E2E 允许"本轮完整矩阵"或"已验证基线 + 当前交付验证"，与 PR 名称/数量无关。
+- 基线只能是同仓库实际完整矩阵成功运行（记录的 run/attempt、所需 job 与全部步骤成功），delivery/专项/smoke/取消结果永不作基线，禁止递归；输入面按 candidate 与 harness 的完整 Git 对象比较，并要求精确宿主版本、依赖锁、运行时、runner 与固定配置一致；差异或缺失一律完整运行。
+- 复用分支仍在本轮用真实 installer/loader 安装并加载当前候选、校验 Runtime Identity 与 provenance、注册模型并发一次真实请求；汇总必须展示本轮专项结果与基线 run/attempt，不得声称本轮跑过全矩阵。
+- 发行侧责任不变：Pi tag 继续完整真实宿主 E2E；Pi Release 的 tarball/checksum 与解包 `dist` 回读尚未自动化，仍是发行验收责任；OpenCode 当前 tag 工作流没有真实宿主 E2E，本政策既不声称也不新增。
+- 宿主基线措辞改为"每轮解析一次 `latest` 并记录精确版本 + host lock"，不再在文档中硬编码版本号；升级版本必须先完整通过才能作为复用基线。
+- 本变更无 Core API、`src/`、`dist/`、`dist/core-provenance.json` 变化，插件无需更新 Core SHA；adapter 侧各自立 `release-governance`/E2E change 并引用本政策，workspace 只更新协调约定。合入顺序为 Core → Pi/OpenCode → workspace，三侧并行评审时互链 PR 并写明顺序。
