@@ -86,14 +86,39 @@ Pi/OpenCode 不重复测试 Core 算法；它们必须直接测试：
 4. 使用本地 fake LiteLLM 和脱敏 credential 验证宿主契约，避免依赖真实服务与密钥；
 5. 至少证明插件被真实 loader 加载、关键 command/integration 存在、provider/model 真正进入宿主、credential 边界成立，以及适用的 activation/lifecycle 行为；
 6. 对宿主发布边界继续检查 operational model limits，禁止 `context/output <= 0` 的模型进入真实宿主；
-7. 在 release/tag workflow 中对最终不可变交付物重复适用的真实宿主验证，防止 PR/main 通过后 tag 交付路径发生漂移。
+7. 在 release/tag workflow 中对最终不可变交付物重复适用的真实宿主验证，防止 PR/main 通过后 tag 交付路径发生漂移。当前 Pi Release 执行该验证；OpenCode 当前 tag 工作流没有真实宿主 E2E，本文件如实记录该状态，不据此新增门禁要求（发行侧附件一致性责任见 4.1 与第 10 节）。
 
-当前固定基线：
+当前宿主基线（以每次运行实际解析并记录的输入为准，本文件不硬编码具体版本号）：
 
-- Pi：`@earendil-works/pi-coding-agent@0.87.1`，其 Node engine 为 `>=22.19.0`；CI 使用 **Real Pi 0.87.1 E2E**。
-- OpenCode：`@opencode/cli@2.0.16`；CI 使用 **Real OpenCode 2.0.16 E2E**。
+- Pi：`@earendil-works/pi-coding-agent`，此前验证过 `0.87.1`，该版本与本轮实际稳定版 `1.4.0` 要求 Node `>=22.19.0`，CI 使用 Node `22.23.4`（不由此推定整个版本范围均已验证）；CI 在运行开始时解析一次 `latest` 并安装该精确版本，门禁名为 **Real Pi latest E2E**。
+- OpenCode：`@opencode/cli`（插件 peer 声明 `@opencode/plugin >=2.0.15 <2.3`）；CI 的 `resolve-host` 在运行开始时解析一次 `latest`，用私有 npm 项目生成共享 host lock，各测试组按同一锁安装并核验宿主命令来自该前缀，门禁名为 **Real OpenCode latest E2E**。
 
-升级宿主基线版本时，必须先让真实宿主 E2E 在新版本通过，再把新版本写入门禁；不得仅提升 peer/range 声明。
+精确宿主版本、依赖锁、Node/npm、runner 与固定配置的权威记录是该次运行的 host input 与运行日志，不是本文件里的数字。升级宿主基线版本时，必须先让真实宿主 E2E 在新解析的版本完整通过，才允许把该版本的成功运行作为复用基线；不得仅提升 peer/range 声明，也不得把旧版本的成功运行追认为新版本的基线。
+
+### 4.1 真实宿主 E2E 输入复用（已验证基线）
+
+真实宿主 E2E 的证据允许两种形式，二者都必须基于真实执行：
+
+1. **本轮完整矩阵**：对当前候选执行该宿主仓库定义的全部真实宿主场景。
+2. **已验证基线 + 当前交付验证**：引用一次可核实的既有完整矩阵成功运行，并在本轮用真实 installer/loader 证明当前候选仍可交付。
+
+复用只改变真实宿主 E2E 的运行方式。每个 PR 与 main 仍运行常规 CI（既有 OpenSpec、delivery、typecheck、单元测试、打包/安装等门禁），main 仍只对准确 main SHA 生成并发布索引快照；复用不得减少这些门禁。
+
+**可复用基线 SHALL 同时满足**：
+
+- 来自**同一个仓库**的实际 CI 运行，且运行事实可回读：记录的 run/attempt、所需 job 与全部步骤成功，该次运行本身就是完整矩阵。只跑分组子集、delivery/专项、smoke、取消、失败或不完整的结果一律不是基线。
+- 禁止递归：基线不得引用更早的基线，delivery 或专项结果永远不能充当完整矩阵基线。
+- candidate（安装的产品树）与 harness（脚本/fixture/workflow 树）分别与基线做**完整 Git 对象比较**（`ls-tree` 的路径、mode、type、blob，含新增与删除），不做 diff 相似度推断，也不交叉混用两组比较。
+- 差异仅限版本/发行元数据类字段（例如根 `version`、lockfile 根版本、`dist/runtime-identity.json` 的 `pluginVersion`、README 与对应 release notes）；其余 tracked 路径、mode/type、产物字节、`dist` 其余文件与 provenance 必须完全相同。
+- 本轮解析出的精确宿主版本、实际依赖锁、Node/npm、OS/arch、runner、以及固定配置与记录全部一致；不同、缺记录，或存在锁外无法约束的可变下载，则不复用。
+
+**复用分支仍必须在本轮真实执行**：用宿主自己的 installer 安装并加载当前候选、校验 Runtime Identity 与 provenance 对应当前候选、provider/模型真正注册，并至少发一次真实请求。它不是完整 credential/lifecycle 矩阵，后者由基线承担，不得声称本轮跑过全矩阵。
+
+**汇总必须如实**：required check 展示本轮专项结果、被复用运行的 run/attempt 与比较依据；不得把复用描述为本轮跑过完整矩阵，也不得用绿色结果掩盖本轮真实失败。
+
+**差异或证据缺失一律完整运行**：无法核实的输入、比较错误、基线缺失、基线属于其他仓库或其他类型，都按“完整跑矩阵”处理，绝不默认成功；未知即完整。
+
+**发行侧责任不因复用而减少**：Pi tag 继续执行完整真实宿主 E2E；Pi Release 的附件一致性（下载 tarball/checksum 并与候选 `dist` 核对）在当前自动化尚未回读包附件前仍是发行验收责任，不得声明已自动覆盖；OpenCode 当前 tag 工作流没有真实宿主 E2E 门禁，本政策既不声称它已有，也不新增该要求。
 
 ## 5. 覆盖率指标
 
@@ -179,7 +204,7 @@ LKG 复用 scope/model_name/关键配置/schema/内容校验及来源时间，�
 4. release PR 完整 CI 通过，合并后的 main 同一提交再次完整 CI 通过；
 5. tag 只能指向上述已验证 main commit，禁止移动旧 tag；
 6. Release workflow 必须从 tag 固定 provenance 复验，不重新追踪更新的 Core main；
-7. 发布附件创建后要验证 tarball/checksum；支持的仓库还应回读并比较解包后的 dist；
+7. 发布附件创建后要验证 tarball/checksum；支持的仓库还应回读并比较解包后的 dist。Pi 当前 Release 只回读索引快照，tarball/checksum 与解包 `dist` 的核对尚未自动化，仍属发行验收责任，不得声明已覆盖；
 8. 任何为缺失工具能力临时创建的一次性 workflow/branch 都必须在发布完成后清理，且不能污染 main。
 
 “Release 已创建”本身不是完成证据；最终应记录 tag SHA、main SHA、Release 状态、附件和 Release workflow 结果。
