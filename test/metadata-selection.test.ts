@@ -36,12 +36,13 @@ test("[T07/T26] full canonical and unique bare names preserve request id and nam
   expect(resolveModel(group("lab/model"), metadataCatalog()).spec.id).toBe("lab/model");
   expect(canonicalModelID(" Lab/Model_2026-Free ")).toBe("lab/model-2026-free");
 });
-test("[T09] a same-name record pointing at a dated version is excluded", () => {
+test("[T09] an exact official name follows its explicit dated canonical relation", () => {
   const catalog = { models: { "lab/model": {}, "lab/model-0813": {} }, providers: {
       lab: { models: { model: modelRecord({ canonical_model_id: "lab/model-0813" }) } },
       opencode: { models: { model: modelRecord() } },
     } };
-  expect(selectModelsDevRecord(group(), catalog)?.providerID).toBe("opencode");
+  expect(selectModelsDevRecord(group(), catalog)?.providerID).toBe("lab");
+  expect(resolveModel(group(), catalog).identity.canonicalModelID).toBe("lab/model-0813");
 });
 test("[T09] free and pro reseller SKUs never stand in for the original", () => {
   const catalog = { models: { "lab/model": {} }, providers: { opencode: { models: { "model-free": modelRecord({ id: "model-free" }) } },
