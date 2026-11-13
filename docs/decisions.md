@@ -38,6 +38,13 @@
 - **删除**：内部 route/base_model 身份、serving proof、逐字段多来源回填、候选等价裁决、operator 价格权威/最高价、tier cap、LKG multiset/多重 proof。保留必要能力准入、已有协议、scope、内容校验和恢复入口；旧缓存经 8→9、1→2 重建。
 - **交付**：Core → Pi → OpenCode 已完成。Pi PR #55 与 OpenCode PR #63 均固定 Core SHA `cf797e953eb1f6de8e7c3e0fd5e98094398c26f9`；Real Pi 0.87.1 E2E 与 Real OpenCode 2.0.16 E2E 均通过。Pi 和 OpenCode 的 `v0.10.1` Release 已于 2026-10-11 发布。详见[已归档设计](../openspec/changes/archive/2026-10-11-restore-model-metadata-priority/design.md)。
 
+## ADR-006：精确同名 API 的明确 canonical 关系优先（2026-11-13）
+
+- **状态**：用户已批准，当前在功能分支实施，尚未合入或被插件消费。
+- **依据**：实时目录保留 `deepseek/deepseek-v4.1-flash`，官方 `deepseek-flash` 与 OpenCode 精确同名记录却已指向 `deepseek/deepseek-v4.1-flash-1017`；先锁定旧顶层编号会排除二者并发布 OpenRouter 的 `943718`，实际请求被上游 `393216` 限制拒绝。
+- **决定**：裸公开名称在找到唯一 canonical 候选后，先按官方（含既有组织别名）→ OpenCode → OpenRouter 查看精确同名记录的明确 relation；指向同一目录现存项时采用该编号，再按原优先级取完整记录。官方同名优先确定编号；官方改名时可由 OpenCode 同名记录搭桥。该规则替代 ADR-005 中“官方同名明确指向日期版本也先排除”的旧 T09 语义。
+- **边界**：不识别日期格式、不去后缀、不猜版本、不拼字段、不用 LiteLLM 输出声明裁剪；显式 qualified canonical 保持绑定，模糊 SKU 不搭桥。模型请求名、缓存 schema 与宿主职责不变。Core 稳定 main SHA 后再交付 Pi/OpenCode，刷新/新实例/原会话继续属于插件验收。
+
 ## 开发代码索引（2026-10-02）
 
 已显式选择索引并入库；结构查询优先使用图谱与 coverage。Release 使用固定 0.11.0/full 从不可变 tag SHA 生成附件并回读验证；用户确认客户端下次启动同步发布快照，工作图谱另按当前源码刷新。新仓库不自动索引，不改变插件运行时依赖、discovery 语义、dist/provenance 或发行授权。详细流程见 docs/codebase-memory.md。

@@ -16,6 +16,8 @@ LiteLLM model_name 原样作为模型 ID、显示名和请求名。完整 canoni
 
 按 **官方服务商 → OpenCode → OpenRouter** 选择一条明确对应的完整记录。官方服务商由 canonical owner 和已核实的组织别名识别（tencent → tencent-tokenhub、zhipuai → zai）。官方 API 名称可以不同，但必须有明确 canonical 关系。不同日期或 free/pro SKU 不替代原型号。
 
+对于不带命名空间的公开名称，先按同样的供应商优先级查找名称精确匹配记录的 `canonical_model_id`；关系指向目录中存在的 canonical 时，使用它确定编号，再按官方优先选择完整记录。例如 OpenCode 的 `deepseek-v4.1-flash` 明确指向 `deepseek/deepseek-v4.1-flash-1017` 时，可找到同样指向该编号的官方 `deepseek-flash`，采用官方 `output=393216`，请求名仍为 `deepseek-v4.1-flash`。顶层旧同名条目不再挡住这个明确指向。没有这样的关系时保留原查找；显式指定带命名空间的 canonical 仍精确匹配，不猜日期、不删除后缀、不合并 SKU，也不以 LiteLLM 上限裁剪目录参数。插件更新后须成功刷新模型并重建运行实例，才会替换此前恢复的旧快照。
+
 没有精确 API 名称匹配、需要通过官方 canonical 关系找别名时，排除 `status=deprecated` 的记录；精确指定 deprecated API 名称仍可匹配。例如 `deepseek-v4.1-flash` 使用官方 `deepseek-flash`，精确指定 `deepseek-v4-flash` 仍使用该旧 API 的记录。
 
 选中记录独立提供 tools、reasoning、modalities、limit、reasoning_options、release_date 和参考价格；缺字段不从 canonical、其他服务商或 LiteLLM 回填。false 是明确不支持，缺失为未知。发布仍要求有限正 context/output、明确 tools/reasoning 及非空已知输入/输出模态；可选 input/release/price 不阻止发布。input capacity 不充当 context。

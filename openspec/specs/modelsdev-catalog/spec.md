@@ -19,7 +19,7 @@ Core SHALL 从同一选中记录配置生成 ModelSpec、publication、diagnosti
 - **THEN** 只读该记录；缺字段不从其他 provider、canonical registry 或 LiteLLM 补齐。
 
 ### Requirement: Model name selects one metadata record
-Core SHALL 以 LiteLLM model_name 为模型身份和请求 ID，只按该名称及明确目录关系，依次选择官方 → OpenCode → OpenRouter 中第一条明确对应的整记录。base_model、route、deployment ID 与 models_dev_provider 不参与元数据身份或发布判定。名称匹配 SHALL 保留型号、版本和 SKU；允许明确 canonical relation 及已确认官方 API/组织别名，MUST NOT 模糊猜测、擅自删除后缀、比较候选关键字段或拼接来源。找不到记录才换来源；已选记录缺字段不触发 provider fallback。
+Core SHALL 以 LiteLLM model_name 为模型身份和请求 ID，只按该名称及明确目录关系，依次选择官方 → OpenCode → OpenRouter 中第一条明确对应的整记录。base_model、route、deployment ID 与 models_dev_provider 不参与元数据身份或发布判定。裸公开名称有唯一 canonical 候选时 SHALL 优先按官方（含组织别名）→ OpenCode → OpenRouter 查找精确同名记录的明确 canonical_model_id，关系指向同一目录现存 canonical 时采用该编号，再按原供应商顺序选择整记录；没有有效关系时沿用原查找。显式 qualified canonical 保持精确绑定。名称匹配 SHALL 保留型号、版本和 SKU；允许明确 canonical relation 及已确认官方 API/组织别名，MUST NOT 模糊猜测、擅自删除后缀、比较候选关键字段或拼接来源。找不到记录才换来源；已选记录缺字段不触发 provider fallback。
 
 #### Scenario: [T01] 16模型按名称匹配
 - **WHEN** 输入实际16个 model_name，无内部路由身份和 provider 声明
@@ -43,7 +43,23 @@ Core SHALL 以 LiteLLM model_name 为模型身份和请求 ID，只按该名称�
 
 #### Scenario: [T09] 实际日期版本反例
 - **WHEN** deepseek-v4-pro 官方同名记录 relation 指向 -0813
-- **THEN** 排除不同版本，选 OpenCode 对应原型号记录。
+- **THEN** 跟随官方精确同名记录的明确 relation，采用该编号对应的官方整记录；不根据日期后缀猜测。
+
+#### Scenario: [CANONICAL-REDIRECT] 同名关系搭桥后取官方整记录
+- **WHEN** 顶层保留旧 canonical，OpenCode 精确同名记录明确指向现存新 canonical，官方别名也指向新 canonical
+- **THEN** 选中新 canonical 对应的官方整记录并保留原请求名；context 大于 output 时仍采用该记录 output，不裁剪为 LiteLLM 描述额度。
+
+#### Scenario: [CANONICAL-OFFICIAL-FIRST] 官方同名优先确定编号
+- **WHEN** 官方和 OpenCode 精确同名记录的明确关系不同
+- **THEN** 优先采用官方精确同名记录指向的编号与整记录。
+
+#### Scenario: [CANONICAL-EXPLICIT] 显式编号不跟随裸名称关系
+- **WHEN** 请求名为完整 qualified canonical，其他裸同名 API 指向另一编号
+- **THEN** 保持指定编号，不重定向为另一版本。
+
+#### Scenario: [CANONICAL-NO-GUESS] 相似 SKU 不构成同名关系
+- **WHEN** 只有增加 free 或 pro 后缀的记录指向另一编号
+- **THEN** 不用它重定向原型号，保留原查找结果。
 
 ### Requirement: Compatible catalog input
 Core SHALL 使用同一 catalog snapshot 的 models 与 providers，保持既有 complete/providers-only/unavailable 形状判定。未知额外顶层字段 SHALL 忽略；providers-only、models-only、非对象或损坏结构沿用既有不可用处理，不混合 snapshot，不让 adapter 复制目录校验。
