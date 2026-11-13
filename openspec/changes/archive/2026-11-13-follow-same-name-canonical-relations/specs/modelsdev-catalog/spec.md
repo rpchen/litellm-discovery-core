@@ -42,4 +42,3 @@ Core SHALL 以 LiteLLM model_name 为模型身份和请求 ID，只按该名称�
 #### Scenario: [CANONICAL-NO-GUESS] 相似 SKU 不构成同名关系
 - **WHEN** 只有增加 free 或 pro 后缀的记录指向另一编号
 - **THEN** 不用它重定向原型号，保留原查找结果。
-

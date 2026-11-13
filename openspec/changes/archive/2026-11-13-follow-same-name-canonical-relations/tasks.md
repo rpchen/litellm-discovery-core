@@ -6,7 +6,7 @@
 - [x] 更新 README 与同类冻结预期，说明刷新和运行实例重建要求。
 - [x] 通过 typecheck、全量测试、build:dist、test:package、strict validation 与 closure 门禁。
 - [x] 回填证据并用 CLI archive，重新 strict validation。
-交付状态：Core PR 待创建、CI 待运行；不自行合并。
+交付跟踪：Core PR #41；CI及审核以该PR实时状态为准，不自行合并。
 
 ## 后续 adapter 交付边界
 
